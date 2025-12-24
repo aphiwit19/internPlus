@@ -89,7 +89,7 @@ export default function RolePage() {
       case 'withdrawal':
         return <WithdrawalPage lang={lang} />;
       default:
-        return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
+        return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
     }
   }
 
@@ -102,7 +102,7 @@ export default function RolePage() {
       case 'leave':
         return <SupervisorLeaveRequestPage lang={lang} role={roleFromRoute} />;
       default:
-        return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
+        return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
     }
   }
 
@@ -119,7 +119,7 @@ export default function RolePage() {
       case 'system-settings':
         return <AdminSystemSettingsPage lang={lang} />;
       default:
-        return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
+        return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
     }
   }
 
