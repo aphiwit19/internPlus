@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import { 
   CalendarDays, 
@@ -19,6 +18,9 @@ import {
 } from 'lucide-react';
 import { Language, UserRole, LeaveRequest, LeaveType } from '@/types';
 
+import { useAppContext } from '@/app/AppContext';
+import { createLeaveRepository } from '@/app/leaveRepository';
+
 interface LeaveRequestCoreProps {
   lang: Language;
   role: UserRole;
@@ -37,6 +39,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   protocolSubtitle,
 }) => {
   const isIntern = role === 'INTERN';
+  const { user } = useAppContext();
+  const leaveRepo = useMemo(() => createLeaveRepository(), []);
 
   const quotaColorClasses = useMemo(() => {
     return {
@@ -128,11 +132,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const [requests, setRequests] = useState<LeaveRequest[]>([
-    { id: '1', internName: 'Alex Rivera', internAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', internPosition: 'Junior UI/UX Designer', type: 'SICK', startDate: '2024-11-10', endDate: '2024-11-10', reason: 'Flu', status: 'APPROVED', requestedAt: '2024-11-09' },
-    { id: '2', internName: 'James Wilson', internAvatar: 'https://picsum.photos/seed/james/100/100', internPosition: 'Backend Developer Intern', type: 'PERSONAL', startDate: '2024-11-25', endDate: '2024-11-26', reason: 'Family business', status: 'PENDING', requestedAt: '2024-11-20' },
-  ]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
 
   const [newRequest, setNewRequest] = useState<Partial<LeaveRequest>>({
     type: 'SICK',
@@ -141,51 +141,103 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     reason: ''
   });
 
-  useEffect(() => {
-    setErrorMessage(null);
-    setIsLoading(true);
-    const tId = window.setTimeout(() => {
-      setIsLoading(false);
-    }, 350);
-    return () => window.clearTimeout(tId);
-  }, [role]);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const handleSubmit = () => {
-    if (!newRequest.startDate || !newRequest.endDate || !newRequest.reason) {
-      alert("Please fill all fields.");
+  useEffect(() => {
+    let cancelled = false;
+    setErrorMessage(null);
+    setFormError(null);
+    setIsLoading(true);
+
+    leaveRepo
+      .list()
+      .then((list) => {
+        if (cancelled) return;
+        setRequests(list);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setErrorMessage(err instanceof Error ? err.message : 'Failed to load leave requests.');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leaveRepo, role]);
+
+  const handleSubmit = async () => {
+    setFormError(null);
+    setErrorMessage(null);
+
+    if (!user) {
+      setFormError(lang === 'TH' ? 'กรุณาเข้าสู่ระบบก่อนส่งคำขอ' : 'Please login before submitting a request.');
       return;
     }
-    const request: LeaveRequest = {
-      id: Math.random().toString(36).substr(2, 9),
-      internName: 'Alex Rivera',
-      internAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
-      internPosition: 'Junior UI/UX Designer',
-      type: newRequest.type as LeaveType,
-      startDate: newRequest.startDate,
-      endDate: newRequest.endDate,
-      reason: newRequest.reason,
-      status: 'PENDING',
-      requestedAt: new Date().toISOString().split('T')[0]
-    };
-    setRequests([request, ...requests]);
-    setNewRequest({ type: 'SICK', startDate: '', endDate: '', reason: '' });
+
+    if (!newRequest.type || !newRequest.startDate || !newRequest.endDate || !newRequest.reason) {
+      setFormError(lang === 'TH' ? 'กรุณากรอกข้อมูลให้ครบทุกช่อง' : 'Please fill all fields.');
+      return;
+    }
+
+    if (newRequest.startDate > newRequest.endDate) {
+      setFormError(lang === 'TH' ? 'วันที่เริ่มต้องไม่มากกว่าวันที่สิ้นสุด' : 'Start date must be before or equal to end date.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const created = await leaveRepo.createForUser(user, {
+        type: newRequest.type as LeaveType,
+        startDate: newRequest.startDate,
+        endDate: newRequest.endDate,
+        reason: newRequest.reason,
+      });
+      setRequests((prev) => [created, ...prev]);
+      setNewRequest({ type: 'SICK', startDate: '', endDate: '', reason: '' });
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to submit leave request.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpdateStatus = (id: string, status: 'APPROVED' | 'REJECTED') => {
-    setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  const handleUpdateStatus = async (id: string, status: 'APPROVED' | 'REJECTED') => {
+    setErrorMessage(null);
+    try {
+      const approver = user?.name ?? 'System';
+      const updated = await leaveRepo.updateStatus(id, status, approver);
+      setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to update request status.');
+    }
   };
 
   const handleRetry = () => {
     setErrorMessage(null);
     setIsLoading(true);
-    const tId = window.setTimeout(() => {
-      setIsLoading(false);
-    }, 350);
-    return () => window.clearTimeout(tId);
+    leaveRepo
+      .list()
+      .then((list) => setRequests(list))
+      .catch((err: unknown) => setErrorMessage(err instanceof Error ? err.message : 'Failed to load leave requests.'))
+      .finally(() => setIsLoading(false));
   };
 
-  const totalUsedDays = requests.filter(r => r.status === 'APPROVED').length;
+  const totalUsedDays = useMemo(() => {
+    if (!isIntern) return requests.filter((r) => r.status === 'APPROVED').length;
+    if (!user) return 0;
+    return requests.filter((r) => r.status === 'APPROVED' && r.internName === user.name).length;
+  }, [isIntern, requests, user]);
   const potentialDeduction = totalUsedDays * 100;
+
+  const leaveTypeLabel = (type: LeaveType) => {
+    const key = type.toLowerCase() as keyof typeof t;
+    const value = t[key];
+    return typeof value === 'string' ? value : String(type);
+  };
 
   const resolvedHeaderTitle = headerTitle ?? (isIntern ? t.title : 'Approval Center');
   const resolvedHeaderSubtitle = headerSubtitle ?? (isIntern ? t.subtitle : 'Monitor and manage intern absences across your assigned group.');
@@ -317,7 +369,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                                        <span className="text-[11px] text-slate-300 font-bold uppercase tracking-tight">{req.requestedAt}</span>
                                     </div>
                                     <div className="flex items-center gap-2 mt-2">
-                                       <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.1em]">{t[req.type.toLowerCase() as keyof typeof t.EN]}</p>
+                                       <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.1em]">{leaveTypeLabel(req.type)}</p>
                                        <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">{req.internPosition}</p>
                                     </div>
@@ -394,6 +446,12 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                        </div>
                     </div>
 
+                    {!!formError && (
+                      <div className="mb-8 p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-200 text-xs font-bold">
+                        {formError}
+                      </div>
+                    )}
+
                     <div className="space-y-10">
                       <div>
                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t.leaveType}</label>
@@ -443,6 +501,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                       <button 
                         onClick={handleSubmit}
+                        disabled={isLoading}
                         className="w-full py-6 bg-[#2563EB] text-white rounded-full font-black text-[15px] uppercase tracking-[0.15em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-4"
                       >
                         {t.submit} <ArrowRight size={20} strokeWidth={3}/>

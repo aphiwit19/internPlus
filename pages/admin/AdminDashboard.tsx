@@ -45,8 +45,12 @@ const MOCK_MENTORS: Mentor[] = [
   { id: 'm-3', name: 'Emma Watson', avatar: 'https://picsum.photos/seed/emma/100/100', dept: 'Product' },
 ];
 
-const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('roster');
+interface AdminDashboardProps {
+  initialTab?: AdminTab;
+}
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }) => {
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   // Modal States
   const [signingCert, setSigningCert] = useState<CertRequest | null>(null);
@@ -307,7 +311,17 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-const TabBtn = ({ active, onClick, icon, label }: any) => (
+const TabBtn = ({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) => (
   <button onClick={onClick} className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
     {icon} {label}
   </button>

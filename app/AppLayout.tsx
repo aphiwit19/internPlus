@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Outlet, useNavigate, useParams } from 'react-router-dom';
 
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import { PageId } from '@/pageTypes';
+import { UserRole } from '@/types';
 
 import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
@@ -33,12 +34,12 @@ export default function AppLayout() {
     navigate('/login', { replace: true });
   };
 
-  const handleRoleSwitch = (newRole: any) => {
+  const handleRoleSwitch = (newRole: UserRole) => {
     setActiveRole(newRole);
     navigate(pageIdToPath(newRole, 'dashboard'), { replace: true });
   };
 
-  if (!user) return null;
+  if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div className="h-screen bg-slate-50 flex overflow-hidden text-slate-900">

@@ -10,7 +10,8 @@ interface DashboardPageProps {
   lang: Language;
 }
 
-const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate }) => {
+const DashboardPage: React.FC<DashboardPageProps> = ({ user, onNavigate, lang }) => {
+  void lang;
   return <SupervisorDashboard user={user} onNavigate={onNavigate} currentTab="dashboard" />;
 };
 

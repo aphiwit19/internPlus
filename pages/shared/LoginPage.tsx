@@ -1,69 +1,43 @@
 
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
-import { UserProfile, UserRole } from '@/types';
+import { UserProfile } from '@/types';
 
 interface LoginPageProps {
+  profiles: UserProfile[];
+  isLoading?: boolean;
+  errorMessage?: string | null;
   onLogin: (user: UserProfile) => void;
+  onJoinWithInvite: (code: string) => Promise<UserProfile>;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage, onLogin, onJoinWithInvite }) => {
   const [inviteCode, setInviteCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isVerifyingDetails, setIsVerifyingDetails] = useState(false);
 
-  const MOCK_USERS: UserProfile[] = [
-    {
-      id: 'u-1',
-      name: 'Alex Rivera',
-      role: 'INTERN',
-      avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
-      systemId: 'USR-001',
-      studentId: 'STD-6704021',
-      department: 'Design',
-      email: 'alex.r@internplus.io',
-      position: 'Junior UI/UX Designer',
-      internPeriod: 'Jan 2024 - Jun 2024'
-    },
-    {
-      id: 'u-2',
-      name: 'Sarah Connor',
-      role: 'SUPERVISOR',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop',
-      systemId: 'USR-002',
-      department: 'Product',
-      email: 'sarah.c@internplus.io',
-      assignedInterns: ['u-1'],
-      isDualRole: true
-    },
-    {
-      id: 'u-3',
-      name: 'HR Admin',
-      role: 'HR_ADMIN',
-      avatar: 'https://picsum.photos/seed/admin/100/100',
-      systemId: 'ADM-001',
-      department: 'Operations',
-      email: 'admin@internplus.io'
-    }
-  ];
+  const [verifiedProfile, setVerifiedProfile] = useState<UserProfile | null>(null);
 
-  const handleJoin = () => {
-    if (inviteCode.toUpperCase() === 'W' || inviteCode.toUpperCase() === 'WELCOME2024') {
-      setIsInitializing(true);
-      // Simulate profile initialization/fetch
-      setTimeout(() => {
-        setIsInitializing(false);
-        setIsVerifyingDetails(true);
-      }, 1500);
-    } else {
-      alert('Invalid invitation code. Please try "W" or "WELCOME2024".');
+  const handleJoin = async () => {
+    setIsInitializing(true);
+    try {
+      const joined = await onJoinWithInvite(inviteCode);
+      setVerifiedProfile(joined);
+      setIsVerifyingDetails(true);
+    } catch {
+      return;
+    } finally {
+      setIsInitializing(false);
     }
   };
 
   const finalizeLogin = () => {
-    onLogin(MOCK_USERS[0]);
+    if (!verifiedProfile) return;
+    onLogin(verifiedProfile);
   };
+
+  const currentProfiles = profiles;
 
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -111,6 +85,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         {/* Right Side: Login/Join Card */}
         <div className="bg-white rounded-[3.5rem] p-10 md:p-14 shadow-2xl relative w-full max-w-lg mx-auto overflow-hidden">
+
+          {!!errorMessage && (
+            <div className="mb-8 p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-bold">
+              {errorMessage}
+            </div>
+          )}
           
           {isVerifyingDetails ? (
             /* NEXT STEP: Confirm Details View */
@@ -129,8 +109,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   </div>
                   <div className="relative z-10">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Assigned Position</p>
-                    <h4 className="text-lg font-black text-slate-900">{MOCK_USERS[0].position}</h4>
-                    <p className="text-[11px] font-bold text-blue-600 mt-1">{MOCK_USERS[0].department} Division</p>
+                    <h4 className="text-lg font-black text-slate-900">{verifiedProfile?.position}</h4>
+                    <p className="text-[11px] font-bold text-blue-600 mt-1">{verifiedProfile?.department} Division</p>
                   </div>
                 </div>
 
@@ -140,7 +120,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   </div>
                   <div className="relative z-10">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internship Period</p>
-                    <h4 className="text-lg font-black text-slate-900">{MOCK_USERS[0].internPeriod}</h4>
+                    <h4 className="text-lg font-black text-slate-900">{verifiedProfile?.internPeriod}</h4>
                     <p className="text-[11px] font-bold text-slate-500 mt-1">6 Months Total Program</p>
                   </div>
                 </div>
@@ -164,11 +144,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Welcome Back</h3>
               <p className="text-slate-500 text-sm mb-12 font-medium">Select your portal access role to continue.</p>
 
+              {isLoading && (
+                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
+                  Loading profiles...
+                </div>
+              )}
+
               <div className="space-y-4">
-                {MOCK_USERS.map((user) => (
+                {currentProfiles.map((user) => (
                   <button
                     key={user.id}
                     onClick={() => onLogin(user)}
+                    disabled={!!isLoading}
                     className="w-full flex items-center justify-between p-6 rounded-[2rem] border border-slate-100 hover:border-blue-500 hover:bg-blue-50/40 transition-all group text-left relative overflow-hidden"
                   >
                     <div className="absolute right-0 top-0 h-full w-1 bg-blue-600 opacity-0 group-hover:opacity-100 transition-all"></div>
