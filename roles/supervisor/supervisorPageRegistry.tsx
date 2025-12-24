@@ -1,11 +1,13 @@
 import React from 'react';
 
-import SupervisorDashboard from '@/pages/supervisor/SupervisorDashboard';
+import DashboardPage from '@/pages/supervisor/DashboardPage';
+import InternManagementPage from '@/pages/supervisor/InternManagementPage';
+import LeaveRequestPage from '@/pages/supervisor/LeaveRequestPage';
 
 import { Language, UserProfile, UserRole } from '@/types';
 import { PageId } from '@/pageTypes';
 
-export type SupervisorPageId = 'dashboard' | 'manage-interns';
+export type SupervisorPageId = 'dashboard' | 'manage-interns' | 'leave';
 
 export interface SupervisorPageContext {
   activeRole: UserRole;
@@ -15,8 +17,9 @@ export interface SupervisorPageContext {
 }
 
 const supervisorPageRegistry: Record<SupervisorPageId, (ctx: SupervisorPageContext) => React.ReactNode> = {
-  dashboard: ({ user, onNavigate }) => <SupervisorDashboard user={user} onNavigate={onNavigate} currentTab="dashboard" />,
-  'manage-interns': ({ user, onNavigate }) => <SupervisorDashboard user={user} onNavigate={onNavigate} currentTab="manage-interns" />,
+  dashboard: ({ user, onNavigate, lang }) => <DashboardPage user={user} onNavigate={onNavigate} lang={lang} />,
+  'manage-interns': ({ user, onNavigate, lang }) => <InternManagementPage user={user} onNavigate={onNavigate} lang={lang} />,
+  leave: ({ lang, activeRole }) => <LeaveRequestPage lang={lang} role={activeRole} />,
 };
 
 export function renderSupervisorRegistryPage(
