@@ -1,7 +1,7 @@
 import React from 'react';
 
-import SupervisorDashboard from './pages/SupervisorDashboard';
-import { renderCommonPage } from '../common/renderCommonPage';
+import { renderSupervisorRegistryPage } from './supervisorPageRegistry';
+import { renderSharedPage } from '../shared/sharedPageRegistry';
 
 import { Language, UserProfile, UserRole } from '@/types';
 
@@ -20,13 +20,11 @@ export function renderSupervisorPage({
   lang,
   onNavigate,
 }: RenderSupervisorPageParams): React.ReactNode {
-  if (activePage === 'dashboard') {
-    return <SupervisorDashboard user={user} onNavigate={onNavigate} currentTab="dashboard" />;
-  }
+  const page = renderSupervisorRegistryPage(activePage, { activeRole, user, lang, onNavigate });
+  if (page) return page;
 
-  if (activePage === 'manage-interns') {
-    return <SupervisorDashboard user={user} onNavigate={onNavigate} currentTab="manage-interns" />;
-  }
+  const shared = renderSharedPage(activePage, { activeRole, user, lang, onNavigate });
+  if (shared) return shared;
 
-  return renderCommonPage({ activePage, activeRole, user, lang, onNavigate });
+  return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
 }

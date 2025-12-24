@@ -1,7 +1,7 @@
 import React from 'react';
 
-import InternDashboard from './pages/InternDashboard';
-import { renderCommonPage } from '../common/renderCommonPage';
+import { renderInternRegistryPage } from './internPageRegistry';
+import { renderSharedPage } from '../shared/sharedPageRegistry';
 
 import { Language, UserProfile, UserRole } from '@/types';
 
@@ -20,9 +20,11 @@ export function renderInternPage({
   lang,
   onNavigate,
 }: RenderInternPageParams): React.ReactNode {
-  if (activePage === 'dashboard') {
-    return <InternDashboard user={user} onNavigate={onNavigate} lang={lang} />;
-  }
+  const page = renderInternRegistryPage(activePage, { activeRole, user, lang, onNavigate });
+  if (page) return page;
 
-  return renderCommonPage({ activePage, activeRole, user, lang, onNavigate });
+  const shared = renderSharedPage(activePage, { activeRole, user, lang, onNavigate });
+  if (shared) return shared;
+
+  return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
 }

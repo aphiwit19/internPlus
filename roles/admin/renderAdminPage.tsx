@@ -1,7 +1,7 @@
 import React from 'react';
 
-import AdminDashboard from './pages/AdminDashboard';
-import { renderCommonPage } from '../common/renderCommonPage';
+import { renderAdminRegistryPage } from './adminPageRegistry';
+import { renderSharedPage } from '../shared/sharedPageRegistry';
 
 import { Language, UserProfile, UserRole } from '@/types';
 
@@ -20,9 +20,11 @@ export function renderAdminPage({
   lang,
   onNavigate,
 }: RenderAdminPageParams): React.ReactNode {
-  if (activePage === 'dashboard') {
-    return <AdminDashboard />;
-  }
+  const page = renderAdminRegistryPage(activePage, { activeRole, user, lang, onNavigate });
+  if (page) return page;
 
-  return renderCommonPage({ activePage, activeRole, user, lang, onNavigate });
+  const shared = renderSharedPage(activePage, { activeRole, user, lang, onNavigate });
+  if (shared) return shared;
+
+  return <div className="p-20 text-center font-bold text-slate-400">Page under development.</div>;
 }
