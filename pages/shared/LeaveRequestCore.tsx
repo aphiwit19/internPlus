@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   CalendarDays, 
   Plus, 
@@ -37,6 +37,23 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   protocolSubtitle,
 }) => {
   const isIntern = role === 'INTERN';
+
+  const quotaColorClasses = useMemo(() => {
+    return {
+      emerald: {
+        badge: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+        bar: 'bg-emerald-500',
+      },
+      amber: {
+        badge: 'bg-amber-50 text-amber-600 border-amber-100',
+        bar: 'bg-amber-500',
+      },
+      blue: {
+        badge: 'bg-blue-50 text-blue-600 border-blue-100',
+        bar: 'bg-blue-500',
+      },
+    } as const;
+  }, []);
 
   const t = {
     EN: {
@@ -109,6 +126,9 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     { type: 'BUSINESS', label: t.business, total: 3, used: 0, color: 'blue' },
   ];
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const [requests, setRequests] = useState<LeaveRequest[]>([
     { id: '1', internName: 'Alex Rivera', internAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', internPosition: 'Junior UI/UX Designer', type: 'SICK', startDate: '2024-11-10', endDate: '2024-11-10', reason: 'Flu', status: 'APPROVED', requestedAt: '2024-11-09' },
     { id: '2', internName: 'James Wilson', internAvatar: 'https://picsum.photos/seed/james/100/100', internPosition: 'Backend Developer Intern', type: 'PERSONAL', startDate: '2024-11-25', endDate: '2024-11-26', reason: 'Family business', status: 'PENDING', requestedAt: '2024-11-20' },
@@ -120,6 +140,15 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     endDate: '',
     reason: ''
   });
+
+  useEffect(() => {
+    setErrorMessage(null);
+    setIsLoading(true);
+    const tId = window.setTimeout(() => {
+      setIsLoading(false);
+    }, 350);
+    return () => window.clearTimeout(tId);
+  }, [role]);
 
   const handleSubmit = () => {
     if (!newRequest.startDate || !newRequest.endDate || !newRequest.reason) {
@@ -144,6 +173,15 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
   const handleUpdateStatus = (id: string, status: 'APPROVED' | 'REJECTED') => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  };
+
+  const handleRetry = () => {
+    setErrorMessage(null);
+    setIsLoading(true);
+    const tId = window.setTimeout(() => {
+      setIsLoading(false);
+    }, 350);
+    return () => window.clearTimeout(tId);
   };
 
   const totalUsedDays = requests.filter(r => r.status === 'APPROVED').length;
@@ -196,7 +234,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                   {QUOTA_DATA.map((item) => (
                     <div key={item.type} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-default relative overflow-hidden">
                       <div className="flex justify-between items-start mb-6 relative z-10">
-                        <span className={`text-[10px] font-black uppercase tracking-widest bg-${item.color}-50 text-${item.color}-600 px-3 py-1 rounded-lg border border-${item.color}-100`}>
+                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${quotaColorClasses[item.color as keyof typeof quotaColorClasses].badge}`}>
                           {item.label}
                         </span>
                         <Clock size={18} className="text-slate-200" />
@@ -210,7 +248,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       </div>
                       <div className="mt-6 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 relative z-10">
                         <div 
-                          className={`h-full bg-${item.color}-500 rounded-full transition-all duration-1000`} 
+                          className={`h-full rounded-full transition-all duration-1000 ${quotaColorClasses[item.color as keyof typeof quotaColorClasses].bar}`} 
                           style={{ width: `${(item.used / item.total) * 100}%` }}
                         ></div>
                       </div>
@@ -232,79 +270,109 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                 </div>
 
                 <div className="space-y-6">
-                  {requests.map((req) => (
-                    <div key={req.id} className="p-8 bg-white border border-[#F1F5F9] rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl hover:border-blue-50 group">
-                      <div className="flex items-center gap-6">
-                        <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all flex-shrink-0 ${
-                          req.status === 'APPROVED' ? 'bg-[#ECFDF5] text-[#10B981]' :
-                          req.status === 'REJECTED' ? 'bg-[#FEF2F2] text-[#EF4444]' :
-                          'bg-[#EFF6FF] text-[#3B82F6]'
-                        }`}>
-                          {req.status === 'APPROVED' ? <CheckCircle2 size={32}/> : req.status === 'REJECTED' ? <XCircle size={32}/> : <Clock size={32}/>}
-                        </div>
-
-                        <div>
-                          <div className="flex items-start gap-4 mb-2">
-                             <img src={req.internAvatar} alt={req.internName} className="w-12 h-12 rounded-xl object-cover ring-2 ring-slate-100 shadow-sm" />
-                             <div>
-                                <div className="flex items-center gap-3">
-                                   <h4 className="text-2xl font-black text-slate-900 leading-none">{req.internName}</h4>
-                                   <span className="text-[11px] text-slate-300 font-bold uppercase tracking-tight">{req.requestedAt}</span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-2">
-                                   <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.1em]">{t[req.type.toLowerCase() as keyof typeof t.EN]}</p>
-                                   <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">{req.internPosition}</p>
-                                </div>
-                             </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-3 mb-3 mt-5">
-                             <div className="flex items-center gap-2 text-slate-400">
-                                <CalendarDays size={16} className="text-slate-300" />
-                                <p className="text-[13px] font-black tracking-tight">{req.startDate} — {req.endDate}</p>
-                             </div>
-                             {req.status === 'APPROVED' && (
-                               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest px-3 py-1 bg-rose-50 rounded-lg border border-rose-100">LEAVE WITHOUT PAY</span>
-                             )}
-                          </div>
-                          <p className="text-sm text-slate-400 font-bold italic opacity-60 leading-none ml-1">"{req.reason}"</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        {req.status === 'PENDING' && !isIntern ? (
-                          <div className="flex gap-4">
-                            <button 
-                              onClick={() => handleUpdateStatus(req.id, 'APPROVED')} 
-                              className="px-8 py-4 bg-[#10B981] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#059669] shadow-2xl shadow-emerald-500/30 flex items-center gap-3 transition-all active:scale-95"
-                            >
-                              <Check size={18} strokeWidth={3}/> {t.approve}
-                            </button>
-                            <button 
-                              onClick={() => handleUpdateStatus(req.id, 'REJECTED')} 
-                              className="px-8 py-4 bg-[#F43F5E] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#E11D48] shadow-2xl shadow-rose-500/30 flex items-center gap-3 transition-all active:scale-95"
-                            >
-                              <X size={18} strokeWidth={3}/> {t.reject}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className={`px-12 py-4 rounded-[1.5rem] text-[13px] font-black uppercase tracking-[0.2em] border transition-all ${
-                            req.status === 'APPROVED' ? 'bg-[#F0FDF4] text-[#10B981] border-[#DCFCE7]' :
-                            req.status === 'REJECTED' ? 'bg-[#FFF1F2] text-[#F43F5E] border-[#FFE4E6]' :
-                            'bg-[#F0F9FF] text-[#3B82F6] border-[#E0F2FE]'
-                          }`}>
-                            {t[req.status.toLowerCase() as keyof typeof t.EN]}
-                          </div>
-                        )}
+                  {isLoading && (
+                    <div className="p-10 bg-slate-50 border border-slate-100 rounded-[3rem]">
+                      <div className="h-5 w-52 bg-slate-200 rounded-full mb-6 animate-pulse"></div>
+                      <div className="space-y-4">
+                        <div className="h-20 bg-white rounded-[2rem] border border-slate-100 animate-pulse"></div>
+                        <div className="h-20 bg-white rounded-[2rem] border border-slate-100 animate-pulse"></div>
                       </div>
                     </div>
-                  ))}
-                  {requests.length === 0 && (
-                    <div className="py-24 text-center flex flex-col items-center">
-                       <History size={48} className="text-slate-100 mb-6" />
-                       <p className="text-slate-300 font-black uppercase tracking-[0.3em]">Clear Inbox. No requests found.</p>
+                  )}
+
+                  {!isLoading && errorMessage && (
+                    <div className="p-10 bg-rose-50 border border-rose-100 rounded-[3rem] flex items-center justify-between gap-6">
+                      <div>
+                        <p className="text-sm font-black text-rose-600">{errorMessage}</p>
+                        <p className="text-xs font-bold text-rose-500/80 mt-2">Please try again.</p>
+                      </div>
+                      <button
+                        onClick={handleRetry}
+                        className="px-6 py-3 bg-rose-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-700 transition-all"
+                      >
+                        Retry
+                      </button>
                     </div>
+                  )}
+
+                  {!isLoading && !errorMessage && (
+                    <>
+                      {requests.map((req) => (
+                        <div key={req.id} className="p-8 bg-white border border-[#F1F5F9] rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl hover:border-blue-50 group">
+                          <div className="flex items-center gap-6">
+                            <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all flex-shrink-0 ${
+                              req.status === 'APPROVED' ? 'bg-[#ECFDF5] text-[#10B981]' :
+                              req.status === 'REJECTED' ? 'bg-[#FEF2F2] text-[#EF4444]' :
+                              'bg-[#EFF6FF] text-[#3B82F6]'
+                            }`}>
+                              {req.status === 'APPROVED' ? <CheckCircle2 size={32}/> : req.status === 'REJECTED' ? <XCircle size={32}/> : <Clock size={32}/>}
+                            </div>
+
+                            <div>
+                              <div className="flex items-start gap-4 mb-2">
+                                 <img src={req.internAvatar} alt={req.internName} className="w-12 h-12 rounded-xl object-cover ring-2 ring-slate-100 shadow-sm" />
+                                 <div>
+                                    <div className="flex items-center gap-3">
+                                       <h4 className="text-2xl font-black text-slate-900 leading-none">{req.internName}</h4>
+                                       <span className="text-[11px] text-slate-300 font-bold uppercase tracking-tight">{req.requestedAt}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                       <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.1em]">{t[req.type.toLowerCase() as keyof typeof t.EN]}</p>
+                                       <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
+                                       <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">{req.internPosition}</p>
+                                    </div>
+                                 </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-3 mb-3 mt-5">
+                                 <div className="flex items-center gap-2 text-slate-400">
+                                    <CalendarDays size={16} className="text-slate-300" />
+                                    <p className="text-[13px] font-black tracking-tight">{req.startDate} — {req.endDate}</p>
+                                 </div>
+                                 {req.status === 'APPROVED' && (
+                                   <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest px-3 py-1 bg-rose-50 rounded-lg border border-rose-100">LEAVE WITHOUT PAY</span>
+                                 )}
+                              </div>
+                              <p className="text-sm text-slate-400 font-bold italic opacity-60 leading-none ml-1">"{req.reason}"</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-4 flex-shrink-0">
+                            {req.status === 'PENDING' && !isIntern ? (
+                              <div className="flex gap-4">
+                                <button 
+                                  onClick={() => handleUpdateStatus(req.id, 'APPROVED')} 
+                                  className="px-8 py-4 bg-[#10B981] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#059669] shadow-2xl shadow-emerald-500/30 flex items-center gap-3 transition-all active:scale-95"
+                                >
+                                  <Check size={18} strokeWidth={3}/> {t.approve}
+                                </button>
+                                <button 
+                                  onClick={() => handleUpdateStatus(req.id, 'REJECTED')} 
+                                  className="px-8 py-4 bg-[#F43F5E] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#E11D48] shadow-2xl shadow-rose-500/30 flex items-center gap-3 transition-all active:scale-95"
+                                >
+                                  <X size={18} strokeWidth={3}/> {t.reject}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className={`px-12 py-4 rounded-[1.5rem] text-[13px] font-black uppercase tracking-[0.2em] border transition-all ${
+                                req.status === 'APPROVED' ? 'bg-[#F0FDF4] text-[#10B981] border-[#DCFCE7]' :
+                                req.status === 'REJECTED' ? 'bg-[#FFF1F2] text-[#F43F5E] border-[#FFE4E6]' :
+                                'bg-[#F0F9FF] text-[#3B82F6] border-[#E0F2FE]'
+                              }`}>
+                                {t[req.status.toLowerCase() as keyof typeof t.EN]}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {requests.length === 0 && (
+                        <div className="py-24 text-center flex flex-col items-center">
+                           <History size={48} className="text-slate-100 mb-6" />
+                           <p className="text-slate-300 font-black uppercase tracking-[0.3em]">Clear Inbox. No requests found.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </section>
