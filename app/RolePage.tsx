@@ -21,7 +21,7 @@ import CertificatesPage from '@/pages/intern/CertificatesPage';
 import OffboardingPage from '@/pages/intern/OffboardingPage';
 import AllowancePage from '@/pages/intern/AllowancePage';
 import WithdrawalPage from '@/pages/intern/WithdrawalPage';
-import InternLeaveRequestPage from '@/pages/shared/LeaveRequestPage';
+import InternLeaveRequestPage from '@/pages/intern/LeaveRequestPage';
 
 import AdminDashboardPage from '@/pages/admin/DashboardPage';
 import AdminInternManagementPage from '@/pages/admin/InternManagementPage';
@@ -71,7 +71,7 @@ export default function RolePage() {
       case 'attendance':
         return <AttendancePage lang={lang} />;
       case 'leave':
-        return <InternLeaveRequestPage lang={lang} role={roleFromRoute} />;
+        return <InternLeaveRequestPage lang={lang} />;
       case 'assignment':
         return <AssignmentPage lang={lang} />;
       case 'activities':
