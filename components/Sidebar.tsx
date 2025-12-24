@@ -2,11 +2,12 @@ import React from 'react';
 import { NAV_ITEMS } from '@/constants';
 import { Briefcase, X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-react';
 import { UserProfile, Language, UserRole } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface SidebarProps {
-  activeId: string;
+  activeId: PageId;
   activeRole: UserRole; // Current active role context
-  onNavigate: (id: string) => void;
+  onNavigate: (id: PageId) => void;
   onRoleSwitch?: (role: UserRole) => void; // Callback to change role context
   isOpen?: boolean;
   onClose?: () => void;

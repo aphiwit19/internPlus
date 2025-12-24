@@ -60,6 +60,7 @@ import {
   Home
 } from 'lucide-react';
 import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
+import { PageId } from '@/pageTypes';
 import InternListSection from '@/roles/supervisor/components/InternListSection';
 import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/roles/supervisor/components/InternDeepDiveLayout';
 import AttendanceTab from '@/roles/supervisor/components/AttendanceTab';
@@ -166,7 +167,7 @@ const INITIAL_INTERNS: InternDetail[] = [
 
 interface SupervisorDashboardProps {
   user: UserProfile;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: PageId) => void;
   currentTab: string;
 }
 

@@ -1,5 +1,5 @@
-
 import React from 'react';
+import { PageId } from './pageTypes';
 
 export type UserRole = 'INTERN' | 'SUPERVISOR' | 'HR_ADMIN';
 export type Language = 'EN' | 'TH';
@@ -29,7 +29,7 @@ export interface UserProfile {
 }
 
 export interface NavItem {
-  id: string;
+  id: PageId;
   label: string;
   icon: React.ReactNode;
   roles: UserRole[];

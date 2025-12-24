@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Rocket, 
@@ -55,6 +54,7 @@ import {
 } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
 import { Language } from '@/types';
+import { PageId } from '@/pageTypes';
 
 type SettingsTab = 'onboarding' | 'allowance' | 'access';
 
@@ -65,7 +65,7 @@ interface RoadmapStep {
   title: string;
   active: boolean;
   type: ProcessType;
-  targetPage?: string;
+  targetPage?: PageId;
   externalUrl?: string;
   attachedDocuments: string[];
 }

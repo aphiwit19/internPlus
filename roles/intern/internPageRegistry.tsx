@@ -16,6 +16,7 @@ import WithdrawalPage from '@/pages/intern/WithdrawalPage';
 import InternDashboard from './pages/InternDashboard';
 
 import { Language, UserProfile, UserRole } from '@/types';
+import { PageId } from '@/pageTypes';
 
 export type InternPageId =
   | 'dashboard'
@@ -36,7 +37,7 @@ export interface InternPageContext {
   activeRole: UserRole;
   user: UserProfile;
   lang: Language;
-  onNavigate: (pageId: string) => void;
+  onNavigate: (pageId: PageId) => void;
 }
 
 const internPageRegistry: Record<InternPageId, (ctx: InternPageContext) => React.ReactNode> = {
@@ -55,7 +56,7 @@ const internPageRegistry: Record<InternPageId, (ctx: InternPageContext) => React
   withdrawal: ({ lang }) => <WithdrawalPage lang={lang} />,
 };
 
-export function renderInternRegistryPage(activePage: string, ctx: InternPageContext): React.ReactNode | null {
+export function renderInternRegistryPage(activePage: PageId, ctx: InternPageContext): React.ReactNode | null {
   const renderer = (internPageRegistry as Record<string, (ctx: InternPageContext) => React.ReactNode>)[activePage];
   return renderer ? renderer(ctx) : null;
 }

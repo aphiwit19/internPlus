@@ -18,10 +18,11 @@ import {
   ChevronRight as LucideChevronRight
 } from 'lucide-react';
 import { UserProfile, Language } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface InternDashboardProps {
   user: UserProfile;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: PageId) => void;
   lang: Language;
 }
 

@@ -4,13 +4,14 @@ import { renderInternRegistryPage } from './internPageRegistry';
 import { renderSharedPage } from '../shared/sharedPageRegistry';
 
 import { Language, UserProfile, UserRole } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface RenderInternPageParams {
-  activePage: string;
+  activePage: PageId;
   activeRole: UserRole;
   user: UserProfile;
   lang: Language;
-  onNavigate: (pageId: string) => void;
+  onNavigate: (pageId: PageId) => void;
 }
 
 export function renderInternPage({

@@ -1,0 +1,18 @@
+export type PageId =
+  | 'dashboard'
+  | 'onboarding'
+  | 'profile'
+  | 'training'
+  | 'attendance'
+  | 'leave'
+  | 'assignment'
+  | 'activities'
+  | 'feedback'
+  | 'evaluation'
+  | 'certificates'
+  | 'offboarding'
+  | 'allowance'
+  | 'withdrawal'
+  | 'manage-interns'
+  | 'invitations'
+  | 'system-settings';

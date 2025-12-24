@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { 
   CheckCircle2, 
@@ -15,6 +14,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Language } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface RoadmapStep {
   id: string;
@@ -25,11 +25,11 @@ interface RoadmapStep {
   icon: React.ReactNode;
   category: 'onboarding' | 'internship' | 'evaluation' | 'offboarding';
   actionLabel?: string;
-  targetPage?: string;
+  targetPage?: PageId;
 }
 
 interface OnboardingPageProps {
-  onNavigate: (id: string) => void;
+  onNavigate: (id: PageId) => void;
   lang: Language;
 }
 

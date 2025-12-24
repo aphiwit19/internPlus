@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   FileText, 
@@ -12,6 +11,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { Language } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface TrainingItem {
   id: string;
@@ -23,7 +23,7 @@ interface TrainingItem {
 }
 
 interface TrainingPageProps {
-  onNavigate: (id: string) => void;
+  onNavigate: (id: PageId) => void;
   lang: Language;
 }
 

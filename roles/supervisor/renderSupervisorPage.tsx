@@ -4,13 +4,14 @@ import { renderSupervisorRegistryPage } from './supervisorPageRegistry';
 import { renderSharedPage } from '../shared/sharedPageRegistry';
 
 import { Language, UserProfile, UserRole } from '@/types';
+import { PageId } from '@/pageTypes';
 
 interface RenderSupervisorPageParams {
-  activePage: string;
+  activePage: PageId;
   activeRole: UserRole;
   user: UserProfile;
   lang: Language;
-  onNavigate: (pageId: string) => void;
+  onNavigate: (pageId: PageId) => void;
 }
 
 export function renderSupervisorPage({

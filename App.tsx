@@ -4,11 +4,12 @@ import Header from './components/Header';
 import LoginPage from './pages/shared/LoginPage';
 import { Sparkles } from 'lucide-react';
 import { UserProfile, UserRole, Language } from './types';
+import { PageId } from './pageTypes';
 import { renderAppPage } from './roles/renderAppPage';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [activeRole, setActiveRole] = useState<UserRole>('INTERN');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [lang, setLang] = useState<Language>('EN');
