@@ -53,7 +53,7 @@ import {
   EyeOff,
   Circle
 } from 'lucide-react';
-import { NAV_ITEMS } from '../constants';
+import { NAV_ITEMS } from '@/constants';
 import { Language } from '@/types';
 
 type SettingsTab = 'onboarding' | 'allowance' | 'access';

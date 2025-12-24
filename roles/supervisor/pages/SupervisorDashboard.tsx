@@ -60,11 +60,11 @@ import {
   Home
 } from 'lucide-react';
 import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
-import InternListSection from '../components/InternListSection';
-import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '../components/InternDeepDiveLayout';
-import AttendanceTab from '../components/AttendanceTab';
-import FeedbackTab from '../components/FeedbackTab';
-import TasksTab from '../components/TasksTab';
+import InternListSection from '@/roles/supervisor/components/InternListSection';
+import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/roles/supervisor/components/InternDeepDiveLayout';
+import AttendanceTab from '@/roles/supervisor/components/AttendanceTab';
+import FeedbackTab from '@/roles/supervisor/components/FeedbackTab';
+import TasksTab from '@/roles/supervisor/components/TasksTab';
 
 interface InternDetail {
   id: string;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { NAV_ITEMS } from '../constants';
+import { NAV_ITEMS } from '@/constants';
 import { Briefcase, X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-react';
 import { UserProfile, Language, UserRole } from '@/types';
 
