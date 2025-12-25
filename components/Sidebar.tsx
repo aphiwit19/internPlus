@@ -87,8 +87,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Dual Role Switcher - Specific for Sarah Connor/Dual Role Users */}
-        {user.isDualRole && onRoleSwitch && (
+        {/* Dual Role Switcher - Specific for multi-role users */}
+        {user.roles.includes('SUPERVISOR') && user.roles.includes('HR_ADMIN') && onRoleSwitch && (
           <div className="px-6 py-4 mx-4 mb-2 bg-slate-50 border border-slate-100 rounded-[1.5rem] animate-in fade-in slide-in-from-top-2 duration-500">
              <div className="text-[9px] font-black text-slate-300 uppercase tracking-[0.25em] mb-3 px-1 flex items-center justify-between">
                 {translations['switch_label']}

@@ -15,17 +15,27 @@ function buildSystemId(uid: string): string {
 type UserProfileDoc = Omit<UserProfile, 'id'> & {
   createdAt?: unknown;
   updatedAt?: unknown;
+  role?: UserRole;
 };
+
+function normalizeRoles(data: { roles?: UserRole[]; role?: UserRole; isDualRole?: boolean } | null | undefined): UserRole[] {
+  if (!data) return ['INTERN'];
+  if (Array.isArray(data.roles) && data.roles.length > 0) return data.roles;
+  if (data.role) return [data.role];
+  if (data.isDualRole) return ['SUPERVISOR', 'HR_ADMIN'];
+  return ['INTERN'];
+}
 
 export async function getUserProfileByUid(uid: string): Promise<UserProfile | null> {
   const ref = doc(firestoreDb, 'users', uid);
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
   const data = snap.data() as UserProfileDoc;
+  const roles = normalizeRoles(data);
   return {
     id: uid,
     name: data.name,
-    role: data.role,
+    roles,
     avatar: data.avatar,
     systemId: data.systemId,
     studentId: data.studentId,
@@ -35,7 +45,7 @@ export async function getUserProfileByUid(uid: string): Promise<UserProfile | nu
     position: data.position,
     internPeriod: data.internPeriod,
     assignedInterns: data.assignedInterns,
-    isDualRole: data.isDualRole,
+    isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
   };
 }
 
@@ -53,10 +63,11 @@ export function subscribeUserProfileByUid(
         return;
       }
       const data = snap.data() as UserProfileDoc;
+      const roles = normalizeRoles(data);
       onChange({
         id: uid,
         name: data.name,
-        role: data.role,
+        roles,
         avatar: data.avatar,
         systemId: data.systemId,
         studentId: data.studentId,
@@ -66,7 +77,7 @@ export function subscribeUserProfileByUid(
         position: data.position,
         internPeriod: data.internPeriod,
         assignedInterns: data.assignedInterns,
-        isDualRole: data.isDualRole,
+        isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
       });
     },
     (err) => {
@@ -79,19 +90,25 @@ export interface CreateUserProfileInput {
   uid: string;
   email: string;
   name: string;
+  roles?: UserRole[];
   role?: UserRole;
 }
 
 export async function createUserProfileIfMissing(input: CreateUserProfileInput): Promise<UserProfile> {
   const { uid, email, name } = input;
-  const role: UserRole = input.role ?? 'INTERN';
+  const roles: UserRole[] =
+    input.roles && input.roles.length > 0
+      ? input.roles
+      : input.role
+        ? [input.role]
+        : ['INTERN'];
 
   const existing = await getUserProfileByUid(uid);
   if (existing) return existing;
 
   const docData: UserProfileDoc = {
     name,
-    role,
+    roles,
     avatar: randomAvatar(uid),
     systemId: buildSystemId(uid),
     studentId: '',
@@ -100,6 +117,7 @@ export async function createUserProfileIfMissing(input: CreateUserProfileInput):
     phone: '',
     position: 'Intern',
     internPeriod: 'TBD',
+    isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -109,7 +127,7 @@ export async function createUserProfileIfMissing(input: CreateUserProfileInput):
   return {
     id: uid,
     name: docData.name,
-    role: docData.role,
+    roles: docData.roles ?? roles,
     avatar: docData.avatar,
     systemId: docData.systemId,
     studentId: docData.studentId,

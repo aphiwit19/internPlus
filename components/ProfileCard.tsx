@@ -47,7 +47,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang }) => {
       <div className="text-center mb-10">
         <h2 className="text-3xl font-black text-slate-900 leading-tight tracking-tight">{user.name}</h2>
         <div className="flex items-center justify-center gap-2 mt-2">
-          <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em]">{user.role}</p>
+          <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em]">{user.roles[0] ?? 'INTERN'}</p>
           <span className="w-1.5 h-1.5 bg-slate-200 rounded-full"></span>
           <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest">{user.systemId}</p>
         </div>

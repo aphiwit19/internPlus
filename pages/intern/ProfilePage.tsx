@@ -35,7 +35,7 @@ import { UserProfile, Supervisor, DocumentStatus, Language } from '@/types';
 const userData: UserProfile = {
   id: 'USR-2024-001',
   name: 'Alex Rivera',
-  role: 'INTERN',
+  roles: ['INTERN'],
   avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
   systemId: 'STD-6704021',
   studentId: '6704021',

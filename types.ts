@@ -15,7 +15,7 @@ export interface PerformanceMetrics {
 export interface UserProfile {
   id: string;
   name: string;
-  role: UserRole;
+  roles: UserRole[];
   avatar: string;
   systemId: string;
   studentId?: string;

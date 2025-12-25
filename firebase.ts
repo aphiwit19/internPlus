@@ -1,4 +1,4 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAnalytics, type Analytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
@@ -16,7 +16,16 @@ const firebaseConfig = {
 
 export const firebaseApp: FirebaseApp = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
 
+export const secondaryFirebaseApp: FirebaseApp = (() => {
+  try {
+    return getApp('secondary');
+  } catch {
+    return initializeApp(firebaseConfig, 'secondary');
+  }
+})();
+
 export const firebaseAuth: Auth = getAuth(firebaseApp);
+export const secondaryAuth: Auth = getAuth(secondaryFirebaseApp);
 export const firestoreDb: Firestore = getFirestore(firebaseApp);
 export const firebaseStorage: FirebaseStorage = getStorage(firebaseApp);
 

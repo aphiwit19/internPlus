@@ -56,7 +56,7 @@ export default function AppLayout() {
           navigate(pageIdToPath(activeRole, id));
           if (window.innerWidth < 1024) setIsSidebarOpen(false);
         }}
-        onRoleSwitch={user.isDualRole ? handleRoleSwitch : undefined}
+        onRoleSwitch={user.roles.length > 1 ? handleRoleSwitch : undefined}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         user={user}

@@ -1,41 +1,16 @@
-
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface LoginPageProps {
   isLoading?: boolean;
   errorMessage?: string | null;
   onLogin: (email: string, password: string) => Promise<void> | void;
-  onJoinWithInvite: (name: string, email: string, password: string) => Promise<void>;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin, onJoinWithInvite }) => {
-  const [isJoining, setIsJoining] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(false);
-  const [isVerifyingDetails, setIsVerifyingDetails] = useState(false);
-
+const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  const [joinName, setJoinName] = useState('');
-  const [joinEmail, setJoinEmail] = useState('');
-  const [joinPassword, setJoinPassword] = useState('');
-
-  const handleJoin = async () => {
-    setIsInitializing(true);
-    try {
-      await onJoinWithInvite(joinName, joinEmail, joinPassword);
-      setIsVerifyingDetails(true);
-    } catch {
-      return;
-    } finally {
-      setIsInitializing(false);
-    }
-  };
-
-  const finalizeLogin = () => {
-    void onLogin(joinEmail, joinPassword);
-  };
 
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -81,7 +56,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin,
           </div>
         </div>
 
-        {/* Right Side: Login/Join Card */}
+        {/* Right Side: Login Card */}
         <div className="bg-white rounded-[3.5rem] p-10 md:p-14 shadow-2xl relative w-full max-w-lg mx-auto overflow-hidden">
 
           {!!errorMessage && (
@@ -90,189 +65,62 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin,
             </div>
           )}
           
-          {isVerifyingDetails ? (
-            /* NEXT STEP: Confirm Details View */
-            <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 flex flex-col items-center text-center h-full">
-              <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[1.75rem] flex items-center justify-center mb-8 shadow-xl shadow-emerald-100 border border-emerald-100">
-                <UserCheck size={40} />
+          <div className="animate-in fade-in duration-500">
+            <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Welcome Back</h3>
+            <p className="text-slate-500 text-sm mb-12 font-medium">Sign in with your email and password to continue.</p>
+
+            {isLoading && (
+              <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
+                Processing...
               </div>
-              
-              <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Identity Verified</h3>
-              <p className="text-slate-400 text-[14px] mb-10 font-medium">Please confirm your assigned internship details.</p>
+            )}
 
-              <div className="w-full space-y-4 mb-12">
-                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-left relative group hover:border-blue-200 transition-all">
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-200 group-hover:text-blue-100 transition-colors">
-                    <Briefcase size={48} strokeWidth={1.5} />
-                  </div>
-                  <div className="relative z-10">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Assigned Position</p>
-                    <h4 className="text-lg font-black text-slate-900">Intern</h4>
-                    <p className="text-[11px] font-bold text-blue-600 mt-1">Unknown Division</p>
-                  </div>
-                </div>
-
-                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-left relative group hover:border-blue-200 transition-all">
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-200 group-hover:text-blue-100 transition-colors">
-                    <Calendar size={48} strokeWidth={1.5} />
-                  </div>
-                  <div className="relative z-10">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internship Period</p>
-                    <h4 className="text-lg font-black text-slate-900">TBD</h4>
-                    <p className="text-[11px] font-bold text-slate-500 mt-1">6 Months Total Program</p>
-                  </div>
-                </div>
+            <div className="space-y-5">
+              <div>
+                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
+                <input
+                  type="email"
+                  placeholder="name@example.com"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                />
               </div>
 
-              <button 
-                onClick={finalizeLogin}
-                className="w-full py-6 bg-[#111827] text-white rounded-full font-black text-[15px] uppercase tracking-widest transition-all hover:bg-blue-600 shadow-2xl flex items-center justify-center gap-3 active:scale-95"
+              <div>
+                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void onLogin(email, password)}
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <button
+                onClick={() => void onLogin(email, password)}
+                disabled={!!isLoading}
+                className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
+                  isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
+                }`}
               >
-                CONTINUE <ChevronRight size={20} />
+                SIGN IN <ChevronRight size={20} />
               </button>
-
-              <div className="mt-10 flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                <CheckCircle2 size={16} className="text-emerald-500" /> Secure Onboarding Active
-              </div>
             </div>
 
-          ) : !isJoining ? (
-            /* Default Selection View */
-            <div className="animate-in fade-in duration-500">
-              <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Welcome Back</h3>
-              <p className="text-slate-500 text-sm mb-12 font-medium">Sign in with your email and password to continue.</p>
-
-              {isLoading && (
-                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
-                  Processing...
-                </div>
-              )}
-
-              <div className="space-y-5">
-                <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
-                  <input
-                    type="email"
-                    placeholder="name@example.com"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="username"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
-                  <input
-                    type="password"
-                    placeholder="Password"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && void onLogin(email, password)}
-                    autoComplete="current-password"
-                  />
-                </div>
-
-                <button
-                  onClick={() => void onLogin(email, password)}
-                  disabled={!!isLoading}
-                  className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
-                    isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
-                  }`}
-                >
-                  SIGN IN <ChevronRight size={20} />
-                </button>
-              </div>
-
-              <div className="mt-12 pt-8 border-t border-slate-50 text-center">
-                <button 
-                  onClick={() => setIsJoining(true)}
-                  className="text-blue-600 font-black text-[13px] uppercase tracking-widest hover:underline active:scale-95 transition-all"
-                >
-                  Create an account
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* INVITE CODE VIEW - EXACT AS SCREENSHOT */
-            <div className="animate-in fade-in slide-in-from-right-12 duration-500 flex flex-col h-full">
-              <button 
-                onClick={() => setIsJoining(false)}
-                className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-10 hover:text-slate-900 transition-colors w-fit group"
+            <div className="mt-12 pt-8 border-t border-slate-50 text-center">
+              <Link
+                to="/register"
+                className="text-blue-600 font-black text-[13px] uppercase tracking-widest hover:underline active:scale-95 transition-all"
               >
-                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> BACK TO ROLES
-              </button>
-              
-              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Join the Program</h3>
-              <p className="text-slate-400 text-[15px] mb-14 font-medium">Verify your invitation to initialize your profile.</p>
-
-              <div className="space-y-12">
-                <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">FULL NAME</label>
-                  <input
-                    type="text"
-                    placeholder="Your name"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                    value={joinName}
-                    onChange={(e) => setJoinName(e.target.value)}
-                    autoComplete="name"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
-                  <input
-                    type="email"
-                    placeholder="name@example.com"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                    value={joinEmail}
-                    onChange={(e) => setJoinEmail(e.target.value)}
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
-                  <input
-                    type="password"
-                    placeholder="Password"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                    value={joinPassword}
-                    onChange={(e) => setJoinPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                    autoComplete="new-password"
-                  />
-                </div>
-                
-                <button 
-                  onClick={handleJoin}
-                  disabled={isInitializing}
-                  className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
-                    isInitializing 
-                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                      : 'bg-[#2563EB] text-white shadow-blue-500/30 hover:bg-[#1D4ED8]'
-                  }`}
-                >
-                  {isInitializing ? (
-                    <div className="flex items-center gap-3">
-                       <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></div>
-                       INITIALIZING...
-                    </div>
-                  ) : (
-                    <>
-                      <Sparkles size={20} /> INITIALIZE SESSION
-                    </>
-                  )}
-                </button>
-                
-                <p className="text-[11px] text-center text-slate-400 font-medium leading-relaxed italic max-w-xs mx-auto px-4 mt-6">
-                  By joining, you agree to comply with internPlus <br />
-                  Internal Security and Data Management Policies.
-                </p>
-              </div>
+                Create an account
+              </Link>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

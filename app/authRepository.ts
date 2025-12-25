@@ -7,7 +7,7 @@ function getDefaultProfiles(): UserProfile[] {
     {
       id: 'u-1',
       name: 'Alex Rivera',
-      role: 'INTERN',
+      roles: ['INTERN'],
       avatar:
         'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
       systemId: 'USR-001',
@@ -20,7 +20,7 @@ function getDefaultProfiles(): UserProfile[] {
     {
       id: 'u-2',
       name: 'Sarah Connor',
-      role: 'SUPERVISOR',
+      roles: ['SUPERVISOR', 'HR_ADMIN'],
       avatar:
         'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop',
       systemId: 'USR-002',
@@ -32,7 +32,7 @@ function getDefaultProfiles(): UserProfile[] {
     {
       id: 'u-3',
       name: 'HR Admin',
-      role: 'HR_ADMIN',
+      roles: ['HR_ADMIN'],
       avatar: 'https://picsum.photos/seed/admin/100/100',
       systemId: 'ADM-001',
       department: 'Operations',
@@ -90,13 +90,13 @@ export function createAuthRepository(): AuthRepository {
 
       const profiles = readProfilesFromStorage();
 
-      const existing = profiles.find((p) => p.role === 'INTERN');
+      const existing = profiles.find((p) => p.roles.includes('INTERN'));
       if (existing) return existing;
 
       const created: UserProfile = {
         id: 'u-invite-1',
         name: 'New Intern',
-        role: 'INTERN',
+        roles: ['INTERN'],
         avatar: 'https://picsum.photos/seed/intern/100/100',
         systemId: 'USR-NEW',
         studentId: 'STD-NEW',

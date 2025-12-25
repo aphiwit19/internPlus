@@ -14,8 +14,16 @@ import {
   Users
 } from 'lucide-react';
 import { UserRole } from '@/types';
+import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, updateProfile } from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+
+import { firestoreDb, secondaryAuth } from '@/firebase';
+
+import { useAppContext } from '@/app/AppContext';
 
 const InvitationsPage: React.FC = () => {
+  const { user } = useAppContext();
+
   const [inviteRole, setInviteRole] = useState<UserRole>('INTERN');
   const [recipientName, setRecipientName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -38,6 +46,19 @@ const InvitationsPage: React.FC = () => {
     { name: 'Marcus Miller', department: 'Engineering', position: 'Engineering Manager' },
     { name: 'Emma Watson', department: 'Product', position: 'Product Lead' },
   ]);
+
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+
+  const buildSystemId = (uid: string): string => {
+    const short = uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
+    return `USR-${short || 'USER'}`;
+  };
+
+  const randomAvatar = (seed: string): string => {
+    return `https://picsum.photos/seed/${encodeURIComponent(seed)}/100/100`;
+  };
 
   const safeParseJson = <T,>(value: string | null): T | null => {
     if (!value) return null;
@@ -126,31 +147,132 @@ const InvitationsPage: React.FC = () => {
     setIsAddingHrLead(false);
   };
 
-  const handleSendInvite = () => {
-    if (!inviteEmail || !recipientName) {
-      alert('Please fill in Name and Email.');
-      return;
-    }
-    if (inviteRole === 'INTERN' && !selectedSupervisor) {
-      alert('Please assign a Supervisor for the Trainee.');
-      return;
-    }
-    if (inviteRole === 'SUPERVISOR' && !selectedHrLead) {
-      alert('Please assign an HR Lead for the Supervisor.');
+  const handleSendInviteEmail = async () => {
+    setInviteError(null);
+    setInviteSuccess(null);
+
+    if (!user || !user.roles.includes('HR_ADMIN')) {
+      setInviteError('You do not have permission to send invitations.');
       return;
     }
 
-    const selectedSupervisorInfo = supervisors.find((s) => s.name === selectedSupervisor);
-    const leadInfo =
-      inviteRole === 'INTERN'
-        ? `Supervisor: ${selectedSupervisor}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
-        : `HR Lead: ${selectedHrLead}`;
-    alert(`Invitation deployed for ${recipientName} as ${inviteRole}\n${leadInfo}`);
-    
-    setRecipientName('');
-    setInviteEmail('');
-    setSelectedSupervisor('');
-    setSelectedHrLead('');
+    const email = inviteEmail.trim();
+    const name = recipientName.trim();
+
+    if (!email || !name) {
+      setInviteError('Please fill in Name and Email.');
+      return;
+    }
+    if (inviteRole === 'INTERN' && !selectedSupervisor) {
+      setInviteError('Please assign a Supervisor for the Trainee.');
+      return;
+    }
+    if (inviteRole === 'SUPERVISOR' && !selectedHrLead) {
+      setInviteError('Please assign an HR Lead for the Supervisor.');
+      return;
+    }
+
+    setIsSendingInvite(true);
+
+    const actionCodeSettings = {
+      url: `${window.location.origin}/login`,
+      handleCodeInApp: false,
+    };
+
+    try {
+      const tempPassword = Math.random().toString(36).slice(-10) + 'A1!';
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, tempPassword);
+
+      await updateProfile(userCredential.user, {
+        displayName: name,
+      });
+
+      const uid = userCredential.user.uid;
+
+      const profileDoc: Record<string, unknown> = {
+        name,
+        roles: [inviteRole],
+        avatar: randomAvatar(uid),
+        systemId: buildSystemId(uid),
+        email,
+        phone: '',
+        position: inviteRole === 'SUPERVISOR' ? 'Supervisor' : 'Intern',
+        isDualRole: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (inviteRole === 'INTERN') {
+        profileDoc.studentId = '';
+        profileDoc.department = 'Unknown';
+        profileDoc.internPeriod = 'TBD';
+      }
+
+      if (inviteRole === 'SUPERVISOR') {
+        profileDoc.department = selectedDept;
+        profileDoc.assignedInterns = [];
+      }
+
+      await setDoc(doc(firestoreDb, 'users', uid), profileDoc, { merge: true });
+
+      let firestoreVerified = false;
+      try {
+        const snap = await getDoc(doc(firestoreDb, 'users', uid));
+        firestoreVerified = snap.exists();
+      } catch {
+        firestoreVerified = false;
+      }
+
+      await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
+
+      const selectedSupervisorInfo = supervisors.find((s) => s.name === selectedSupervisor);
+      const leadInfo =
+        inviteRole === 'INTERN'
+          ? `Supervisor: ${selectedSupervisor}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
+          : `HR Lead: ${selectedHrLead}`;
+
+      setInviteSuccess(
+        `Invitation sent to ${email}.\nUID: ${uid}\n${leadInfo}` +
+          (firestoreVerified
+            ? ''
+            : '\n\nWarning: Firestore verification failed. If you cannot find users/{uid} in Firebase Console, double-check you are viewing the correct Firebase project/database or your Firestore Security Rules for reads.'),
+      );
+
+      setRecipientName('');
+      setInviteEmail('');
+      setSelectedSupervisor('');
+      setSelectedHrLead('');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e?.code === 'auth/email-already-in-use') {
+        try {
+          await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
+          setInviteSuccess(`Account already exists. Reset email sent to ${email}.`);
+          setRecipientName('');
+          setInviteEmail('');
+          setSelectedSupervisor('');
+          setSelectedHrLead('');
+        } catch (resetErr: unknown) {
+          const re = resetErr as { code?: string; message?: string };
+          setInviteError(re?.message ?? 'This email is already in use, and sending reset email failed.');
+        }
+      } else if (e?.code === 'auth/invalid-email') {
+        setInviteError('Invalid email address.');
+      } else if (e?.code === 'auth/weak-password') {
+        setInviteError('Generated password was rejected. Please try again.');
+      } else if (e?.code === 'permission-denied' || e?.code === 'firestore/permission-denied') {
+        setInviteError('Firestore permission denied. Check your Firestore Security Rules to allow HR_ADMIN to write users/{uid}, or allow the admin to read the document after creation.');
+      } else {
+        setInviteError(e?.message ?? 'Failed to send reset email.');
+      }
+    } finally {
+      try {
+        await signOut(secondaryAuth);
+      } catch {
+        // ignore
+      }
+      setIsSendingInvite(false);
+    }
   };
 
   return (
@@ -383,10 +505,35 @@ const InvitationsPage: React.FC = () => {
 
                 <div className="mt-12 flex gap-4">
                    <button className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Discard Draft</button>
-                   <button onClick={handleSendInvite} className={`flex-[2] py-5 ${inviteRole === 'INTERN' ? 'bg-slate-900 hover:bg-blue-600' : 'bg-[#111827] hover:bg-indigo-600'} text-white rounded-[1.5rem] font-black text-sm uppercase tracking-widest transition-all shadow-2xl flex items-center justify-center gap-3`}>
+                   <button
+                     onClick={() => void handleSendInviteEmail()}
+                     disabled={isSendingInvite}
+                     className={`flex-[2] py-5 ${
+                       isSendingInvite
+                         ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                         : inviteRole === 'INTERN'
+                           ? 'bg-slate-900 hover:bg-blue-600 text-white'
+                           : 'bg-[#111827] hover:bg-indigo-600 text-white'
+                     } rounded-[1.5rem] font-black text-sm uppercase tracking-widest transition-all shadow-2xl flex items-center justify-center gap-3`}
+                   >
                      <Send size={18} /> Deploy Official Invite
                    </button>
                 </div>
+
+                {(!!inviteError || !!inviteSuccess) && (
+                  <div className="mt-6">
+                    {!!inviteError && (
+                      <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-bold whitespace-pre-line">
+                        {inviteError}
+                      </div>
+                    )}
+                    {!!inviteSuccess && (
+                      <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 text-sm font-bold whitespace-pre-line">
+                        {inviteSuccess}
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
           </div>

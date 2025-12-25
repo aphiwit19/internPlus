@@ -38,6 +38,12 @@ function isLanguage(value: unknown): value is Language {
   return value === 'EN' || value === 'TH';
 }
 
+function chooseInitialActiveRole(roles: UserRole[], saved: string | null): UserRole {
+  const safeRoles = roles.length > 0 ? roles : (['INTERN'] as UserRole[]);
+  if (isUserRole(saved) && safeRoles.includes(saved)) return saved;
+  return safeRoles[0] ?? 'INTERN';
+}
+
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -83,9 +89,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (!profile) profile = await createUserProfileIfMissing({ uid, email, name });
 
         setUserState(profile);
-        setActiveRoleState(profile.role);
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(STORAGE_KEYS.activeRole, profile.role);
+          const saved = window.localStorage.getItem(STORAGE_KEYS.activeRole);
+          const nextActiveRole = chooseInitialActiveRole(profile.roles, saved);
+          setActiveRoleState(nextActiveRole);
+          window.localStorage.setItem(STORAGE_KEYS.activeRole, nextActiveRole);
+        } else {
+          setActiveRoleState(profile.roles[0] ?? 'INTERN');
         }
 
         if (unsubscribeProfile) {
@@ -96,9 +106,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         unsubscribeProfile = subscribeUserProfileByUid(uid, (nextProfile) => {
           if (!nextProfile) return;
           setUserState(nextProfile);
-          setActiveRoleState(nextProfile.role);
+
           if (typeof window !== 'undefined') {
-            window.localStorage.setItem(STORAGE_KEYS.activeRole, nextProfile.role);
+            const saved = window.localStorage.getItem(STORAGE_KEYS.activeRole);
+            const nextActiveRole = chooseInitialActiveRole(nextProfile.roles, saved);
+            setActiveRoleState(nextActiveRole);
+            window.localStorage.setItem(STORAGE_KEYS.activeRole, nextActiveRole);
+          } else {
+            setActiveRoleState(nextProfile.roles[0] ?? 'INTERN');
           }
         });
       } finally {
@@ -116,10 +131,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setActiveRole = useCallback((nextRole: UserRole) => {
-    setActiveRoleState(nextRole);
+    setActiveRoleState((prev) => {
+      if (user && !user.roles.includes(nextRole)) return prev;
+      return nextRole;
+    });
     if (typeof window === 'undefined') return;
+    if (user && !user.roles.includes(nextRole)) return;
     window.localStorage.setItem(STORAGE_KEYS.activeRole, nextRole);
-  }, []);
+  }, [user]);
 
   const toggleLang = useCallback(() => {
     setLangState((prev) => {
