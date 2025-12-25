@@ -25,6 +25,7 @@ const InvitationsPage: React.FC = () => {
   const { user } = useAppContext();
 
   const [inviteRole, setInviteRole] = useState<UserRole>('INTERN');
+  const [supervisorCoAdmin, setSupervisorCoAdmin] = useState(false);
   const [recipientName, setRecipientName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [selectedSupervisor, setSelectedSupervisor] = useState('');
@@ -189,15 +190,20 @@ const InvitationsPage: React.FC = () => {
 
       const uid = userCredential.user.uid;
 
+      const roles =
+        inviteRole === 'SUPERVISOR' && supervisorCoAdmin
+          ? (['SUPERVISOR', 'HR_ADMIN'] as UserRole[])
+          : ([inviteRole] as UserRole[]);
+
       const profileDoc: Record<string, unknown> = {
         name,
-        roles: [inviteRole],
+        roles,
         avatar: randomAvatar(uid),
         systemId: buildSystemId(uid),
         email,
         phone: '',
         position: inviteRole === 'SUPERVISOR' ? 'Supervisor' : 'Intern',
-        isDualRole: false,
+        isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN'),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -242,6 +248,7 @@ const InvitationsPage: React.FC = () => {
       setInviteEmail('');
       setSelectedSupervisor('');
       setSelectedHrLead('');
+      setSupervisorCoAdmin(false);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       if (e?.code === 'auth/email-already-in-use') {
@@ -252,6 +259,7 @@ const InvitationsPage: React.FC = () => {
           setInviteEmail('');
           setSelectedSupervisor('');
           setSelectedHrLead('');
+          setSupervisorCoAdmin(false);
         } catch (resetErr: unknown) {
           const re = resetErr as { code?: string; message?: string };
           setInviteError(re?.message ?? 'This email is already in use, and sending reset email failed.');
@@ -419,6 +427,25 @@ const InvitationsPage: React.FC = () => {
                             </div>
                           )}
                         </div>
+
+                        <div className="flex items-center justify-between gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
+                          <div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Co-Admin Access</div>
+                            <div className="text-slate-700 text-sm font-bold mt-2">Allow this Supervisor to also act as HR Admin</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSupervisorCoAdmin((v) => !v)}
+                            className={`h-10 px-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all ${
+                              supervisorCoAdmin
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {supervisorCoAdmin ? 'Enabled' : 'Disabled'}
+                          </button>
+                        </div>
+
                         <div>
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Assign Department</label>
                           <div className="flex items-stretch gap-3">
