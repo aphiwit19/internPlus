@@ -237,12 +237,7 @@ const InvitationsPage: React.FC = () => {
           ? `Supervisor: ${selectedSupervisor}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
           : `HR Lead: ${selectedHrLead}`;
 
-      setInviteSuccess(
-        `Invitation sent to ${email}.\nUID: ${uid}\n${leadInfo}` +
-          (firestoreVerified
-            ? ''
-            : '\n\nWarning: Firestore verification failed. If you cannot find users/{uid} in Firebase Console, double-check you are viewing the correct Firebase project/database or your Firestore Security Rules for reads.'),
-      );
+      setInviteSuccess(`Invitation sent to ${email}.`);
 
       setRecipientName('');
       setInviteEmail('');

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import LoginPage from '@/pages/shared/LoginPage';
 
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 
 import { firebaseAuth } from '@/firebase';
 import { useAppContext } from './AppContext';
@@ -35,6 +36,20 @@ export default function LoginRoute() {
     try {
       await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
     } catch (err: unknown) {
+      if (err instanceof FirebaseError) {
+        if (err.code === 'auth/invalid-credential') {
+          setErrorMessage(
+            'Invalid email or password. If you were invited, please use the password reset email to set your password first.',
+          );
+        } else if (err.code === 'auth/user-disabled') {
+          setErrorMessage('This account has been disabled.');
+        } else if (err.code === 'auth/too-many-requests') {
+          setErrorMessage('Too many attempts. Please try again later.');
+        } else {
+          setErrorMessage(err.message || 'Failed to sign in.');
+        }
+        return;
+      }
       setErrorMessage(err instanceof Error ? err.message : 'Failed to sign in.');
     } finally {
       setIsLoading(false);

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   ShieldCheck, 
   Trash2, 
@@ -31,6 +31,8 @@ import {
   CalendarDays
 } from 'lucide-react';
 
+import { arrayRemove, arrayUnion, collection, doc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+
 import { AdminTab } from './components/AdminDashboardTabs';
 import AllowancesTab from './components/AllowancesTab';
 import AttendanceTab from './components/AttendanceTab';
@@ -39,11 +41,52 @@ import CertificatesTab from './components/CertificatesTab';
 import RosterTab from './components/RosterTab';
 import { AllowanceClaim, CertRequest, InternRecord, Mentor } from './adminDashboardTypes';
 
+import { firestoreDb } from '@/firebase';
+import { UserRole } from '@/types';
+
 const MOCK_MENTORS: Mentor[] = [
   { id: 'm-1', name: 'Sarah Connor', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop', dept: 'Design' },
   { id: 'm-2', name: 'Marcus Miller', avatar: 'https://picsum.photos/seed/marcus/100/100', dept: 'Engineering' },
   { id: 'm-3', name: 'Emma Watson', avatar: 'https://picsum.photos/seed/emma/100/100', dept: 'Product' },
 ];
+
+type MentorOption = Mentor & {
+  position?: string;
+  isCoAdmin?: boolean;
+};
+
+type UserDoc = {
+  name?: string;
+  avatar?: string;
+  position?: string;
+  department?: string;
+  roles?: UserRole[];
+  role?: UserRole;
+  isDualRole?: boolean;
+  assignedInterns?: string[];
+  supervisorId?: string;
+  supervisorName?: string;
+};
+
+function normalizeRoles(data: Pick<UserDoc, 'roles' | 'role' | 'isDualRole'> | null | undefined): UserRole[] {
+  if (!data) return ['INTERN'];
+  if (Array.isArray(data.roles) && data.roles.length > 0) return data.roles;
+  if (data.role) return [data.role];
+  if (data.isDualRole) return ['SUPERVISOR', 'HR_ADMIN'];
+  return ['INTERN'];
+}
+
+function toInternRecord(id: string, data: UserDoc): InternRecord {
+  return {
+    id,
+    name: data.name || 'Unknown',
+    avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
+    position: data.position || 'Intern',
+    dept: data.department || 'Unknown',
+    status: 'Active',
+    supervisor: null,
+  };
+}
 
 interface AdminDashboardProps {
   initialTab?: AdminTab;
@@ -74,19 +117,111 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     { id: 'ac-3', internName: 'Sophia Chen', avatar: 'https://picsum.photos/seed/sophia/100/100', amount: 1500, period: 'Oct 2024', breakdown: { wfo: 15, wfh: 0, leaves: 0 }, status: 'PAID', paymentDate: 'Nov 01, 2024' },
   ]);
 
-  const [internRoster, setInternRoster] = useState<InternRecord[]>([
-    { id: 'u-1', name: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', position: 'Junior UI/UX Designer', dept: 'Design', status: 'Active', supervisor: MOCK_MENTORS[0] },
-    { id: 'u-2', name: 'James Wilson', avatar: 'https://picsum.photos/seed/james/100/100', position: 'Backend Developer Intern', dept: 'Engineering', status: 'Active', supervisor: MOCK_MENTORS[1] },
-    { id: 'u-3', name: 'Sophia Chen', avatar: 'https://picsum.photos/seed/sophia/100/100', position: 'Product Manager Intern', dept: 'Product', status: 'Active', supervisor: null },
-    { id: 'u-4', name: 'Marcus Aurelius', avatar: 'https://picsum.photos/seed/marcus/100/100', position: 'Data Analyst Trainee', dept: 'Engineering', status: 'Onboarding', supervisor: null },
-  ]);
+  const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
+  const [mentorOptions, setMentorOptions] = useState<MentorOption[]>([]);
 
-  const handleAssignMentor = (mentor: Mentor) => {
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const supervisors: Array<{ id: string; name: string; avatar: string; assignedInterns: string[] }> = [];
+        const supervisorsById: Record<string, { id: string; name: string; avatar: string; assignedInterns: string[] }> = {};
+        const interns: Array<{ id: string; data: UserDoc }> = [];
+
+        const nextMentors: MentorOption[] = [];
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as UserDoc;
+          const roles = normalizeRoles(data);
+
+          if (roles.includes('SUPERVISOR')) {
+            const supervisorRecord = {
+              id: docSnap.id,
+              name: data.name || 'Unknown',
+              avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(docSnap.id)}/100/100`,
+              assignedInterns: Array.isArray(data.assignedInterns) ? data.assignedInterns : [],
+            };
+
+            supervisors.push(supervisorRecord);
+            supervisorsById[supervisorRecord.id] = supervisorRecord;
+
+            nextMentors.push({
+              id: docSnap.id,
+              name: data.name || 'Unknown',
+              avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(docSnap.id)}/100/100`,
+              dept: data.department || 'Unknown',
+              position: data.position || 'Supervisor',
+              isCoAdmin: roles.includes('HR_ADMIN'),
+            });
+          }
+
+          if (roles.includes('INTERN')) {
+            interns.push({ id: docSnap.id, data });
+          }
+        });
+
+        const next: InternRecord[] = interns.map(({ id, data }) => {
+          const internRecord = toInternRecord(id, data);
+
+          const supervisorFromField = data.supervisorId ? supervisorsById[data.supervisorId] : undefined;
+          const supervisorFromList = supervisors.find((s) => s.assignedInterns.includes(id));
+          const supervisor = supervisorFromField || supervisorFromList;
+
+          if (supervisor) {
+            internRecord.supervisor = {
+              id: supervisor.id,
+              name: supervisor.name,
+              avatar: supervisor.avatar,
+            };
+          }
+
+          return internRecord;
+        });
+
+        setInternRoster(next);
+        setMentorOptions(nextMentors);
+      },
+      () => {
+        setInternRoster([]);
+        setMentorOptions([]);
+      },
+    );
+  }, []);
+
+  const handleAssignMentor = async (mentor: Mentor) => {
     if (!assigningIntern) return;
-    setInternRoster(prev => prev.map(intern => 
-      intern.id === assigningIntern.id ? { ...intern, supervisor: mentor } : intern
-    ));
-    setAssigningIntern(null);
+
+    const internId = assigningIntern.id;
+    const previousSupervisorId = assigningIntern.supervisor?.id || null;
+
+    try {
+      await updateDoc(doc(firestoreDb, 'users', internId), {
+        supervisorId: mentor.id,
+        supervisorName: mentor.name,
+        updatedAt: new Date(),
+      });
+
+      await updateDoc(doc(firestoreDb, 'users', mentor.id), {
+        assignedInterns: arrayUnion(internId),
+        updatedAt: new Date(),
+      });
+
+      if (previousSupervisorId && previousSupervisorId !== mentor.id) {
+        await updateDoc(doc(firestoreDb, 'users', previousSupervisorId), {
+          assignedInterns: arrayRemove(internId),
+          updatedAt: new Date(),
+        });
+      }
+
+      setInternRoster((prev) =>
+        prev.map((intern) => (intern.id === internId ? { ...intern, supervisor: mentor } : intern)),
+      );
+      setAssigningIntern(null);
+    } catch {
+      // keep modal open so user can retry
+      alert('Failed to assign supervisor. Please check Firestore permissions and try again.');
+    }
   };
 
   const handleAuthorizeAllowance = (id: string) => {
@@ -222,7 +357,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               </div>
 
               <div className="space-y-3">
-                 {MOCK_MENTORS.map(mentor => (
+                 {(mentorOptions.length > 0 ? mentorOptions : MOCK_MENTORS).map((mentor) => (
                    <button 
                      key={mentor.id}
                      onClick={() => handleAssignMentor(mentor)}
@@ -232,7 +367,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                         <img src={mentor.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white shadow-sm" alt=""/>
                         <div className="text-left">
                           <p className="text-sm font-black text-slate-900 group-hover:text-blue-600">{mentor.name}</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{mentor.dept} Team Lead</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                              {mentor.dept}
+                              {'position' in mentor && mentor.position ? ` • ${mentor.position}` : ' Team Lead'}
+                            </p>
+                            {'isCoAdmin' in mentor && mentor.isCoAdmin ? (
+                              <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-indigo-100">
+                                CO-ADMIN
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
