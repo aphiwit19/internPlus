@@ -1,29 +1,30 @@
 
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
-import { UserProfile } from '@/types';
 
 interface LoginPageProps {
-  profiles: UserProfile[];
   isLoading?: boolean;
   errorMessage?: string | null;
-  onLogin: (user: UserProfile) => void;
-  onJoinWithInvite: (code: string) => Promise<UserProfile>;
+  onLogin: (email: string, password: string) => Promise<void> | void;
+  onJoinWithInvite: (name: string, email: string, password: string) => Promise<void>;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage, onLogin, onJoinWithInvite }) => {
-  const [inviteCode, setInviteCode] = useState('');
+const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin, onJoinWithInvite }) => {
   const [isJoining, setIsJoining] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isVerifyingDetails, setIsVerifyingDetails] = useState(false);
 
-  const [verifiedProfile, setVerifiedProfile] = useState<UserProfile | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [joinName, setJoinName] = useState('');
+  const [joinEmail, setJoinEmail] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
 
   const handleJoin = async () => {
     setIsInitializing(true);
     try {
-      const joined = await onJoinWithInvite(inviteCode);
-      setVerifiedProfile(joined);
+      await onJoinWithInvite(joinName, joinEmail, joinPassword);
       setIsVerifyingDetails(true);
     } catch {
       return;
@@ -33,11 +34,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
   };
 
   const finalizeLogin = () => {
-    if (!verifiedProfile) return;
-    onLogin(verifiedProfile);
+    void onLogin(joinEmail, joinPassword);
   };
-
-  const currentProfiles = profiles;
 
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -109,8 +107,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
                   </div>
                   <div className="relative z-10">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Assigned Position</p>
-                    <h4 className="text-lg font-black text-slate-900">{verifiedProfile?.position}</h4>
-                    <p className="text-[11px] font-bold text-blue-600 mt-1">{verifiedProfile?.department} Division</p>
+                    <h4 className="text-lg font-black text-slate-900">Intern</h4>
+                    <p className="text-[11px] font-bold text-blue-600 mt-1">Unknown Division</p>
                   </div>
                 </div>
 
@@ -120,7 +118,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
                   </div>
                   <div className="relative z-10">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internship Period</p>
-                    <h4 className="text-lg font-black text-slate-900">{verifiedProfile?.internPeriod}</h4>
+                    <h4 className="text-lg font-black text-slate-900">TBD</h4>
                     <p className="text-[11px] font-bold text-slate-500 mt-1">6 Months Total Program</p>
                   </div>
                 </div>
@@ -130,7 +128,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
                 onClick={finalizeLogin}
                 className="w-full py-6 bg-[#111827] text-white rounded-full font-black text-[15px] uppercase tracking-widest transition-all hover:bg-blue-600 shadow-2xl flex items-center justify-center gap-3 active:scale-95"
               >
-                START MY INTERNSHIP <ChevronRight size={20} />
+                CONTINUE <ChevronRight size={20} />
               </button>
 
               <div className="mt-10 flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
@@ -142,37 +140,49 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
             /* Default Selection View */
             <div className="animate-in fade-in duration-500">
               <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Welcome Back</h3>
-              <p className="text-slate-500 text-sm mb-12 font-medium">Select your portal access role to continue.</p>
+              <p className="text-slate-500 text-sm mb-12 font-medium">Sign in with your email and password to continue.</p>
 
               {isLoading && (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
-                  Loading profiles...
+                  Processing...
                 </div>
               )}
 
-              <div className="space-y-4">
-                {currentProfiles.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => onLogin(user)}
-                    disabled={!!isLoading}
-                    className="w-full flex items-center justify-between p-6 rounded-[2rem] border border-slate-100 hover:border-blue-500 hover:bg-blue-50/40 transition-all group text-left relative overflow-hidden"
-                  >
-                    <div className="absolute right-0 top-0 h-full w-1 bg-blue-600 opacity-0 group-hover:opacity-100 transition-all"></div>
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-slate-100 rounded-2xl overflow-hidden group-hover:ring-4 ring-blue-500/10 transition-all">
-                        <img src={user.avatar} className="w-full h-full object-cover" alt="" />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900 text-lg leading-tight">{user.name}</h4>
-                        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 mt-1">{user.role.replace('_', ' ')}</p>
-                      </div>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
-                      <ArrowLeft className="rotate-180" size={20} />
-                    </div>
-                  </button>
-                ))}
+              <div className="space-y-5">
+                <div>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
+                  <input
+                    type="email"
+                    placeholder="name@example.com"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void onLogin(email, password)}
+                    autoComplete="current-password"
+                  />
+                </div>
+
+                <button
+                  onClick={() => void onLogin(email, password)}
+                  disabled={!!isLoading}
+                  className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
+                    isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
+                  }`}
+                >
+                  SIGN IN <ChevronRight size={20} />
+                </button>
               </div>
 
               <div className="mt-12 pt-8 border-t border-slate-50 text-center">
@@ -180,7 +190,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
                   onClick={() => setIsJoining(true)}
                   className="text-blue-600 font-black text-[13px] uppercase tracking-widest hover:underline active:scale-95 transition-all"
                 >
-                  Apply with invitation code
+                  Create an account
                 </button>
               </div>
             </div>
@@ -199,14 +209,39 @@ const LoginPage: React.FC<LoginPageProps> = ({ profiles, isLoading, errorMessage
 
               <div className="space-y-12">
                 <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">SECURITY INVITATION CODE</label>
-                  <input 
-                    type="text" 
-                    placeholder="W"
-                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-xl font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all uppercase tracking-[0.4em] placeholder:text-slate-300 shadow-sm"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">FULL NAME</label>
+                  <input
+                    type="text"
+                    placeholder="Your name"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                    value={joinName}
+                    onChange={(e) => setJoinName(e.target.value)}
+                    autoComplete="name"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
+                  <input
+                    type="email"
+                    placeholder="name@example.com"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                    value={joinEmail}
+                    onChange={(e) => setJoinEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                    value={joinPassword}
+                    onChange={(e) => setJoinPassword(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                    autoComplete="new-password"
                   />
                 </div>
                 

@@ -1,56 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import LoginPage from '@/pages/shared/LoginPage';
-import { UserProfile } from '@/types';
 
-import { createAuthRepository } from './authRepository';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+
+import { firebaseAuth } from '@/firebase';
+import { createUserProfileIfMissing } from './firestoreUserRepository';
 import { useAppContext } from './AppContext';
 import { pageIdToPath } from './routeUtils';
 
 export default function LoginRoute() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { from?: string } };
-  const { user, setUser, setActiveRole } = useAppContext();
-  const authRepo = useMemo(() => createAuthRepository(), []);
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const { user, isAuthLoading } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user) {
-      navigate(pageIdToPath(user.role, 'dashboard'), { replace: true });
-    }
-  }, [user, navigate]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setErrorMessage(null);
-    setIsLoading(true);
-
-    authRepo
-      .listProfiles()
-      .then((list) => {
-        if (cancelled) return;
-        setProfiles(list);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setErrorMessage(err instanceof Error ? err.message : 'Failed to load profiles.');
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authRepo]);
-
-  const handleLogin = (selectedUser: UserProfile) => {
-    setUser(selectedUser);
-    setActiveRole(selectedUser.role);
+    if (isAuthLoading) return;
+    if (!user) return;
 
     const from = location?.state?.from;
     if (typeof from === 'string' && from.startsWith('/')) {
@@ -58,27 +27,41 @@ export default function LoginRoute() {
       return;
     }
 
-    navigate(pageIdToPath(selectedUser.role, 'dashboard'), { replace: true });
+    navigate(pageIdToPath(user.role, 'dashboard'), { replace: true });
+  }, [user, isAuthLoading, navigate, location?.state?.from]);
+
+  const handleLogin = async (email: string, password: string) => {
+    setErrorMessage(null);
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to sign in.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleJoinWithInvite = async (code: string): Promise<UserProfile> => {
+  const handleJoinWithInvite = async (name: string, email: string, password: string): Promise<void> => {
     setErrorMessage(null);
+    setIsLoading(true);
     try {
-      const joined = await authRepo.joinWithInvite(code);
-      setProfiles((prev) => {
-        if (prev.some((p) => p.id === joined.id)) return prev;
-        return [joined, ...prev];
-      });
-      return joined;
+      const trimmedName = name.trim();
+      if (!trimmedName) throw new Error('Please enter your name.');
+
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      await updateProfile(cred.user, { displayName: trimmedName });
+      await createUserProfileIfMissing({ uid: cred.user.uid, email: cred.user.email ?? email.trim(), name: trimmedName, role: 'INTERN' });
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to join with invitation code.');
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to register.');
       throw err;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <LoginPage
-      profiles={profiles}
       isLoading={isLoading}
       errorMessage={errorMessage}
       onLogin={handleLogin}

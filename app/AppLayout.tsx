@@ -6,6 +6,10 @@ import Sidebar from '@/components/Sidebar';
 import { PageId } from '@/pageTypes';
 import { UserRole } from '@/types';
 
+import { signOut } from 'firebase/auth';
+
+import { firebaseAuth } from '@/firebase';
+
 import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
 
@@ -30,8 +34,10 @@ export default function AppLayout() {
   }, [pageId]);
 
   const handleLogout = () => {
-    setUser(null);
-    navigate('/login', { replace: true });
+    void signOut(firebaseAuth).finally(() => {
+      setUser(null);
+      navigate('/login', { replace: true });
+    });
   };
 
   const handleRoleSwitch = (newRole: UserRole) => {

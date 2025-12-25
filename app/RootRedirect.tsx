@@ -5,7 +5,9 @@ import { useAppContext } from './AppContext';
 import { pageIdToPath } from './routeUtils';
 
 export default function RootRedirect() {
-  const { user, activeRole } = useAppContext();
+  const { user, isAuthLoading, activeRole } = useAppContext();
+
+  if (isAuthLoading) return null;
 
   if (!user) return <Navigate to="/login" replace />;
 
