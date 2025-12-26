@@ -1,7 +1,7 @@
 import React from 'react';
-import { ChevronLeft, Clock, FileText, FolderOpen, LayoutGrid, MessageCircle } from 'lucide-react';
+import { ChevronLeft, Clock, FileText, FolderOpen, LayoutGrid, MessageCircle, ShieldCheck } from 'lucide-react';
 
-export type SupervisorDeepDiveTab = 'overview' | 'assets' | 'tasks' | 'feedback' | 'attendance';
+export type SupervisorDeepDiveTab = 'overview' | 'assets' | 'tasks' | 'feedback' | 'attendance' | 'documents';
 
 export interface DeepDiveInternSummary {
   name: string;
@@ -79,6 +79,7 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
           <NavText active={activeTab === 'tasks'} onClick={() => onTabChange('tasks')} label="WORK LOG" icon={<FileText size={15} />} />
           <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label="ATTENDANCE" icon={<Clock size={15} />} />
           <NavText active={activeTab === 'feedback'} onClick={() => onTabChange('feedback')} label="FEEDBACK" icon={<MessageCircle size={15} />} />
+          <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label="DOCUMENT" icon={<ShieldCheck size={15} />} />
         </div>
       </div>
 

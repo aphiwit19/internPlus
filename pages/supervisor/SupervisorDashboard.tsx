@@ -67,6 +67,7 @@ import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/pages/supervisor/
 import AttendanceTab from '@/pages/supervisor/components/AttendanceTab';
 import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
+import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
 import { firestoreDb } from '@/firebase';
 
 interface InternDetail {
@@ -355,6 +356,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 onSave={handleSaveFeedback}
               />
             )}
+
+            {activeTab === 'documents' && <DocumentsTab internId={selectedInternId} />}
           </InternDeepDiveLayout>
         );
       };

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, updateProfile } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 
 import { firestoreDb, secondaryAuth } from '@/firebase';
 
@@ -42,11 +42,7 @@ const InvitationsPage: React.FC = () => {
   const [isAddingHrLead, setIsAddingHrLead] = useState(false);
   const [newHrLeadName, setNewHrLeadName] = useState('');
 
-  const [supervisors, setSupervisors] = useState<Array<{ name: string; department: string; position: string }>>([
-    { name: 'Sarah Connor', department: 'Design', position: 'Senior Designer' },
-    { name: 'Marcus Miller', department: 'Engineering', position: 'Engineering Manager' },
-    { name: 'Emma Watson', department: 'Product', position: 'Product Lead' },
-  ]);
+  const [supervisors, setSupervisors] = useState<Array<{ id: string; name: string; department: string; position: string }>>([]);
 
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -96,6 +92,22 @@ const InvitationsPage: React.FC = () => {
         setSelectedHrLead(storedHrLeads[0]);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'SUPERVISOR'));
+    return onSnapshot(q, (snap) => {
+      const list = snap.docs.map((d) => {
+        const data = d.data() as { name?: string; department?: string; position?: string };
+        return {
+          id: d.id,
+          name: data.name || 'Unknown',
+          department: data.department || 'Unknown',
+          position: data.position || 'Supervisor',
+        };
+      });
+      setSupervisors(list);
+    });
   }, []);
 
   useEffect(() => {
@@ -212,6 +224,9 @@ const InvitationsPage: React.FC = () => {
         profileDoc.studentId = '';
         profileDoc.department = 'Unknown';
         profileDoc.internPeriod = 'TBD';
+        const selectedSupervisorInfo = supervisors.find((s) => s.id === selectedSupervisor);
+        profileDoc.supervisorId = selectedSupervisor;
+        profileDoc.supervisorName = selectedSupervisorInfo?.name || '';
       }
 
       if (inviteRole === 'SUPERVISOR') {
@@ -229,15 +244,24 @@ const InvitationsPage: React.FC = () => {
         firestoreVerified = false;
       }
 
-      await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
+      try {
+        await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
+      } catch (mailErr: unknown) {
+        const me = mailErr as { code?: string; message?: string };
+        setInviteError(
+          `Failed to send password setup email (${me?.code ?? 'unknown'}). ` +
+            `Check Firebase Auth email templates + authorized domains. ${me?.message ?? ''}`,
+        );
+        return;
+      }
 
-      const selectedSupervisorInfo = supervisors.find((s) => s.name === selectedSupervisor);
+      const selectedSupervisorInfo = supervisors.find((s) => s.id === selectedSupervisor);
       const leadInfo =
         inviteRole === 'INTERN'
-          ? `Supervisor: ${selectedSupervisor}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
+          ? `Supervisor: ${selectedSupervisorInfo?.name ?? ''}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
           : `HR Lead: ${selectedHrLead}`;
 
-      setInviteSuccess(`Invitation sent to ${email}.`);
+      setInviteSuccess(`Invitation sent to ${email}. Password setup email has been sent (check inbox/spam).`);
 
       setRecipientName('');
       setInviteEmail('');
@@ -249,7 +273,7 @@ const InvitationsPage: React.FC = () => {
       if (e?.code === 'auth/email-already-in-use') {
         try {
           await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
-          setInviteSuccess(`Account already exists. Reset email sent to ${email}.`);
+          setInviteSuccess(`Account already exists. Password setup/reset email sent to ${email} (check inbox/spam).`);
           setRecipientName('');
           setInviteEmail('');
           setSelectedSupervisor('');
@@ -257,16 +281,10 @@ const InvitationsPage: React.FC = () => {
           setSupervisorCoAdmin(false);
         } catch (resetErr: unknown) {
           const re = resetErr as { code?: string; message?: string };
-          setInviteError(re?.message ?? 'This email is already in use, and sending reset email failed.');
+          setInviteError(`${re?.code ?? 'unknown'}: ${re?.message ?? 'This email is already in use, and sending reset email failed.'}`);
         }
-      } else if (e?.code === 'auth/invalid-email') {
-        setInviteError('Invalid email address.');
-      } else if (e?.code === 'auth/weak-password') {
-        setInviteError('Generated password was rejected. Please try again.');
-      } else if (e?.code === 'permission-denied' || e?.code === 'firestore/permission-denied') {
-        setInviteError('Firestore permission denied. Check your Firestore Security Rules to allow HR_ADMIN to write users/{uid}, or allow the admin to read the document after creation.');
       } else {
-        setInviteError(e?.message ?? 'Failed to send reset email.');
+        setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to send invitation.'}`);
       }
     } finally {
       try {
@@ -350,11 +368,11 @@ const InvitationsPage: React.FC = () => {
                          <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer" value={selectedSupervisor} onChange={(e) => setSelectedSupervisor(e.target.value)}>
                             <option value="">Select Supervisor...</option>
                             {supervisors.map((s) => (
-                              <option key={s.name} value={s.name}>
+                              <option key={s.id} value={s.id}>
                                 {s.name} - {s.position} ({s.department})
                               </option>
                             ))}
-                         </select>
+                          </select>
                         </div>
                       </div>
                     ) : (

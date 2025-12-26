@@ -12,6 +12,7 @@ import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/pages/supervisor/
 import AttendanceTab, { AttendanceViewMode } from '@/pages/supervisor/components/AttendanceTab';
 import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
+import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
 
 interface AdminInternDetail {
   id: string;
@@ -257,6 +258,8 @@ const InternManagementPage: React.FC = () => {
             onSave={handleSaveFeedback}
           />
         )}
+
+        {activeTab === 'documents' && <DocumentsTab internId={selectedInternId} />}
       </InternDeepDiveLayout>
     );
   };
