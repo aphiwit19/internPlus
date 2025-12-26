@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { 
   Users, 
   Clock, 
@@ -59,13 +59,15 @@ import {
   Building2,
   Home
 } from 'lucide-react';
+import { arrayUnion, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
 import { PageId } from '@/pageTypes';
 import InternListSection from '@/pages/supervisor/components/InternListSection';
 import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/pages/supervisor/components/InternDeepDiveLayout';
 import AttendanceTab from '@/pages/supervisor/components/AttendanceTab';
-import FeedbackTab from '@/pages/supervisor/components/FeedbackTab';
+import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
+import { firestoreDb } from '@/firebase';
 
 interface InternDetail {
   id: string;
@@ -79,7 +81,7 @@ interface InternDetail {
   department: string;
   email: string;
   tasks: SubTask[];
-  feedback: any[];
+  feedback: FeedbackItem[];
   performance: PerformanceMetrics;
   attendanceLog: {
     id: string;
@@ -92,78 +94,13 @@ interface InternDetail {
   }[];
 }
 
-const INITIAL_INTERNS: InternDetail[] = [
-  { 
-    id: 'u-1', 
-    name: 'Alex Rivera', 
-    position: 'Junior UI/UX Designer', 
-    internPeriod: 'JAN 2024 - JUN 2024',
-    progress: 65, 
-    status: 'Review Needed', 
-    attendance: 'Clocked In', 
-    department: 'Design',
-    email: 'alex.r@internplus.io',
-    avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
-    performance: { technical: 88, communication: 92, punctuality: 85, initiative: 95, overallRating: 4.5 },
-    tasks: [
-      { 
-        id: 't-1', 
-        title: 'User Flow Mapping', 
-        type: 'SINGLE',
-        status: 'DONE', 
-        date: '2024-11-18',
-        timeRange: '09:00 - 12:30',
-        attachments: ['Auth_Flows_v1.pdf', 'Edge_Cases.png'],
-        plannedStart: '2024-11-18T09:00:00Z',
-        plannedEnd: '2024-11-18T12:30:00Z',
-        timeLogs: [],
-        isSessionActive: false
-      },
-      {
-        id: 't-2',
-        title: 'Component Library Audit',
-        type: 'CONTINUE',
-        status: 'IN_PROGRESS', 
-        date: '2024-11-15',
-        timeRange: '13:00 - 17:00',
-        attachments: ['Audit_Initial.xlsx', 'Component_Specs.fig'],
-        plannedStart: '2024-11-15T13:00:00Z',
-        plannedEnd: '2024-11-15T17:00:00Z',
-        timeLogs: [],
-        isSessionActive: false
-      }
-    ],
-    feedback: [
-      { id: '1w', label: 'Week 1', period: 'Onboarding & Foundations', status: 'reviewed', internReflection: "The first week was great.", internProgramFeedback: "Documentation was clear.", videoUrl: "v1.mp4", supervisorScore: 92, programRating: 5, supervisorComments: "Exceptional adaptability." },
-      { id: '1m', label: 'Month 1', period: 'Skill Deep-Dive', status: 'submitted', internReflection: "Completed user authentication module.", internProgramFeedback: "Need more 1-on-1 time.", videoUrl: "v2.mp4", supervisorScore: 0, programRating: 4, supervisorComments: "" },
-      { id: 'exit', label: 'Exit Interview', period: 'Final Program Wrap-up', status: 'pending', internReflection: "", internProgramFeedback: "", supervisorScore: 0, programRating: 0, supervisorComments: "" }
-    ],
-    attendanceLog: [
-      { id: 'a1', date: '2024-11-20', clockIn: '08:45', clockOut: '18:15', mode: 'WFO', status: 'PRESENT', duration: '9h 30m' },
-      { id: 'a2', date: '2024-11-19', clockIn: '09:15', clockOut: '18:00', mode: 'WFH', status: 'LATE', duration: '8h 45m' },
-      { id: 'a3', date: '2024-11-18', clockIn: '08:55', clockOut: '17:30', mode: 'WFO', status: 'PRESENT', duration: '8h 35m' },
-      { id: 'a4', date: '2024-11-15', clockIn: '08:50', clockOut: '18:00', mode: 'WFO', status: 'PRESENT', duration: '9h 10m' },
-      { id: 'a5', date: '2024-11-14', clockIn: '08:58', clockOut: '18:05', mode: 'WFO', status: 'PRESENT', duration: '9h 07m' },
-      { id: 'a6', date: '2024-11-13', clockIn: '09:10', clockOut: '18:00', mode: 'WFH', status: 'LATE', duration: '8h 50m' },
-    ]
-  },
-  { 
-    id: 'i-2', 
-    name: 'James Wilson', 
-    position: 'Backend Developer Intern', 
-    internPeriod: 'FEB 2024 - JUL 2024',
-    progress: 42, 
-    status: 'Active', 
-    attendance: 'Clocked Out', 
-    department: 'DevOps',
-    email: 'james.w@internplus.io',
-    avatar: 'https://picsum.photos/seed/james/100/100',
-    performance: { technical: 95, communication: 75, punctuality: 98, initiative: 80, overallRating: 4.2 },
-    tasks: [],
-    feedback: [],
-    attendanceLog: []
-  },
-];
+ const DEFAULT_PERFORMANCE: PerformanceMetrics = {
+  technical: 0,
+  communication: 0,
+  punctuality: 0,
+  initiative: 0,
+  overallRating: 0,
+ };
 
 interface SupervisorDashboardProps {
   user: UserProfile;
@@ -172,7 +109,8 @@ interface SupervisorDashboardProps {
 }
 
 const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavigate, currentTab }) => {
-  const [interns, setInterns] = useState<InternDetail[]>(INITIAL_INTERNS);
+  const [interns, setInterns] = useState<InternDetail[]>([]);
+  const [allInterns, setAllInterns] = useState<InternDetail[]>([]);
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,6 +126,44 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
+
+  const mapUserToInternDetail = useMemo(() => {
+    return (id: string, data: any): InternDetail => {
+      return {
+        id,
+        name: data?.name || 'Unknown',
+        avatar: data?.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
+        position: data?.position || 'Intern',
+        internPeriod: data?.internPeriod || 'TBD',
+        progress: 0,
+        status: 'Active',
+        attendance: '—',
+        department: data?.department || 'Unknown',
+        email: data?.email || '-',
+        tasks: [],
+        feedback: [],
+        performance: DEFAULT_PERFORMANCE,
+        attendanceLog: [],
+      };
+    };
+  }, []);
+
+  useEffect(() => {
+    const allQ = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'INTERN'));
+    const unsubAll = onSnapshot(allQ, (snap) => {
+      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+    });
+
+    const assignedQ = query(collection(firestoreDb, 'users'), where('supervisorId', '==', user.id));
+    const unsubAssigned = onSnapshot(assignedQ, (snap) => {
+      setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+    });
+
+    return () => {
+      unsubAll();
+      unsubAssigned();
+    };
+  }, [mapUserToInternDetail, user.id]);
 
   useEffect(() => {
     if (activeFeedback) {
@@ -234,6 +210,30 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       };
     }));
     alert('Feedback assessment deployed successfully.');
+  };
+
+  const assignableInterns = useMemo(() => {
+    const q = assignSearch.trim().toLowerCase();
+    const base = allInterns;
+    if (!q) return base;
+    return base.filter((i) => i.name.toLowerCase().includes(q) || i.position.toLowerCase().includes(q));
+  }, [allInterns, assignSearch]);
+
+  const handleAssignIntern = async (internId: string) => {
+    const internRef = doc(firestoreDb, 'users', internId);
+    const supervisorRef = doc(firestoreDb, 'users', user.id);
+    await updateDoc(internRef, {
+      supervisorId: user.id,
+      supervisorName: user.name,
+    });
+    await updateDoc(supervisorRef, {
+      assignedInterns: arrayUnion(internId),
+    });
+
+    setIsAssigningIntern(false);
+    setAssignSearch('');
+    setSelectedInternId(internId);
+    setActiveTab('overview');
   };
 
   const renderDeepDive = () => {
@@ -471,6 +471,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
                 onOpenAssignIntern={() => setIsAssigningIntern(true)}
+                showAssignButton={false}
                 onSelectIntern={setSelectedInternId}
               />
             </>
@@ -483,6 +484,69 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   return (
     <div className="h-full w-full bg-slate-50 overflow-hidden flex flex-col">
       {selectedInternId ? renderDeepDive() : renderDashboard()}
+
+      {isAssigningIntern && (
+        <>
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]"
+            onClick={() => setIsAssigningIntern(false)}
+          />
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Assign Intern</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">SELECT AN INTERN TO MONITOR</p>
+                </div>
+                <button
+                  onClick={() => setIsAssigningIntern(false)}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8">
+                <div className="relative mb-6">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search interns..."
+                    className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    value={assignSearch}
+                    onChange={(e) => setAssignSearch(e.target.value)}
+                  />
+                </div>
+
+                <div className="max-h-[55vh] overflow-y-auto scrollbar-hide space-y-3">
+                  {assignableInterns.map((intern) => (
+                    <button
+                      key={intern.id}
+                      onClick={() => void handleAssignIntern(intern.id)}
+                      className="w-full p-5 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between gap-6 hover:shadow-xl hover:border-blue-100 transition-all"
+                    >
+                      <div className="flex items-center gap-4 min-w-0">
+                        <img src={intern.avatar} alt={intern.name} className="w-12 h-12 rounded-xl object-cover ring-2 ring-slate-50" />
+                        <div className="min-w-0 text-left">
+                          <div className="text-sm font-black text-slate-900 truncate">{intern.name}</div>
+                          <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest truncate mt-1">{intern.position}</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className="text-slate-200" />
+                    </button>
+                  ))}
+
+                  {assignableInterns.length === 0 && (
+                    <div className="py-14 text-center">
+                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No interns found</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

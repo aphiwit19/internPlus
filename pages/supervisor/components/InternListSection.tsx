@@ -17,7 +17,8 @@ interface InternListSectionProps {
   interns: InternListItem[];
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
-  onOpenAssignIntern: () => void;
+  onOpenAssignIntern?: () => void;
+  showAssignButton?: boolean;
   onSelectIntern: (internId: string) => void;
 }
 
@@ -26,6 +27,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
   searchQuery,
   onSearchQueryChange,
   onOpenAssignIntern,
+  showAssignButton = true,
   onSelectIntern,
 }) => {
   return (
@@ -35,26 +37,28 @@ const InternListSection: React.FC<InternListSectionProps> = ({
           <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Intern Management</h1>
           <p className="text-slate-400 text-sm font-medium mt-4">Review performance, approve tasks, and provide feedback.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input
               type="text"
               placeholder="Search interns..."
-              className="pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none w-full md:w-80 focus:ring-8 focus:ring-blue-500/5 transition-all shadow-sm"
+              className="pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none w-full md:w-[34rem] focus:ring-8 focus:ring-blue-500/5 transition-all shadow-sm"
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
             />
           </div>
-          <button className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-all shadow-sm">
+          <button className="w-14 h-14 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-all shadow-sm ml-[30px]">
             <Filter size={20} />
           </button>
-          <button
-            onClick={onOpenAssignIntern}
-            className="px-8 py-4 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2"
-          >
-            <UserPlus size={18} strokeWidth={2.5} /> Assign Intern
-          </button>
+          {showAssignButton && (
+            <button
+              onClick={onOpenAssignIntern}
+              className="px-8 py-4 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2 ml-4"
+            >
+              <UserPlus size={18} strokeWidth={2.5} /> Assign Intern
+            </button>
+          )}
         </div>
       </div>
 
