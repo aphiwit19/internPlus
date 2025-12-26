@@ -58,7 +58,9 @@ import { PageId } from '@/pageTypes';
 import { firestoreDb } from '@/firebase';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
-type SettingsTab = 'onboarding' | 'allowance' | 'access';
+import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
+
+type SettingsTab = 'onboarding' | 'policy' | 'allowance' | 'access';
 
 type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
 
@@ -97,6 +99,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       title: "System Settings",
       subtitle: "Global configuration for internship workflows and automation.",
       tabOnboarding: "Onboarding",
+      tabPolicy: "Policy & Training",
       tabAllowance: "Allowance",
       tabAccess: "Access Control",
       saveBtn: "Deploy Config",
@@ -118,6 +121,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       title: "ตั้งค่าระบบ",
       subtitle: "การกำหนดค่าระดับโกลบอลสำหรับขั้นตอนการทำงานและระบบอัตโนมัติ",
       tabOnboarding: "การรับเข้าทำงาน",
+      tabPolicy: "นโยบายและการฝึกอบรม",
       tabAllowance: "เบี้ยเลี้ยง",
       tabAccess: "การเข้าถึง",
       saveBtn: "ปรับใช้การตั้งค่า",
@@ -291,6 +295,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           
           <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
              <TabBtn active={activeTab === 'onboarding'} onClick={() => setActiveTab('onboarding')} icon={<Rocket size={16}/>} label={t.tabOnboarding} />
+             <TabBtn active={activeTab === 'policy'} onClick={() => setActiveTab('policy')} icon={<ShieldCheck size={16}/>} label={t.tabPolicy} />
              <TabBtn active={activeTab === 'allowance'} onClick={() => setActiveTab('allowance')} icon={<CreditCard size={16}/>} label={t.tabAllowance} />
              <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={16}/>} label={t.tabAccess} />
           </div>
@@ -578,6 +583,11 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                  </div>
               </div>
             </div>
+          )}
+
+          {/* TAB: POLICY & TRAINING */}
+          {activeTab === 'policy' && (
+            <PolicyTrainingManager lang={lang} />
           )}
 
           {/* TAB: ALLOWANCE (EXACT MATCH TO PREVIOUS GOOD STATE) */}
