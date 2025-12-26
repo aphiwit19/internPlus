@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   CheckCircle2, 
   Search,
@@ -7,7 +7,6 @@ import {
   Video,
   ClipboardCheck,
   GraduationCap,
-  LogOut,
   PenTool,
   Lock,
   Upload,
@@ -15,6 +14,55 @@ import {
 } from 'lucide-react';
 import { Language } from '@/types';
 import { PageId } from '@/pageTypes';
+import { firestoreDb } from '@/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+
+type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
+
+interface ConfigRoadmapStep {
+  id: string;
+  title: string;
+  active?: boolean;
+  type: ProcessType;
+  targetPage?: PageId;
+  externalUrl?: string;
+  attachedDocuments: string[];
+}
+
+const DEFAULT_ONBOARDING_STEPS: ConfigRoadmapStep[] = [
+  {
+    id: '1',
+    title: 'Submit Documents (ID, Transcript)',
+    active: true,
+    type: 'DOC_UPLOAD',
+    targetPage: 'profile',
+    attachedDocuments: ['Standard_Verification_Pack.pdf', 'Educational_Consent_Form.pdf'],
+  },
+  {
+    id: '2',
+    title: 'Sign Policy & NDA Documents',
+    active: true,
+    type: 'NDA_SIGN',
+    targetPage: 'training',
+    attachedDocuments: ['Company_NDA_v2024.pdf', 'IT_Security_Policy.pdf'],
+  },
+  {
+    id: '3',
+    title: 'Check First Project Assignment',
+    active: true,
+    type: 'MODULE_LINK',
+    targetPage: 'assignment',
+    attachedDocuments: [],
+  },
+  {
+    id: '4',
+    title: 'Mid-term Performance Sync',
+    active: true,
+    type: 'MODULE_LINK',
+    targetPage: 'feedback',
+    attachedDocuments: [],
+  },
+];
 
 interface RoadmapStep {
   id: string;
@@ -34,6 +82,23 @@ interface OnboardingPageProps {
 }
 
 const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => {
+  const [configSteps, setConfigSteps] = useState<ConfigRoadmapStep[] | null>(null);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) {
+        setConfigSteps(null);
+        return;
+      }
+      const data = snap.data() as { onboardingSteps?: ConfigRoadmapStep[] };
+      if (!Array.isArray(data.onboardingSteps)) {
+        setConfigSteps(null);
+        return;
+      }
+      setConfigSteps(data.onboardingSteps);
+    });
+  }, []);
   const t = {
     EN: {
       title: "Internship Roadmap",
@@ -57,52 +122,81 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
     }
   }[lang];
 
-  const ROADMAP_STEPS: RoadmapStep[] = [
-    { 
-      id: '1', 
-      stepNumber: 1,
-      title: lang === 'EN' ? 'Submit Documents' : 'ส่งเอกสารสำคัญ', 
-      description: lang === 'EN' ? 'Upload ID, academic records and bank details.' : 'อัปโหลดบัตรประชาชน, ผลการเรียน และข้อมูลธนาคาร', 
-      status: 'completed', 
-      icon: <Upload size={24} />,
-      category: 'onboarding',
-      actionLabel: t.details,
-      targetPage: 'profile'
-    },
-    { 
-      id: '2', 
-      stepNumber: 2,
-      title: lang === 'EN' ? 'Sign Policy & NDA' : 'ลงนามนโยบายและ NDA', 
-      description: lang === 'EN' ? 'Read and sign internal security policies.' : 'อ่านและลงนามในนโยบายความปลอดภัยภายใน', 
-      status: 'completed', 
-      icon: <PenTool size={24} />,
-      category: 'onboarding',
-      actionLabel: t.details,
-      targetPage: 'training'
-    },
-    { 
-      id: '3', 
-      stepNumber: 3,
-      title: lang === 'EN' ? 'Review Orientation' : 'ปฐมนิเทศพนักงานใหม่', 
-      description: lang === 'EN' ? 'Understand workflows and reporting here.' : 'ทำความเข้าใจขั้นตอนการทำงานและการรายงานผลที่นี่', 
-      status: 'next-action', 
-      icon: <Search size={24} />,
-      category: 'onboarding',
-      actionLabel: t.start
-    },
-    { 
-      id: '4', 
-      stepNumber: 4,
-      title: lang === 'EN' ? 'Check First Assignment' : 'ตรวจสอบงานแรกที่ได้รับ', 
-      description: lang === 'EN' ? 'Review objectives of your initial project.' : 'ดูวัตถุประสงค์ของโครงการเบื้องต้นของคุณ', 
-      status: 'locked', 
-      icon: <BookOpen size={24} />,
-      category: 'internship'
-    }
-  ];
+  const orderedConfigSteps = useMemo(() => {
+    const source = configSteps ?? DEFAULT_ONBOARDING_STEPS;
+    return source
+      .filter((s) => s.active !== false)
+      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+  }, [configSteps]);
 
-  const completedCount = ROADMAP_STEPS.filter(s => s.status === 'completed').length;
-  const totalSteps = 10; // Keeping standard total for visual consistency
+  const isUsingFallback = configSteps === null;
+
+  const requiredDocs = useMemo(() => {
+    const docs: string[] = [];
+    for (const s of orderedConfigSteps) {
+      for (const d of s.attachedDocuments ?? []) {
+        docs.push(d);
+      }
+    }
+    return docs;
+  }, [orderedConfigSteps]);
+
+  const getStepIcon = (type: ProcessType) => {
+    switch (type) {
+      case 'DOC_UPLOAD':
+        return <Upload size={24} />;
+      case 'NDA_SIGN':
+        return <PenTool size={24} />;
+      case 'EXTERNAL_URL':
+        return <Search size={24} />;
+      case 'MODULE_LINK':
+      default:
+        return <BookOpen size={24} />;
+    }
+  };
+
+  const getStepDescription = (s: ConfigRoadmapStep, index: number) => {
+    if (index === 0) {
+      if (requiredDocs.length > 0) {
+        return lang === 'EN' ? `Required templates: ${requiredDocs.join(', ')}` : `เอกสารที่ต้องใช้: ${requiredDocs.join(', ')}`;
+      }
+      return lang === 'EN'
+        ? 'Upload required documents and manage your files.'
+        : 'อัปโหลดเอกสารที่กำหนด และจัดการไฟล์ของคุณ';
+    }
+    if ((s.attachedDocuments ?? []).length > 0) {
+      return lang === 'EN'
+        ? `Templates: ${(s.attachedDocuments ?? []).join(', ')}`
+        : `แม่แบบ: ${(s.attachedDocuments ?? []).join(', ')}`;
+    }
+    return lang === 'EN' ? 'View details and proceed to the required action.' : 'ดูรายละเอียดและดำเนินการตามขั้นตอนที่กำหนด';
+  };
+
+  const ROADMAP_STEPS: RoadmapStep[] = useMemo(() => {
+    if (orderedConfigSteps.length === 0) return [];
+
+    return orderedConfigSteps.map((s, idx) => {
+      const status: RoadmapStep['status'] = idx <= 1 ? 'completed' : idx === 2 ? 'next-action' : 'locked';
+      const isDocUpload = s.type === 'DOC_UPLOAD';
+      const targetPage = isDocUpload ? 'documents' : s.targetPage;
+      const actionLabel = status === 'next-action' ? t.start : t.details;
+
+      return {
+        id: s.id,
+        stepNumber: idx + 1,
+        title: s.title,
+        description: getStepDescription(s, idx),
+        status,
+        icon: getStepIcon(s.type),
+        category: 'onboarding',
+        actionLabel,
+        targetPage,
+      };
+    });
+  }, [orderedConfigSteps, requiredDocs, lang, t.details, t.start]);
+
+  const completedCount = ROADMAP_STEPS.filter((s) => s.status === 'completed').length;
+  const totalSteps = 10;
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative">
@@ -119,36 +213,51 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
 
       <div className="flex-1 overflow-y-auto pt-6 pb-24 px-6 md:px-10 scrollbar-hide">
         <div className="max-w-5xl mx-auto relative">
-          <div className="absolute left-[1.75rem] md:left-[2.25rem] top-8 bottom-8 w-[1px] bg-slate-200"></div>
 
-          <div className="space-y-8 md:space-y-12">
-            {ROADMAP_STEPS.map((step) => (
-              <div key={step.id} className="relative flex items-start gap-4 md:gap-8 group">
-                <div className="relative z-10 flex-shrink-0">
-                  <div className={`w-[3.5rem] h-[3.5rem] md:w-[4.5rem] md:h-[4.5rem] rounded-2xl flex items-center justify-center border-2 transition-all duration-300 ${
-                    step.status === 'completed' 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg' 
-                      : step.status === 'next-action'
-                        ? 'bg-white border-blue-600 text-blue-600 ring-4 ring-blue-50'
-                        : 'bg-white border-slate-200 text-slate-300'
-                  }`}>
-                    <div className="scale-75 md:scale-100">{step.icon}</div>
+          {ROADMAP_STEPS.length === 0 ? (
+            <div className="bg-white border border-slate-100 rounded-2xl p-8 text-slate-600">
+              <div className="text-sm font-bold">
+                {isUsingFallback
+                  ? (lang === 'EN' ? 'No deployed roadmap config found. Showing default roadmap.' : 'ไม่พบการตั้งค่าที่ถูกปรับใช้ แสดงค่าเริ่มต้น')
+                  : (lang === 'EN' ? 'No steps are currently enabled by admin.' : 'ยังไม่มีขั้นตอนที่เปิดใช้งานโดยแอดมิน')}
+              </div>
+              <div className="text-xs text-slate-400 mt-2">
+                {lang === 'EN' ? 'Ask an admin to enable steps and deploy config in System Settings.' : 'ให้แอดมินเปิดใช้งานขั้นตอนและกดปรับใช้ในหน้า System Settings'}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-8 md:space-y-12">
+              {ROADMAP_STEPS.map((step) => (
+              <div key={step.id} className="relative flex items-stretch gap-4 md:gap-8 group">
+                <div className="relative flex-shrink-0 w-[4.5rem] md:w-[5.25rem] flex justify-center">
+                  <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[1px] bg-slate-200" />
+                  <div className="relative z-10 pt-1">
+                    <div className={`w-[3.5rem] h-[3.5rem] md:w-[4.5rem] md:h-[4.5rem] rounded-2xl flex items-center justify-center border-2 transition-all duration-300 ${
+                      step.status === 'completed'
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-lg'
+                        : step.status === 'next-action'
+                          ? 'bg-white border-blue-600 text-blue-600 ring-4 ring-blue-50'
+                          : 'bg-white border-slate-200 text-slate-300'
+                    }`}>
+                      <div className="scale-75 md:scale-100">{step.icon}</div>
+                    </div>
+
+                    {step.status === 'completed' && (
+                      <div className="absolute -top-1 -right-1 w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full border-2 md:border-4 border-white flex items-center justify-center text-white">
+                        <CheckCircle2 size={10} strokeWidth={4} />
+                      </div>
+                    )}
+                    {step.status === 'next-action' && (
+                      <div className="absolute -top-1 -right-1 w-5 h-5 md:w-6 md:h-6 bg-blue-500 rounded-full border-2 md:border-4 border-white flex items-center justify-center text-white">
+                        <Clock size={10} strokeWidth={4} />
+                      </div>
+                    )}
                   </div>
-                  {step.status === 'completed' && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full border-2 md:border-4 border-white flex items-center justify-center text-white">
-                      <CheckCircle2 size={10} strokeWidth={4} />
-                    </div>
-                  )}
-                  {step.status === 'next-action' && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 md:w-6 md:h-6 bg-blue-500 rounded-full border-2 md:border-4 border-white flex items-center justify-center text-white">
-                      <Clock size={10} strokeWidth={4} />
-                    </div>
-                  )}
                 </div>
 
                 <div className={`flex-1 bg-white p-4 md:p-6 rounded-2xl border transition-all duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                  step.status === 'completed' 
-                    ? 'border-slate-100' 
+                  step.status === 'completed'
+                    ? 'border-slate-100'
                     : step.status === 'next-action'
                       ? 'border-blue-200 shadow-md'
                       : 'border-slate-100 opacity-60'
@@ -158,7 +267,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{t.step} {step.stepNumber}</span>
                     </div>
                     <h3 className={`text-base md:text-lg font-bold tracking-tight ${
-                      step.status === 'completed' ? 'text-slate-400 line-through decoration-2' : 'text-slate-900'
+                      step.status === 'completed' ? 'text-slate-600' : 'text-slate-900'
                     }`}>
                       {step.title}
                     </h3>
@@ -172,7 +281,14 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                       </div>
                     ) : (
                       <button 
-                        onClick={() => step.targetPage && onNavigate(step.targetPage)}
+                        onClick={() => {
+                          const cfg = orderedConfigSteps.find((s) => s.id === step.id);
+                          if (cfg?.type === 'EXTERNAL_URL' && cfg.externalUrl) {
+                            window.open(cfg.externalUrl, '_blank', 'noopener,noreferrer');
+                            return;
+                          }
+                          if (step.targetPage) onNavigate(step.targetPage);
+                        }}
                         className={`w-full sm:w-auto px-6 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 shadow-sm ${
                           step.status === 'completed'
                             ? 'bg-slate-50 text-blue-600 border border-slate-100 hover:bg-slate-100'
@@ -185,8 +301,9 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

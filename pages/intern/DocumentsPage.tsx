@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CreditCard, FileText, GraduationCap, Home, Layout, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
@@ -15,6 +15,18 @@ type UserDocument = {
   updatedAt?: unknown;
 };
 
+type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
+
+type ConfigRoadmapStep = {
+  id: string;
+  title: string;
+  active: boolean;
+  type: ProcessType;
+  targetPage?: string;
+  externalUrl?: string;
+  attachedDocuments: string[];
+};
+
 interface DocumentsPageProps {
   lang: Language;
 }
@@ -23,11 +35,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const { user } = useAppContext();
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
 
+  const [activeRequiredLabels, setActiveRequiredLabels] = useState<string[]>([]);
+  const [allStepLabels, setAllStepLabels] = useState<string[]>([]);
+
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const [isAdding, setIsAdding] = useState(false);
-  const [newLabel, setNewLabel] = useState('NATIONAL ID / PASSPORT');
+  const [newLabel, setNewLabel] = useState('');
   const [newFile, setNewFile] = useState<File | null>(null);
 
   const fileSlotInputRef = useRef<HTMLInputElement | null>(null);
@@ -70,20 +85,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     [lang],
   );
 
-  const slots = useMemo(
-    () =>
-      [
-        { label: 'NATIONAL ID / PASSPORT', icon: <CreditCard size={18} /> },
-        { label: 'RESUME / CV', icon: <FileText size={18} /> },
-        { label: 'ACADEMIC TRANSCRIPT', icon: <GraduationCap size={18} /> },
-        { label: 'CERTIFICATE', icon: <FileText size={18} /> },
-        { label: 'HOUSE REGISTRATION', icon: <Home size={18} /> },
-        { label: 'BANKBOOK COVER', icon: <Layout size={18} /> },
-        { label: 'OTHER', icon: <Plus size={18} /> },
-      ],
-    [],
-  );
-
   useEffect(() => {
     if (!user) return;
     const colRef = collection(firestoreDb, 'users', user.id, 'documents');
@@ -96,6 +97,44 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
       );
     });
   }, [user]);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) {
+        setActiveRequiredLabels([]);
+        setAllStepLabels([]);
+        return;
+      }
+      const data = snap.data() as { onboardingSteps?: ConfigRoadmapStep[] };
+      const steps = Array.isArray(data.onboardingSteps) ? data.onboardingSteps : [];
+      const ordered = [...steps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+
+      const allLabels = ordered
+        .map((s) => (s.title ?? '').trim())
+        .filter((v) => v.length > 0);
+
+      const activeLabels = ordered
+        .filter((s) => Boolean(s.active))
+        .map((s) => (s.title ?? '').trim())
+        .filter((v) => v.length > 0);
+
+      setAllStepLabels(allLabels);
+      setActiveRequiredLabels(activeLabels);
+    });
+  }, []);
+
+  const visibleDocuments = useMemo(() => {
+    if (allStepLabels.length === 0) return documents;
+    const blocked = new Set(allStepLabels);
+    return documents.filter((d) => !blocked.has(d.label));
+  }, [documents, allStepLabels]);
+
+  const normalizedNewLabel = useMemo(() => newLabel.trim(), [newLabel]);
+  const isBlockedNewLabel = useMemo(() => {
+    if (!normalizedNewLabel) return false;
+    return allStepLabels.includes(normalizedNewLabel);
+  }, [allStepLabels, normalizedNewLabel]);
 
   const upsertDocumentByLabel = async (label: string, file: File) => {
     if (!user) return;
@@ -139,10 +178,16 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   };
 
   const handleAddDocument = async () => {
-    if (!newLabel.trim() || !newFile) return;
-    await upsertDocumentByLabel(newLabel.trim(), newFile);
+    const label = normalizedNewLabel;
+    if (!label || !newFile) return;
+    if (isBlockedNewLabel) {
+      setUploadError(lang === 'TH' ? 'ไม่สามารถเพิ่มเอกสารที่ถูกควบคุมโดยแอดมินได้' : 'This document name is controlled by admin.' );
+      return;
+    }
+    await upsertDocumentByLabel(label, newFile);
     setIsAdding(false);
     setNewFile(null);
+    setNewLabel('');
   };
 
   const handleDeleteDocument = async (docId: string) => {
@@ -217,75 +262,162 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
 
       <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">
         <div className="max-w-[1200px] mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {slots.map((slot) => {
-              const item = documents.find((d) => d.label === slot.label) ?? null;
-              const isUploaded = Boolean(item);
-              const fileName = item?.fileName;
+          {activeRequiredLabels.length > 0 && (
+            <div className="mb-6 bg-white border border-slate-100 rounded-[1.75rem] p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
+                    {lang === 'EN' ? 'REQUIRED DOCUMENTS' : 'เอกสารที่ต้องแนบ'}
+                  </div>
+                  <div className="text-sm font-black text-slate-900 mt-2">
+                    {lang === 'EN'
+                      ? 'These document slots are controlled by Admin Onboarding Flow Engine.'
+                      : 'ช่องเอกสารเหล่านี้ถูกควบคุมโดยแอดมินใน Onboarding Flow Engine'}
+                  </div>
+                </div>
+                <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                  {activeRequiredLabels.length} {lang === 'EN' ? 'ITEMS' : 'รายการ'}
+                </div>
+              </div>
 
-              return (
-                <div
-                  key={slot.label}
-                  className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all relative overflow-hidden"
-                >
-                  <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors">
-                      {slot.icon}
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeRequiredLabels.map((label) => {
+                  const item = documents.find((d) => d.label === label) ?? null;
+                  const isUploaded = Boolean(item);
+                  const fileName = item?.fileName;
+
+                  return (
+                    <div
+                      key={label}
+                      className="p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-4 overflow-hidden">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 border border-slate-100">
+                          <FileText size={18} />
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">
+                            {lang === 'EN' ? 'REQUIRED' : 'จำเป็น'}
+                          </p>
+                          <p className="text-[12px] font-black truncate text-slate-800" title={label}>
+                            {label}
+                          </p>
+                          {isUploaded ? (
+                            <button
+                              onClick={() => void handleDownloadDocument(item!.id)}
+                              className="text-[11px] font-black truncate text-blue-600 hover:underline text-left"
+                              title={t.download}
+                            >
+                              {fileName}
+                            </button>
+                          ) : (
+                            <p className="text-[12px] font-black truncate text-slate-400">Not Uploaded</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {isUploaded ? (
+                          <>
+                            <button
+                              onClick={() => handleUploadForSlot(label)}
+                              className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                              title={t.replace}
+                            >
+                              <RefreshCw size={16} />
+                            </button>
+                            <button
+                              onClick={() => void handleDeleteDocument(item!.id)}
+                              className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
+                              title={t.remove}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleUploadForSlot(label)}
+                            className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                            title={t.upload}
+                          >
+                            <Upload size={18} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="overflow-hidden">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">{slot.label}</p>
-                      {isUploaded ? (
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white border border-slate-100 rounded-[1.75rem] p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
+                  {lang === 'EN' ? 'OTHER DOCUMENTS' : 'เอกสารอื่น ๆ'}
+                </div>
+                <div className="text-sm font-black text-slate-900 mt-2">
+                  {lang === 'EN'
+                    ? 'These are documents you added yourself (not controlled by admin).'
+                    : 'เอกสารที่คุณเพิ่มเอง (ไม่ถูกควบคุมโดยแอดมิน)'}
+                </div>
+              </div>
+              <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                {visibleDocuments.length} {lang === 'EN' ? 'FILES' : 'ไฟล์'}
+              </div>
+            </div>
+
+            {visibleDocuments.length === 0 ? (
+              <div className="pt-6 text-center">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                {visibleDocuments.map((d) => (
+                  <div
+                    key={d.id}
+                    className="p-4 bg-slate-50 border border-slate-100 rounded-[1.25rem] flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-4 overflow-hidden">
+                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 border border-slate-100">
+                        <FileText size={18} />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">
+                          {d.label}
+                        </p>
                         <button
-                          onClick={() => void handleDownloadDocument(item!.id)}
+                          onClick={() => void handleDownloadDocument(d.id)}
                           className="text-[12px] font-black truncate text-slate-800 hover:underline text-left"
                           title={t.download}
                         >
-                          {fileName}
+                          {d.fileName}
                         </button>
-                      ) : (
-                        <p className="text-[12px] font-black truncate text-slate-400">Not Uploaded</p>
-                      )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleUploadForSlot(d.label)}
+                        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                        title={t.replace}
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteDocument(d.id)}
+                        className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
+                        title={t.remove}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    {isUploaded ? (
-                      <>
-                        <button
-                          onClick={() => handleUploadForSlot(slot.label)}
-                          className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                          title={t.replace}
-                        >
-                          <RefreshCw size={16} />
-                        </button>
-                        <button
-                          onClick={() => void handleDeleteDocument(item!.id)}
-                          className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
-                          title={t.remove}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => handleUploadForSlot(slot.label)}
-                        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                        title={t.upload}
-                      >
-                        <Upload size={18} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
-
-          {documents.length === 0 && (
-            <div className="pt-10 text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -309,17 +441,12 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
               <div className="p-8">
                 <label className="space-y-2 block">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.label}</div>
-                  <select
+                  <input
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                  >
-                    {slots.map((s) => (
-                      <option key={s.label} value={s.label}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder={lang === 'EN' ? 'Enter document name' : 'กรอกชื่อเอกสาร'}
+                  />
                 </label>
 
                 <div className="mt-4">
@@ -340,7 +467,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                   <button
                     onClick={() => void handleAddDocument()}
                     className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
-                    disabled={!newLabel.trim() || !newFile}
+                    disabled={!normalizedNewLabel || !newFile || isBlockedNewLabel}
                   >
                     {t.upload}
                   </button>

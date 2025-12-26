@@ -55,6 +55,8 @@ import {
 import { NAV_ITEMS } from '@/constants';
 import { Language } from '@/types';
 import { PageId } from '@/pageTypes';
+import { firestoreDb } from '@/firebase';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 type SettingsTab = 'onboarding' | 'allowance' | 'access';
 
@@ -84,6 +86,11 @@ interface SystemSettingsPageProps {
 const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('onboarding');
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddingStep, setIsAddingStep] = useState(false);
+  const [newStepTitle, setNewStepTitle] = useState('');
+  const [newStepType, setNewStepType] = useState<ProcessType>('MODULE_LINK');
+  const [newStepTargetPage, setNewStepTargetPage] = useState<PageId | undefined>(undefined);
+  const [newStepExternalUrl, setNewStepExternalUrl] = useState('');
 
   const t = {
     EN: {
@@ -133,6 +140,24 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [onboardingSteps, setOnboardingSteps] = useState<RoadmapStep[]>(DEFAULT_ONBOARDING_STEPS);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const ref = doc(firestoreDb, 'config', 'systemSettings');
+        const snap = await getDoc(ref);
+        if (!snap.exists()) return;
+        const data = snap.data() as { onboardingSteps?: RoadmapStep[] };
+        if (Array.isArray(data.onboardingSteps) && data.onboardingSteps.length > 0) {
+          const ordered = [...data.onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+          setOnboardingSteps(ordered);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void load();
+  }, []);
+
   // Allowance States
   const [payoutFreq, setPayoutFreq] = useState<'MONTHLY' | 'END_PROGRAM'>('MONTHLY');
   const [wfoRate, setWfoRate] = useState(100);
@@ -147,12 +172,26 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     { id: 'u-1', name: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop' }
   ]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const orderedSteps = [...onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      const ref = doc(firestoreDb, 'config', 'systemSettings');
+      await setDoc(
+        ref,
+        {
+          onboardingSteps: orderedSteps,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      setOnboardingSteps(orderedSteps);
       alert(lang === 'EN' ? 'System configuration deployed successfully.' : 'ปรับใช้การตั้งค่าระบบเรียบร้อยแล้ว');
-    }, 1500);
+    } catch {
+      alert(lang === 'EN' ? 'Failed to deploy config.' : 'ไม่สามารถปรับใช้การตั้งค่าได้');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -167,6 +206,43 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
   const handleUpdateStep = (id: string, updates: Partial<RoadmapStep>) => {
     setOnboardingSteps(steps => steps.map(s => s.id === id ? { ...s, ...updates } : s));
+  };
+
+  const handleCreateNewStep = () => {
+    const title = newStepTitle.trim();
+    if (!title) {
+      alert(lang === 'EN' ? 'Please enter Step Title.' : 'กรุณากรอกชื่อขั้นตอน');
+      return;
+    }
+    if (newStepType === 'EXTERNAL_URL' && !newStepExternalUrl.trim()) {
+      alert(lang === 'EN' ? 'Please enter External URL.' : 'กรุณากรอกลิงก์ภายนอก');
+      return;
+    }
+    if (newStepType !== 'EXTERNAL_URL' && !newStepTargetPage) {
+      alert(lang === 'EN' ? 'Please select Target Module.' : 'กรุณาเลือกโมดูลเป้าหมาย');
+      return;
+    }
+
+    const nextId = (Math.max(0, ...onboardingSteps.map(s => Number(s.id) || 0)) + 1).toString();
+    setOnboardingSteps((prev) =>
+      [...prev,
+        {
+          id: nextId,
+          title,
+          active: true,
+          type: newStepType,
+          targetPage: newStepType === 'EXTERNAL_URL' ? undefined : newStepTargetPage,
+          externalUrl: newStepType === 'EXTERNAL_URL' ? newStepExternalUrl.trim() : undefined,
+          attachedDocuments: [],
+        },
+      ].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0)),
+    );
+
+    setIsAddingStep(false);
+    setNewStepTitle('');
+    setNewStepType('MODULE_LINK');
+    setNewStepTargetPage(undefined);
+    setNewStepExternalUrl('');
   };
 
   const handleAttachFile = (id: string) => {
@@ -385,9 +461,108 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                          </div>
                        ))}
                        
-                       <button className="w-full py-6 border-4 border-dashed border-slate-100 text-slate-300 rounded-[2.25rem] font-black text-xs uppercase hover:bg-blue-50 transition-all flex flex-col items-center justify-center gap-3 group">
+                       <button onClick={() => setIsAddingStep((v) => !v)} className="w-full py-6 border-4 border-dashed border-slate-100 text-slate-300 rounded-[2.25rem] font-black text-xs uppercase hover:bg-blue-50 transition-all flex flex-col items-center justify-center gap-3 group">
                           <Plus size={32}/> {t.addStep}
                        </button>
+
+                       {isAddingStep && (
+                         <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] animate-in slide-in-from-top-4 duration-300 space-y-8 mx-2 mt-4">
+                           <div className="flex items-start justify-between gap-6">
+                             <div>
+                               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{lang === 'EN' ? 'CUSTOM WORKFLOW STEP' : 'เพิ่มขั้นตอนการทำงานที่กำหนดเอง'}</div>
+                               <h3 className="text-2xl font-black text-slate-900 tracking-tight">{lang === 'EN' ? 'Integrate New Step' : 'เพิ่มขั้นตอนใหม่'}</h3>
+                             </div>
+                             <button
+                               type="button"
+                               onClick={() => setIsAddingStep(false)}
+                               className="p-3 rounded-2xl text-slate-300 hover:text-slate-600 hover:bg-white transition-all"
+                               aria-label="Close"
+                             >
+                               <X size={20} />
+                             </button>
+                           </div>
+
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">STEP TITLE</label>
+                               <input
+                                 type="text"
+                                 className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 focus:border-blue-200 transition-all"
+                                 placeholder={lang === 'EN' ? 'e.g. Upload Identity Files' : 'เช่น อัปโหลดเอกสารสำคัญ'}
+                                 value={newStepTitle}
+                                 onChange={(e) => setNewStepTitle(e.target.value)}
+                               />
+                             </div>
+
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">ACTION TYPE</label>
+                               <select
+                                 className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none appearance-none"
+                                 value={newStepType}
+                                 onChange={(e) => setNewStepType(e.target.value as ProcessType)}
+                               >
+                                 <option value="MODULE_LINK">Internal Module Path</option>
+                                 <option value="DOC_UPLOAD">Document Submission (PDF/IMG)</option>
+                                 <option value="NDA_SIGN">E-Signature Confirmation</option>
+                                 <option value="EXTERNAL_URL">External Website Link</option>
+                               </select>
+                             </div>
+                           </div>
+
+                           {newStepType === 'EXTERNAL_URL' ? (
+                             <div>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">EXTERNAL URL</label>
+                               <input
+                                 type="url"
+                                 className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 focus:border-blue-200 transition-all"
+                                 placeholder="https://..."
+                                 value={newStepExternalUrl}
+                                 onChange={(e) => setNewStepExternalUrl(e.target.value)}
+                               />
+                             </div>
+                           ) : (
+                             <div>
+                               <div className="flex items-center justify-between mb-4">
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">TARGET MODULE (REDIRECTION)</label>
+                                 {newStepTargetPage && (
+                                   <div className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{String(newStepTargetPage).replace('-', ' ')}</div>
+                                 )}
+                               </div>
+                               <div className="p-6 bg-white rounded-[2rem] border border-slate-100">
+                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                   {NAV_ITEMS.filter((n) => n.roles.includes('INTERN')).map((item) => (
+                                     <button
+                                       key={item.id}
+                                       type="button"
+                                       onClick={() => setNewStepTargetPage(item.id)}
+                                       className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all text-left flex items-center gap-2 border ${newStepTargetPage === item.id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-blue-200 hover:bg-white'}`}
+                                     >
+                                       {item.icon} {item.label}
+                                     </button>
+                                   ))}
+                                 </div>
+                               </div>
+                             </div>
+                           )}
+
+                           <div className="pt-2 flex items-center justify-end gap-3">
+                             <button
+                               type="button"
+                               onClick={() => setIsAddingStep(false)}
+                               className="px-10 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                             >
+                               {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
+                             </button>
+                             <button
+                               type="button"
+                               onClick={handleCreateNewStep}
+                               className="px-10 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
+                             >
+                               {lang === 'EN' ? 'Integrate Step' : 'เพิ่มขั้นตอน'}
+                             </button>
+                           </div>
+                         </div>
+                       )}
                     </div>
                  </section>
               </div>
@@ -625,6 +800,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
            </div>
         </div>
       </div>
+
     </div>
   );
 };
