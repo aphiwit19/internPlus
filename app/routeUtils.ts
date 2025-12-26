@@ -25,6 +25,7 @@ export function isPageId(value: string): value is PageId {
     value === 'dashboard' ||
     value === 'onboarding' ||
     value === 'profile' ||
+    value === 'documents' ||
     value === 'training' ||
     value === 'attendance' ||
     value === 'leave' ||

@@ -27,7 +27,8 @@ export const NAV_ITEMS: NavItem[] = [
   
   // Intern Specific
   { id: 'onboarding', label: 'Onboarding', icon: <Rocket size={18} />, roles: ['INTERN'] },
-  { id: 'profile', label: 'Profile & Documents', icon: <UserCircle size={18} />, roles: ['INTERN'] },
+  { id: 'profile', label: 'Profile & Documents', icon: <UserCircle size={18} />, roles: ['INTERN', 'SUPERVISOR', 'HR_ADMIN'] },
+  { id: 'documents', label: 'Document Vault', icon: <CreditCard size={18} />, roles: ['INTERN'] },
   { id: 'training', label: 'Policy & Training', icon: <ShieldCheck size={18} />, roles: ['INTERN'] },
   { id: 'attendance', label: 'Time Attendance', icon: <Clock size={18} />, roles: ['INTERN'] },
   { id: 'leave', label: 'Leave Request', icon: <CalendarDays size={18} />, roles: ['INTERN', 'SUPERVISOR', 'HR_ADMIN'] },

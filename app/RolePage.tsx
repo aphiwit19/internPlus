@@ -11,6 +11,7 @@ import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
 import InternDashboard from '@/pages/intern/InternDashboard';
 import OnboardingPage from '@/pages/intern/OnboardingPage';
 import ProfilePage from '@/pages/intern/ProfilePage';
+import DocumentsPage from '@/pages/intern/DocumentsPage.tsx';
 import TrainingPage from '@/pages/intern/TrainingPage';
 import AttendancePage from '@/pages/intern/AttendancePage';
 import AssignmentPage from '@/pages/intern/AssignmentPage';
@@ -32,6 +33,9 @@ import AdminLeaveRequestPage from '@/pages/admin/LeaveRequestPage';
 import SupervisorDashboardPage from '@/pages/supervisor/DashboardPage';
 import SupervisorInternManagementPage from '@/pages/supervisor/InternManagementPage';
 import SupervisorLeaveRequestPage from '@/pages/supervisor/LeaveRequestPage';
+ import SupervisorProfilePage from '@/pages/supervisor/ProfilePage';
+
+ import AdminProfilePage from '@/pages/admin/ProfilePage';
 
 export default function RolePage() {
   const navigate = useNavigate();
@@ -66,6 +70,8 @@ export default function RolePage() {
         return <OnboardingPage onNavigate={onNavigate} lang={lang} />;
       case 'profile':
         return <ProfilePage lang={lang} />;
+      case 'documents':
+        return <DocumentsPage lang={lang} />;
       case 'training':
         return <TrainingPage onNavigate={onNavigate} lang={lang} />;
       case 'attendance':
@@ -99,6 +105,8 @@ export default function RolePage() {
         return <SupervisorDashboardPage user={user} onNavigate={onNavigate} lang={lang} />;
       case 'manage-interns':
         return <SupervisorInternManagementPage user={user} onNavigate={onNavigate} lang={lang} />;
+      case 'profile':
+        return <SupervisorProfilePage user={user} lang={lang} />;
       case 'leave':
         return <SupervisorLeaveRequestPage lang={lang} role={roleFromRoute} />;
       default:
@@ -112,6 +120,8 @@ export default function RolePage() {
         return <AdminDashboardPage />;
       case 'manage-interns':
         return <AdminInternManagementPage />;
+      case 'profile':
+        return <AdminProfilePage user={user} lang={lang} />;
       case 'leave':
         return <AdminLeaveRequestPage lang={lang} role={roleFromRoute} />;
       case 'invitations':

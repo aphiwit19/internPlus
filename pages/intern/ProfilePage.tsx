@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   CreditCard, 
   FileText, 
@@ -30,30 +30,18 @@ import {
   Trash2,
   RefreshCw
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { UserProfile, Supervisor, DocumentStatus, Language } from '@/types';
+import SupervisorCard from '@/components/SupervisorCard';
+import { useAppContext } from '@/app/AppContext';
+import { firestoreDb } from '@/firebase';
+import { getUserProfileByUid } from '@/app/firestoreUserRepository';
+import { pageIdToPath } from '@/app/routeUtils';
 
-const userData: UserProfile = {
-  id: 'USR-2024-001',
-  name: 'Alex Rivera',
-  roles: ['INTERN'],
-  avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
-  systemId: 'STD-6704021',
-  studentId: '6704021',
-  department: 'Product Design',
-  email: 'alex.rivera@internp...',
-  phone: '+1 (555) 012-3456',
-  position: 'Junior UI/UX Designer',
-  internPeriod: 'Jan 2024 - Jun 2024'
-};
-
-const supervisorData: Supervisor = {
-  name: 'Sarah Connor',
-  role: 'LEAD DESIGN MENTOR',
-  avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop',
-  email: 's.connor@internplus.io',
-  phone: '+1 (555) 987-6543',
-  department: 'Product Management',
-  lineId: 's.connor_ip'
+type InternProfileExtraDoc = {
+  supervisorId?: string;
+  supervisorName?: string;
 };
 
 const INITIAL_DOCUMENTS: DocumentStatus[] = [
@@ -71,8 +59,76 @@ interface ProfilePageProps {
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
+  const { user } = useAppContext();
+  const navigate = useNavigate();
   const [docList, setDocList] = useState<DocumentStatus[]>(INITIAL_DOCUMENTS);
   const [summary] = useState(`Dedicated Junior UI/UX Designer with a focus on creating intuitive digital experiences. Currently undergoing intensive training in the Product Design department at internPlus, focusing on user-centered methodologies and scalable design systems.`);
+
+  const [extra, setExtra] = useState<InternProfileExtraDoc>({});
+  const [supervisorProfile, setSupervisorProfile] = useState<UserProfile | null>(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    phone: '',
+    department: '',
+    position: '',
+    studentId: '',
+    internPeriod: '',
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    setEditForm({
+      name: user.name || '',
+      phone: user.phone || '',
+      department: user.department || '',
+      position: user.position || '',
+      studentId: user.studentId || '',
+      internPeriod: user.internPeriod || '',
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const ref = doc(firestoreDb, 'users', user.id);
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as InternProfileExtraDoc;
+      setExtra({
+        supervisorId: data.supervisorId,
+        supervisorName: data.supervisorName,
+      });
+    });
+  }, [user]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!extra.supervisorId) {
+      setSupervisorProfile(null);
+      return;
+    }
+    void getUserProfileByUid(extra.supervisorId).then((p) => {
+      if (!alive) return;
+      setSupervisorProfile(p);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [extra.supervisorId]);
+
+  const supervisorCardData: Supervisor | null = useMemo(() => {
+    if (!supervisorProfile) return null;
+    return {
+      name: supervisorProfile.name,
+      role: supervisorProfile.position || (supervisorProfile.roles.includes('HR_ADMIN') ? 'Admin' : 'Supervisor'),
+      avatar: supervisorProfile.avatar,
+      email: supervisorProfile.email,
+      phone: supervisorProfile.phone,
+      department: supervisorProfile.department,
+      lineId: supervisorProfile.lineId,
+    };
+  }, [supervisorProfile]);
 
   const t = {
     EN: {
@@ -85,8 +141,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       skills: "CORE SKILLS",
       goal: "GOAL",
       langs: "LANGUAGES",
-      vaultTitle: "Document Vault",
-      vaultSub: "Secure storage for your internship documentation.",
       supervisorTitle: "Supervisor",
       assigned: "ASSIGNED SUPPORT",
       btnMessage: "SEND MESSAGE"
@@ -101,8 +155,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       skills: "ทักษะหลัก",
       goal: "เป้าหมาย",
       langs: "ภาษา",
-      vaultTitle: "คลังเอกสาร",
-      vaultSub: "ที่จัดเก็บเอกสารการฝึกงานของคุณอย่างปลอดภัย",
       supervisorTitle: "ที่ปรึกษา",
       assigned: "ผู้ดูแลที่ได้รับมอบหมาย",
       btnMessage: "ส่งข้อความ"
@@ -130,8 +182,32 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
   const uploadedCount = docList.filter(d => d.isUploaded).length;
   const progressPercent = Math.round((uploadedCount / docList.length) * 100);
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    await updateDoc(doc(firestoreDb, 'users', user.id), {
+      name: editForm.name,
+      phone: editForm.phone,
+      department: editForm.department,
+      position: editForm.position,
+      studentId: editForm.studentId,
+      internPeriod: editForm.internPeriod,
+    });
+    setIsEditing(false);
+  };
+
+  if (!user) return null;
+
   return (
     <div className="h-full w-full flex flex-col p-4 md:p-6 lg:p-10 bg-[#F8FAFC]">
+      {isEditing && (
+        <EditProfileModal
+          lang={lang}
+          form={editForm}
+          onChange={setEditForm}
+          onClose={() => setIsEditing(false)}
+          onSave={() => void handleSaveProfile()}
+        />
+      )}
       
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
@@ -149,7 +225,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
             <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm flex flex-col items-center">
                <div className="relative mb-8">
                   <div className="w-40 h-40 rounded-[4rem] overflow-hidden ring-8 ring-slate-50 shadow-xl">
-                     <img src={userData.avatar} className="w-full h-full object-cover" alt="" />
+                     <img src={user.avatar} className="w-full h-full object-cover" alt="" />
                   </div>
                   <button className="absolute bottom-2 right-2 p-3 bg-blue-600 text-white rounded-2xl border-4 border-white shadow-lg hover:bg-blue-700 transition-all">
                      <Camera size={18} />
@@ -157,8 +233,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                </div>
                
                <div className="text-center mb-10">
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{userData.name}</h2>
-                  <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em] mt-3">{userData.position}</p>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{user.name}</h2>
+                  <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em] mt-3">{user.position}</p>
                </div>
 
                <div className="w-full space-y-4 mb-10">
@@ -166,21 +242,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                        <div className="w-1 h-3 bg-blue-600 rounded-full"></div> POSITION
                      </span>
-                     <p className="text-[13px] font-black text-slate-800">{userData.position}</p>
+                     <p className="text-[13px] font-black text-slate-800">{user.position}</p>
                   </div>
                   <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] flex flex-col">
                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                        <div className="w-1 h-3 bg-indigo-600 rounded-full"></div> PERIOD
                      </span>
-                     <p className="text-[13px] font-black text-slate-800">{userData.internPeriod}</p>
+                     <p className="text-[13px] font-black text-slate-800">{user.internPeriod}</p>
                   </div>
                </div>
 
                <div className="w-full space-y-6 px-1">
-                  <InfoRow label="Student ID" value={userData.systemId} highlight />
-                  <InfoRow label="Dept." value={userData.department} />
-                  <InfoRow label="Email" value={userData.email} />
-                  <InfoRow label="Phone" value={userData.phone || ''} />
+                  <InfoRow label="Student ID" value={user.systemId} highlight />
+                  <InfoRow label="Dept." value={user.department} />
+                  <InfoRow label="Email" value={user.email} />
+                  <InfoRow label="Phone" value={user.phone || ''} />
                </div>
             </div>
           </div>
@@ -210,7 +286,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                         <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
                         {t.summaryTitle}
                       </h3>
-                      <button className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{t.edit}</button>
+                      <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{t.edit}</button>
                    </div>
                    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-12 italic opacity-80">
                      "{summary}"
@@ -244,107 +320,29 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                    </div>
                 </div>
 
-                {/* Unified Doc Vault Section */}
-                <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
-                   <div className="flex items-center justify-between mb-12">
-                     <div>
-                       <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t.vaultTitle}</h3>
-                       <p className="text-slate-400 text-xs font-bold mt-1">{t.vaultSub}</p>
-                     </div>
-                     <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-2">
-                        <ShieldCheck size={16} /> SECURE
-                     </div>
-                   </div>
-                   
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {docList.map((doc) => (
-                        <div key={doc.id} className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all relative overflow-hidden">
-                          <div className="flex items-center gap-4 overflow-hidden">
-                             <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors">
-                               {doc.icon}
-                             </div>
-                             <div className="overflow-hidden">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">{doc.label}</p>
-                                <p className={`text-[12px] font-black truncate ${doc.isUploaded ? 'text-slate-800' : 'text-slate-400'}`}>
-                                  {doc.fileName || 'Not Uploaded'}
-                                </p>
-                             </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                             {doc.isUploaded ? (
-                               <>
-                                  <button 
-                                    onClick={() => handleUploadDoc(doc.id)}
-                                    className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                                    title="Replace"
-                                  >
-                                    <RefreshCw size={16} />
-                                  </button>
-                                  <button 
-                                    onClick={() => handleRemoveDoc(doc.id)}
-                                    className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
-                                    title="Remove"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                               </>
-                             ) : (
-                                <button 
-                                  onClick={() => handleUploadDoc(doc.id)}
-                                  className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                                >
-                                  <Upload size={18} />
-                                </button>
-                             )}
-                          </div>
-                        </div>
-                      ))}
-                   </div>
-                </div>
               </div>
           </div>
 
           <div className="col-span-12 lg:col-span-3">
-             <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm h-fit">
+            <button
+              onClick={() => navigate(pageIdToPath('INTERN', 'documents'))}
+              className="w-full mb-6 py-4 bg-blue-600 text-white rounded-[1.75rem] border border-blue-600 flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+            >
+              <CreditCard size={18} /> Document Vault
+            </button>
+            {supervisorCardData ? (
+              <SupervisorCard supervisor={supervisorCardData} lang={lang} />
+            ) : (
+              <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm h-fit">
                 <div className="mb-10">
-                   <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">{t.supervisorTitle}</h3>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t.assigned}</p>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">{t.supervisorTitle}</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t.assigned}</p>
                 </div>
-
-                <div className="flex items-center gap-5 p-5 bg-slate-50 border border-slate-100 rounded-3xl mb-10 transition-all hover:bg-white hover:shadow-xl">
-                   <img src={supervisorData.avatar} className="w-14 h-14 rounded-2xl object-cover ring-4 ring-white shadow-sm" alt="" />
-                   <div className="overflow-hidden">
-                      <h4 className="text-sm font-black text-slate-900 leading-none truncate">{supervisorData.name}</h4>
-                      <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-2 truncate">{supervisorData.role}</p>
-                   </div>
+                <div className="py-14 text-center">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No supervisor assigned</p>
                 </div>
-
-                <div className="space-y-6 mb-12 px-1">
-                   <div className="flex items-center gap-4 group cursor-default">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 transition-colors group-hover:bg-blue-50 group-hover:text-blue-500">
-                        <Mail size={18} />
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-500 truncate">{supervisorData.email}</span>
-                   </div>
-                   <div className="flex items-center gap-4 group cursor-default">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 transition-colors group-hover:bg-blue-50 group-hover:text-blue-500">
-                        <Phone size={18} />
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-500 truncate">{supervisorData.phone}</span>
-                   </div>
-                   <div className="flex items-center gap-4 group cursor-default">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 transition-colors group-hover:bg-blue-50 group-hover:text-blue-500">
-                        <Briefcase size={18} />
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-500 truncate">{supervisorData.department}</span>
-                   </div>
-                </div>
-
-                <button className="w-full py-4 bg-[#F0F7FF] text-blue-600 rounded-[1.75rem] border border-blue-100 flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-95">
-                   <MessageSquare size={18} /> {t.btnMessage}
-                </button>
-             </div>
+              </div>
+            )}
           </div>
 
         </div>
@@ -352,6 +350,100 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
     </div>
   );
 };
+
+const EditProfileModal: React.FC<{
+  lang: Language;
+  form: {
+    name: string;
+    phone: string;
+    department: string;
+    position: string;
+    studentId: string;
+    internPeriod: string;
+  };
+  onChange: (next: {
+    name: string;
+    phone: string;
+    department: string;
+    position: string;
+    studentId: string;
+    internPeriod: string;
+  }) => void;
+  onClose: () => void;
+  onSave: () => void;
+}> = ({ lang, form, onChange, onClose, onSave }) => {
+  const t = {
+    EN: {
+      title: 'Edit Profile',
+      save: 'Save',
+      cancel: 'Cancel',
+      name: 'Name',
+      phone: 'Phone',
+      department: 'Department',
+      position: 'Position',
+      studentId: 'Student ID',
+      internPeriod: 'Intern Period',
+    },
+    TH: {
+      title: 'แก้ไขโปรไฟล์',
+      save: 'บันทึก',
+      cancel: 'ยกเลิก',
+      name: 'ชื่อ',
+      phone: 'เบอร์โทร',
+      department: 'แผนก',
+      position: 'ตำแหน่ง',
+      studentId: 'รหัสนักศึกษา',
+      internPeriod: 'ช่วงฝึกงาน',
+    },
+  }[lang];
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={onClose} />
+      <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+          <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">{t.title}</h3>
+            </div>
+            <button onClick={onClose} className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label={t.name} value={form.name} onChange={(v) => onChange({ ...form, name: v })} />
+              <Field label={t.phone} value={form.phone} onChange={(v) => onChange({ ...form, phone: v })} />
+              <Field label={t.department} value={form.department} onChange={(v) => onChange({ ...form, department: v })} />
+              <Field label={t.position} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
+              <Field label={t.studentId} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
+              <Field label={t.internPeriod} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
+            </div>
+            <div className="flex justify-end gap-3 mt-8">
+              <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">
+                {t.cancel}
+              </button>
+              <button onClick={onSave} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20">
+                {t.save}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+  <label className="space-y-2">
+    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+    />
+  </label>
+);
 
 const InfoRow = ({ label, value, highlight }: { label: string, value: string, highlight?: boolean }) => (
   <div className="flex justify-between items-center group/row cursor-default">

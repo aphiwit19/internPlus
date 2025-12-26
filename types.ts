@@ -22,6 +22,7 @@ export interface UserProfile {
   department: string;
   email: string;
   phone?: string;
+  lineId?: string;
   position?: string;
   internPeriod?: string;
   assignedInterns?: string[]; // IDs of interns (for Supervisors)

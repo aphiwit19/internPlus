@@ -34,6 +34,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     'dashboard': lang === 'TH' ? 'แผงควบคุม' : 'Dashboard',
     'onboarding': lang === 'TH' ? 'แผนผังฝึกงาน' : 'Onboarding',
     'profile': lang === 'TH' ? 'โปรไฟล์และเอกสาร' : 'Profile & Docs',
+    'documents': lang === 'TH' ? 'คลังเอกสาร' : 'Document Vault',
     'training': lang === 'TH' ? 'นโยบายและอบรม' : 'Policy & Training',
     'attendance': lang === 'TH' ? 'ลงเวลาเข้างาน' : 'Attendance',
     'leave': lang === 'TH' ? 'การลางาน' : 'Leave Request',
