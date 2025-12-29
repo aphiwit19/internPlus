@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   UserPlus, 
@@ -57,13 +56,18 @@ const InvitationsPage: React.FC = () => {
     return `https://picsum.photos/seed/${encodeURIComponent(seed)}/100/100`;
   };
 
-  const safeParseJson = <T,>(value: string | null): T | null => {
-    if (!value) return null;
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return null;
+  const normalizeUniqueList = (values: string[]) => {
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const raw of values) {
+      const v = String(raw ?? '').trim();
+      if (!v) continue;
+      const key = v.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(v);
     }
+    return next;
   };
 
   useEffect(() => {
@@ -76,22 +80,30 @@ const InvitationsPage: React.FC = () => {
 
     setStartDate(`${yyyy}-${mm}-${dd}`);
     setStartTime(`${hh}:${min}`);
+  }, []);
 
-    const storedDepartments = safeParseJson<string[]>(localStorage.getItem('internPlus.departments'));
-    if (storedDepartments && storedDepartments.length > 0) {
-      setDepartments(storedDepartments);
-      if (!storedDepartments.includes(selectedDept)) {
-        setSelectedDept(storedDepartments[0]);
-      }
-    }
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as { departments?: string[]; hrLeads?: string[] };
 
-    const storedHrLeads = safeParseJson<string[]>(localStorage.getItem('internPlus.hrLeads'));
-    if (storedHrLeads && storedHrLeads.length > 0) {
-      setHrLeads(storedHrLeads);
-      if (!storedHrLeads.includes(selectedHrLead)) {
-        setSelectedHrLead(storedHrLeads[0]);
+      if (Array.isArray(data.departments) && data.departments.length > 0) {
+        const nextDepts = normalizeUniqueList(data.departments);
+        if (nextDepts.length > 0) {
+          setDepartments(nextDepts);
+          setSelectedDept((prev) => (nextDepts.includes(prev) ? prev : nextDepts[0]));
+        }
       }
-    }
+
+      if (Array.isArray(data.hrLeads) && data.hrLeads.length > 0) {
+        const nextLeads = normalizeUniqueList(data.hrLeads);
+        if (nextLeads.length > 0) {
+          setHrLeads(nextLeads);
+          setSelectedHrLead((prev) => (nextLeads.includes(prev) ? prev : nextLeads[0]));
+        }
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -110,14 +122,6 @@ const InvitationsPage: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('internPlus.departments', JSON.stringify(departments));
-  }, [departments]);
-
-  useEffect(() => {
-    localStorage.setItem('internPlus.hrLeads', JSON.stringify(hrLeads));
-  }, [hrLeads]);
-
   const handleAddDepartment = () => {
     const name = newDepartmentName.trim();
     if (!name) {
@@ -131,7 +135,16 @@ const InvitationsPage: React.FC = () => {
         alert('This department already exists.');
         return prev;
       }
-      return [...prev, name];
+      const next = [...prev, name];
+      void setDoc(
+        doc(firestoreDb, 'config', 'systemSettings'),
+        {
+          departments: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return next;
     });
 
     setSelectedDept(name);
@@ -152,7 +165,16 @@ const InvitationsPage: React.FC = () => {
         alert('This HR Lead already exists.');
         return prev;
       }
-      return [...prev, name];
+      const next = [...prev, name];
+      void setDoc(
+        doc(firestoreDb, 'config', 'systemSettings'),
+        {
+          hrLeads: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return next;
     });
 
     setSelectedHrLead(name);

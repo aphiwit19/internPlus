@@ -18,6 +18,7 @@ import AssignmentPage from '@/pages/intern/AssignmentPage';
 import ActivitiesPage from '@/pages/intern/ActivitiesPage';
 import FeedbackPage from '@/pages/intern/FeedbackPage';
 import EvaluationPage from '@/pages/intern/EvaluationPage';
+import SelfEvaluationPage from '@/pages/intern/SelfEvaluationPage';
 import CertificatesPage from '@/pages/intern/CertificatesPage';
 import OffboardingPage from '@/pages/intern/OffboardingPage';
 import AllowancePage from '@/pages/intern/AllowancePage';
@@ -86,6 +87,8 @@ export default function RolePage() {
         return <FeedbackPage lang={lang} user={user} />;
       case 'evaluation':
         return <EvaluationPage lang={lang} />;
+      case 'self-evaluation':
+        return <SelfEvaluationPage lang={lang} />;
       case 'certificates':
         return <CertificatesPage lang={lang} />;
       case 'offboarding':

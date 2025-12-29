@@ -28,6 +28,11 @@ interface AdminInternDetail {
   tasks: SubTask[];
   feedback: FeedbackItem[];
   performance: PerformanceMetrics;
+  adminSummary: string;
+  selfPerformance: PerformanceMetrics;
+  selfSummary: string;
+  supervisorPerformance: PerformanceMetrics;
+  supervisorSummary: string;
   attendanceLog: {
     id: string;
     date: string;
@@ -54,9 +59,9 @@ const InternManagementPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFeedbackId, setActiveFeedbackId] = useState('1m');
-  const [tempScore, setTempScore] = useState(0);
-  const [tempComment, setTempComment] = useState('');
   const [attendanceViewMode, setAttendanceViewMode] = useState<AttendanceViewMode>('LOG');
+
+  const [activeEvalSource, setActiveEvalSource] = useState<'SELF' | 'SUPERVISOR'>('SELF');
 
   const selectedIntern = interns.find((i) => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find((f) => f.id === activeFeedbackId);
@@ -72,6 +77,39 @@ const InternManagementPage: React.FC = () => {
           internPeriod?: string;
           department?: string;
           email?: string;
+          performance?: Partial<PerformanceMetrics>;
+          adminSummary?: string;
+          selfPerformance?: Partial<PerformanceMetrics>;
+          selfSummary?: string;
+          supervisorPerformance?: Partial<PerformanceMetrics>;
+          supervisorSummary?: string;
+        };
+
+        const rawPerf = data.performance ?? null;
+        const normalizedPerf: PerformanceMetrics = {
+          technical: typeof rawPerf?.technical === 'number' ? rawPerf.technical : DEFAULT_PERFORMANCE.technical,
+          communication: typeof rawPerf?.communication === 'number' ? rawPerf.communication : DEFAULT_PERFORMANCE.communication,
+          punctuality: typeof rawPerf?.punctuality === 'number' ? rawPerf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+          initiative: typeof rawPerf?.initiative === 'number' ? rawPerf.initiative : DEFAULT_PERFORMANCE.initiative,
+          overallRating: typeof rawPerf?.overallRating === 'number' ? rawPerf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+        };
+
+        const rawSelf = data.selfPerformance ?? null;
+        const normalizedSelf: PerformanceMetrics = {
+          technical: typeof rawSelf?.technical === 'number' ? rawSelf.technical : DEFAULT_PERFORMANCE.technical,
+          communication: typeof rawSelf?.communication === 'number' ? rawSelf.communication : DEFAULT_PERFORMANCE.communication,
+          punctuality: typeof rawSelf?.punctuality === 'number' ? rawSelf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+          initiative: typeof rawSelf?.initiative === 'number' ? rawSelf.initiative : DEFAULT_PERFORMANCE.initiative,
+          overallRating: typeof rawSelf?.overallRating === 'number' ? rawSelf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+        };
+
+        const rawSup = data.supervisorPerformance ?? null;
+        const normalizedSup: PerformanceMetrics = {
+          technical: typeof rawSup?.technical === 'number' ? rawSup.technical : DEFAULT_PERFORMANCE.technical,
+          communication: typeof rawSup?.communication === 'number' ? rawSup.communication : DEFAULT_PERFORMANCE.communication,
+          punctuality: typeof rawSup?.punctuality === 'number' ? rawSup.punctuality : DEFAULT_PERFORMANCE.punctuality,
+          initiative: typeof rawSup?.initiative === 'number' ? rawSup.initiative : DEFAULT_PERFORMANCE.initiative,
+          overallRating: typeof rawSup?.overallRating === 'number' ? rawSup.overallRating : DEFAULT_PERFORMANCE.overallRating,
         };
 
         return {
@@ -85,7 +123,12 @@ const InternManagementPage: React.FC = () => {
           progress: 0,
           status: 'Active',
           attendance: '—',
-          performance: DEFAULT_PERFORMANCE,
+          performance: normalizedPerf,
+          adminSummary: typeof data.adminSummary === 'string' ? data.adminSummary : '',
+          selfPerformance: normalizedSelf,
+          selfSummary: typeof data.selfSummary === 'string' ? data.selfSummary : '',
+          supervisorPerformance: normalizedSup,
+          supervisorSummary: typeof data.supervisorSummary === 'string' ? data.supervisorSummary : '',
           tasks: [],
           feedback: [],
           attendanceLog: [],
@@ -95,12 +138,15 @@ const InternManagementPage: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    if (activeFeedback) {
-      setTempScore(activeFeedback.supervisorScore || 0);
-      setTempComment(activeFeedback.supervisorComments || '');
-    }
-  }, [activeFeedback, activeFeedbackId, selectedInternId]);
+  const displayPerformance = useMemo(() => {
+    if (!selectedIntern) return DEFAULT_PERFORMANCE;
+    return activeEvalSource === 'SELF' ? selectedIntern.selfPerformance : selectedIntern.supervisorPerformance;
+  }, [activeEvalSource, selectedIntern]);
+
+  const displaySummary = useMemo(() => {
+    if (!selectedIntern) return '';
+    return activeEvalSource === 'SELF' ? selectedIntern.selfSummary : selectedIntern.supervisorSummary;
+  }, [activeEvalSource, selectedIntern]);
 
   const filteredInterns = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -109,43 +155,10 @@ const InternManagementPage: React.FC = () => {
     );
   }, [interns, searchQuery]);
 
-  const handleUpdateTaskStatus = (taskId: string, status: 'DONE' | 'REVISION') => {
-    if (!selectedInternId) return;
-    setInterns((prev) =>
-      prev.map((intern) => {
-        if (intern.id !== selectedInternId) return intern;
-        return {
-          ...intern,
-          tasks: intern.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
-        };
-      }),
-    );
-  };
-
-  const handleSaveFeedback = () => {
-    if (!selectedInternId || !activeFeedbackId) return;
-    setInterns((prev) =>
-      prev.map((intern) => {
-        if (intern.id !== selectedInternId) return intern;
-        return {
-          ...intern,
-          feedback: intern.feedback.map((f) => {
-            if (f.id !== activeFeedbackId) return f;
-            return {
-              ...f,
-              status: 'reviewed',
-              supervisorScore: tempScore,
-              supervisorComments: tempComment,
-            };
-          }),
-        };
-      }),
-    );
-    alert('Feedback assessment deployed successfully.');
-  };
-
   const renderDeepDive = () => {
     if (!selectedIntern) return null;
+
+    const showTabs = selectedInternId && activeTab === 'overview';
 
     const taskItems = selectedIntern.tasks.map((t) => ({
       id: t.id,
@@ -179,17 +192,43 @@ const InternManagementPage: React.FC = () => {
                     <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
                       <BarChart3 size={24} />
                     </div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">Performance Analysis</h3>
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">Performance Analysis</h3>
+                      {showTabs && (
+                        <div className="mt-3 inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                          <button
+                            onClick={() => setActiveEvalSource('SELF')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                              activeEvalSource === 'SELF'
+                                ? 'bg-white text-blue-600 shadow-md'
+                                : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            Intern
+                          </button>
+                          <button
+                            onClick={() => setActiveEvalSource('SUPERVISOR')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                              activeEvalSource === 'SUPERVISOR'
+                                ? 'bg-white text-indigo-600 shadow-md'
+                                : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            Supervisor
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button className="flex items-center gap-2 px-6 py-3 bg-[#4F46E5] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#4338CA] transition-all shadow-xl shadow-indigo-100">
                     <StickyNote size={16} /> DOWNLOAD FULL AUDIT
                   </button>
                 </div>
                 <div className="space-y-10">
-                  <ProgressRow label="TECHNICAL PROFICIENCY" score={selectedIntern.performance.technical} color="bg-blue-600" />
-                  <ProgressRow label="TEAM COMMUNICATION" score={selectedIntern.performance.communication} color="bg-indigo-600" />
-                  <ProgressRow label="PUNCTUALITY & RELIABILITY" score={selectedIntern.performance.punctuality} color="bg-emerald-500" />
-                  <ProgressRow label="SELF-INITIATIVE" score={selectedIntern.performance.initiative} color="bg-rose-500" />
+                  <ProgressRow label="TECHNICAL PROFICIENCY" score={displayPerformance.technical} color="bg-blue-600" />
+                  <ProgressRow label="TEAM COMMUNICATION" score={displayPerformance.communication} color="bg-indigo-600" />
+                  <ProgressRow label="PUNCTUALITY & RELIABILITY" score={displayPerformance.punctuality} color="bg-emerald-500" />
+                  <ProgressRow label="SELF-INITIATIVE" score={displayPerformance.initiative} color="bg-rose-500" />
                 </div>
               </div>
               <div className="xl:col-span-5 bg-[#3B49DF] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col">
@@ -197,11 +236,11 @@ const InternManagementPage: React.FC = () => {
                 <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
                 <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
                   <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
-                    <span className="text-6xl font-black tracking-tighter leading-none">{selectedIntern.performance.overallRating}</span>
+                    <span className="text-6xl font-black tracking-tighter leading-none">{displayPerformance.overallRating}</span>
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
                   </div>
                   <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
-                    "Summary placeholder for admin review."
+                    {displaySummary ? `"${displaySummary}"` : '"No summary submitted."'}
                   </p>
                 </div>
               </div>
@@ -237,7 +276,6 @@ const InternManagementPage: React.FC = () => {
           <TasksTab
             tasks={taskItems}
             onNewAssignment={() => alert('New Assignment (admin) - TODO')}
-            onUpdateTaskStatus={handleUpdateTaskStatus}
           />
         )}
 
@@ -251,11 +289,6 @@ const InternManagementPage: React.FC = () => {
             activeFeedbackId={activeFeedbackId}
             onSelectFeedback={setActiveFeedbackId}
             activeFeedback={activeFeedback}
-            tempScore={tempScore}
-            onTempScoreChange={setTempScore}
-            tempComment={tempComment}
-            onTempCommentChange={setTempComment}
-            onSave={handleSaveFeedback}
           />
         )}
 

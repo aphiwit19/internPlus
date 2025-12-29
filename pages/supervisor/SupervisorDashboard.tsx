@@ -59,7 +59,7 @@ import {
   Building2,
   Home
 } from 'lucide-react';
-import { arrayUnion, collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
 import { PageId } from '@/pageTypes';
 import InternListSection from '@/pages/supervisor/components/InternListSection';
@@ -84,6 +84,8 @@ interface InternDetail {
   tasks: SubTask[];
   feedback: FeedbackItem[];
   performance: PerformanceMetrics;
+  supervisorPerformance: PerformanceMetrics;
+  supervisorSummary: string;
   attendanceLog: {
     id: string;
     date: string;
@@ -119,6 +121,11 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [tempScore, setTempScore] = useState(0);
   const [tempComment, setTempComment] = useState('');
   const [attendanceViewMode, setAttendanceViewMode] = useState<'LOG' | 'CALENDAR'>('LOG');
+
+  const [editPerformance, setEditPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
+  const [editSummary, setEditSummary] = useState('');
+  const [isSavingEvaluation, setIsSavingEvaluation] = useState(false);
+  const [saveEvaluationError, setSaveEvaluationError] = useState<string | null>(null);
   
   // Modals
   const [isAssigningIntern, setIsAssigningIntern] = useState(false);
@@ -130,6 +137,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const mapUserToInternDetail = useMemo(() => {
     return (id: string, data: any): InternDetail => {
+      const rawSupPerf = (data?.supervisorPerformance ?? null) as Partial<PerformanceMetrics> | null;
+      const normalizedSupPerf: PerformanceMetrics = {
+        technical: typeof rawSupPerf?.technical === 'number' ? rawSupPerf.technical : DEFAULT_PERFORMANCE.technical,
+        communication: typeof rawSupPerf?.communication === 'number' ? rawSupPerf.communication : DEFAULT_PERFORMANCE.communication,
+        punctuality: typeof rawSupPerf?.punctuality === 'number' ? rawSupPerf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+        initiative: typeof rawSupPerf?.initiative === 'number' ? rawSupPerf.initiative : DEFAULT_PERFORMANCE.initiative,
+        overallRating: typeof rawSupPerf?.overallRating === 'number' ? rawSupPerf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+      };
+
       return {
         id,
         name: data?.name || 'Unknown',
@@ -144,10 +160,88 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         tasks: [],
         feedback: [],
         performance: DEFAULT_PERFORMANCE,
+        supervisorPerformance: normalizedSupPerf,
+        supervisorSummary: typeof data?.supervisorSummary === 'string' ? data.supervisorSummary : '',
         attendanceLog: [],
       };
     };
   }, []);
+
+  useEffect(() => {
+    if (!selectedIntern) return;
+    setEditPerformance(selectedIntern.supervisorPerformance);
+    setEditSummary(selectedIntern.supervisorSummary ?? '');
+    setSaveEvaluationError(null);
+  }, [selectedInternId, selectedIntern]);
+
+  const clampScore = (v: number) => {
+    if (Number.isNaN(v)) return 0;
+    return Math.max(0, Math.min(100, Math.round(v)));
+  };
+
+  const computeOverall = (p: Pick<PerformanceMetrics, 'technical' | 'communication' | 'punctuality' | 'initiative'>) => {
+    const avg = (p.technical + p.communication + p.punctuality + p.initiative) / 4;
+    return clampScore(avg);
+  };
+
+  const handleSaveEvaluation = async () => {
+    if (!selectedInternId) return;
+    setIsSavingEvaluation(true);
+    setSaveEvaluationError(null);
+    try {
+      const nextPerf: PerformanceMetrics = {
+        technical: clampScore(editPerformance.technical),
+        communication: clampScore(editPerformance.communication),
+        punctuality: clampScore(editPerformance.punctuality),
+        initiative: clampScore(editPerformance.initiative),
+        overallRating: computeOverall(editPerformance),
+      };
+
+      await updateDoc(doc(firestoreDb, 'users', selectedInternId), {
+        supervisorPerformance: nextPerf,
+        supervisorSummary: editSummary,
+        supervisorEvaluatedAt: serverTimestamp(),
+      });
+
+      setInterns((prev) =>
+        prev.map((intern) =>
+          intern.id === selectedInternId
+            ? {
+                ...intern,
+                supervisorPerformance: nextPerf,
+                supervisorSummary: editSummary,
+              }
+            : intern,
+        ),
+      );
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setSaveEvaluationError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to save evaluation'}`);
+    } finally {
+      setIsSavingEvaluation(false);
+    }
+  };
+
+  const displayPerformance = useMemo(() => {
+    if (!selectedIntern) return DEFAULT_PERFORMANCE;
+    if (activeTab !== 'overview') return selectedIntern.supervisorPerformance;
+
+    const next: PerformanceMetrics = {
+      technical: clampScore(editPerformance.technical),
+      communication: clampScore(editPerformance.communication),
+      punctuality: clampScore(editPerformance.punctuality),
+      initiative: clampScore(editPerformance.initiative),
+      overallRating: computeOverall(editPerformance),
+    };
+
+    return next;
+  }, [activeTab, editPerformance, selectedIntern]);
+
+  const displaySummary = useMemo(() => {
+    if (!selectedIntern) return '';
+    if (activeTab !== 'overview') return selectedIntern.supervisorSummary;
+    return editSummary;
+  }, [activeTab, editSummary, selectedIntern]);
 
   useEffect(() => {
     const allQ = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'INTERN'));
@@ -271,10 +365,74 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                         </button>
                     </div>
                     <div className="space-y-10">
-                        <ProgressRow label="TECHNICAL PROFICIENCY" score={selectedIntern.performance.technical} color="bg-blue-600" />
-                        <ProgressRow label="TEAM COMMUNICATION" score={selectedIntern.performance.communication} color="bg-indigo-600" />
-                        <ProgressRow label="PUNCTUALITY & RELIABILITY" score={selectedIntern.performance.punctuality} color="bg-emerald-500" />
-                        <ProgressRow label="SELF-INITIATIVE" score={selectedIntern.performance.initiative} color="bg-rose-500" />
+                        <ProgressRow label="TECHNICAL PROFICIENCY" score={displayPerformance.technical} color="bg-blue-600" />
+                        <ProgressRow label="TEAM COMMUNICATION" score={displayPerformance.communication} color="bg-indigo-600" />
+                        <ProgressRow label="PUNCTUALITY & RELIABILITY" score={displayPerformance.punctuality} color="bg-emerald-500" />
+                        <ProgressRow label="SELF-INITIATIVE" score={displayPerformance.initiative} color="bg-rose-500" />
+                    </div>
+
+                    <div className="mt-12 pt-10 border-t border-slate-100 space-y-6">
+                      {saveEvaluationError && (
+                        <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                          {saveEvaluationError}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <ScoreInput
+                          label="TECHNICAL PROFICIENCY"
+                          value={editPerformance.technical}
+                          onChange={(v) => setEditPerformance((p) => ({ ...p, technical: v }))}
+                        />
+                        <ScoreInput
+                          label="TEAM COMMUNICATION"
+                          value={editPerformance.communication}
+                          onChange={(v) => setEditPerformance((p) => ({ ...p, communication: v }))}
+                        />
+                        <ScoreInput
+                          label="PUNCTUALITY & RELIABILITY"
+                          value={editPerformance.punctuality}
+                          onChange={(v) => setEditPerformance((p) => ({ ...p, punctuality: v }))}
+                        />
+                        <ScoreInput
+                          label="SELF-INITIATIVE"
+                          value={editPerformance.initiative}
+                          onChange={(v) => setEditPerformance((p) => ({ ...p, initiative: v }))}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">EXECUTIVE SUMMARY</div>
+                        <textarea
+                          value={editSummary}
+                          onChange={(e) => setEditSummary(e.target.value)}
+                          rows={5}
+                          className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          placeholder="Write a summary for supervisor review..."
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            if (!selectedIntern) return;
+                            setEditPerformance(selectedIntern.supervisorPerformance);
+                            setEditSummary(selectedIntern.supervisorSummary ?? '');
+                            setSaveEvaluationError(null);
+                          }}
+                          className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                          disabled={isSavingEvaluation}
+                        >
+                          Reset
+                        </button>
+                        <button
+                          onClick={() => void handleSaveEvaluation()}
+                          className="px-8 py-3 rounded-2xl bg-[#111827] text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl"
+                          disabled={isSavingEvaluation}
+                        >
+                          {isSavingEvaluation ? 'Saving...' : 'Save Evaluation'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div className="xl:col-span-5 bg-[#3B49DF] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col">
@@ -282,16 +440,12 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
                     <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
                         <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
-                          <span className="text-6xl font-black tracking-tighter leading-none">{selectedIntern.performance.overallRating}</span>
+                          <span className="text-6xl font-black tracking-tighter leading-none">{displayPerformance.overallRating}</span>
                           <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
                         </div>
                         <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
-                          "Exhibits advanced understanding of design systems. Consistently delivers pixel-perfect layouts ahead of schedule."
+                          {displaySummary ? `"${displaySummary}"` : '"Summary placeholder for supervisor review."'}
                         </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mt-12 relative z-10">
-                        <button className="py-4 bg-white/10 hover:bg-white/20 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all">ADD NOTE</button>
-                        <button className="py-4 bg-white text-[#3B49DF] rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-xl shadow-black/10">SAVE SUMMARY</button>
                     </div>
                   </div>
                 </div>
@@ -580,6 +734,44 @@ const ProgressRow = ({ label, score, color }: { label: string; score: number; co
     </div>
   </div>
 );
+
+const ScoreInput = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) => {
+  const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{label}</div>
+        <div className="text-sm font-black text-slate-900">{safeValue}/100</div>
+      </div>
+      <div className="flex items-center gap-4">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-full"
+        />
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={safeValue}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-20 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none"
+        />
+      </div>
+    </div>
+  );
+};
 
 const AssetCard: React.FC<{ fileName: string; date?: string; taskTitle?: string; status?: string }> = ({ fileName, date, taskTitle, status }) => {
   const getIcon = () => {

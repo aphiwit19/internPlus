@@ -36,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'activities', label: 'Activities', icon: <Activity size={18} />, roles: ['INTERN'] },
   { id: 'feedback', label: 'Feedback & Video', icon: <MessageSquare size={18} />, roles: ['INTERN'] },
   { id: 'evaluation', label: 'Evaluation', icon: <Star size={18} />, roles: ['INTERN'] },
+  { id: 'self-evaluation', label: 'Self Evaluation', icon: <Star size={18} />, roles: ['INTERN'] },
   { id: 'certificates', label: 'Certificates', icon: <Award size={18} />, roles: ['INTERN'] },
   { id: 'offboarding', label: 'Offboarding', icon: <LogOut size={18} />, roles: ['INTERN'] },
   { id: 'allowance', label: 'Allowance', icon: <CreditCard size={18} />, roles: ['INTERN'] },

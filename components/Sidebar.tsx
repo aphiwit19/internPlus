@@ -42,6 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     'activities': lang === 'TH' ? 'กิจกรรม' : 'Activities',
     'feedback': lang === 'TH' ? 'คำติชมและวิดีโอ' : 'Feedback & Video',
     'evaluation': lang === 'TH' ? 'ประเมินมหาลัย' : 'Uni Evaluation',
+    'self-evaluation': lang === 'TH' ? 'ประเมินตนเอง' : 'Self Evaluation',
     'certificates': lang === 'TH' ? 'ใบรับรอง' : 'Certificates',
     'offboarding': lang === 'TH' ? 'การแจ้งออก' : 'Offboarding',
     'allowance': lang === 'TH' ? 'เบี้ยเลี้ยง' : 'Allowance',
