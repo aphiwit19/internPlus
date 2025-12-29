@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, FileCode, FileImage, FileSpreadsheet, FileText, MoreHorizontal, StickyNote } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 
 import { PerformanceMetrics, SubTask } from '@/types';
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 import { pageIdToPath } from '@/app/routeUtils';
 
 import InternListSection from '@/pages/supervisor/components/InternListSection';
@@ -44,6 +45,19 @@ interface AdminInternDetail {
   }[];
 }
 
+type FeedbackMilestoneDoc = {
+  status?: string;
+  internReflection?: string;
+  internProgramFeedback?: string;
+  videoStoragePath?: string;
+  videoFileName?: string;
+  attachments?: Array<{ fileName: string; storagePath: string }>;
+  supervisorScore?: number;
+  supervisorComments?: string;
+  programRating?: number;
+  submissionDate?: string;
+};
+
 const DEFAULT_PERFORMANCE: PerformanceMetrics = {
   technical: 0,
   communication: 0,
@@ -63,8 +77,23 @@ const InternManagementPage: React.FC = () => {
 
   const [activeEvalSource, setActiveEvalSource] = useState<'SELF' | 'SUPERVISOR'>('SELF');
 
+  const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
+
   const selectedIntern = interns.find((i) => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find((f) => f.id === activeFeedbackId);
+
+  const feedbackHasData = (f: FeedbackItem) => {
+    return Boolean(
+      f.internReflection?.trim() ||
+        f.internProgramFeedback?.trim() ||
+        f.videoStoragePath ||
+        (Array.isArray(f.attachments) && f.attachments.length > 0) ||
+        typeof f.supervisorScore === 'number' ||
+        (f.supervisorComments ?? '').trim() ||
+        f.programRating > 0 ||
+        (f.status && f.status !== 'pending'),
+    );
+  };
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'INTERN'));
@@ -138,6 +167,47 @@ const InternManagementPage: React.FC = () => {
     });
   }, []);
 
+  useEffect(() => {
+    const unsubs: Array<() => void> = [];
+
+    for (const intern of interns) {
+      const colRef = collection(firestoreDb, 'users', intern.id, 'feedbackMilestones');
+      const unsub = onSnapshot(colRef, (snap) => {
+        const items: FeedbackItem[] = snap.docs.map((d) => {
+          const data = d.data() as FeedbackMilestoneDoc;
+          const label = d.id;
+          return {
+            id: d.id,
+            label,
+            period: label,
+            status: data.status ?? 'pending',
+            internReflection: data.internReflection,
+            internProgramFeedback: data.internProgramFeedback,
+            videoStoragePath: data.videoStoragePath,
+            videoFileName: data.videoFileName,
+            attachments: Array.isArray(data.attachments) ? data.attachments : [],
+            supervisorScore: data.supervisorScore,
+            supervisorComments: data.supervisorComments,
+            programRating: typeof data.programRating === 'number' ? data.programRating : 0,
+          };
+        });
+
+        setFeedbackByIntern((prev) => ({ ...prev, [intern.id]: items }));
+        setInterns((prev) => prev.map((x) => (x.id === intern.id ? { ...x, feedback: items } : x)));
+      });
+      unsubs.push(unsub);
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [interns]);
+
+  const handleOpenStoragePath = async (path: string) => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
+    window.open(url, '_blank');
+  };
+
   const displayPerformance = useMemo(() => {
     if (!selectedIntern) return DEFAULT_PERFORMANCE;
     return activeEvalSource === 'SELF' ? selectedIntern.selfPerformance : selectedIntern.supervisorPerformance;
@@ -154,6 +224,18 @@ const InternManagementPage: React.FC = () => {
       (i) => i.name.toLowerCase().includes(q) || i.position.toLowerCase().includes(q),
     );
   }, [interns, searchQuery]);
+
+  useEffect(() => {
+    if (!selectedInternId) return;
+    if (activeTab !== 'feedback') return;
+    if (!selectedIntern?.feedback || selectedIntern.feedback.length === 0) return;
+
+    const exists = selectedIntern.feedback.some((f) => f.id === activeFeedbackId);
+    if (exists && activeFeedbackId !== '1m') return;
+
+    const preferred = selectedIntern.feedback.find(feedbackHasData) ?? selectedIntern.feedback[0];
+    if (preferred && preferred.id !== activeFeedbackId) setActiveFeedbackId(preferred.id);
+  }, [activeTab, activeFeedbackId, selectedInternId, selectedIntern?.feedback]);
 
   const renderDeepDive = () => {
     if (!selectedIntern) return null;
@@ -289,6 +371,7 @@ const InternManagementPage: React.FC = () => {
             activeFeedbackId={activeFeedbackId}
             onSelectFeedback={setActiveFeedbackId}
             activeFeedback={activeFeedback}
+            onOpenStoragePath={handleOpenStoragePath}
           />
         )}
 

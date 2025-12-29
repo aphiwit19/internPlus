@@ -59,7 +59,8 @@ import {
   Building2,
   Home
 } from 'lucide-react';
-import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
 import { PageId } from '@/pageTypes';
 import InternListSection from '@/pages/supervisor/components/InternListSection';
@@ -68,7 +69,7 @@ import AttendanceTab from '@/pages/supervisor/components/AttendanceTab';
 import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
 import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 
 interface InternDetail {
   id: string;
@@ -96,6 +97,19 @@ interface InternDetail {
     duration: string;
   }[];
 }
+
+type FeedbackMilestoneDoc = {
+  status?: string;
+  internReflection?: string;
+  internProgramFeedback?: string;
+  videoStoragePath?: string;
+  videoFileName?: string;
+  attachments?: Array<{ fileName: string; storagePath: string }>;
+  supervisorScore?: number;
+  supervisorComments?: string;
+  programRating?: number;
+  submissionDate?: string;
+};
 
  const DEFAULT_PERFORMANCE: PerformanceMetrics = {
   technical: 0,
@@ -132,8 +146,23 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [isAssigningTask, setIsAssigningTask] = useState(false);
   const [assignSearch, setAssignSearch] = useState('');
 
+  const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
+
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
+
+  const feedbackHasData = (f: FeedbackItem) => {
+    return Boolean(
+      f.internReflection?.trim() ||
+        f.internProgramFeedback?.trim() ||
+        f.videoStoragePath ||
+        (Array.isArray(f.attachments) && f.attachments.length > 0) ||
+        typeof f.supervisorScore === 'number' ||
+        (f.supervisorComments ?? '').trim() ||
+        f.programRating > 0 ||
+        (f.status && f.status !== 'pending'),
+    );
+  };
 
   const mapUserToInternDetail = useMemo(() => {
     return (id: string, data: any): InternDetail => {
@@ -261,11 +290,64 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   }, [mapUserToInternDetail, user.id]);
 
   useEffect(() => {
+    const unsubs: Array<() => void> = [];
+
+    for (const intern of interns) {
+      const colRef = collection(firestoreDb, 'users', intern.id, 'feedbackMilestones');
+      const unsub = onSnapshot(colRef, (snap) => {
+        const items: FeedbackItem[] = snap.docs.map((d) => {
+          const data = d.data() as FeedbackMilestoneDoc;
+          const label = d.id;
+          return {
+            id: d.id,
+            label,
+            period: label,
+            status: data.status ?? 'pending',
+            internReflection: data.internReflection,
+            internProgramFeedback: data.internProgramFeedback,
+            videoStoragePath: data.videoStoragePath,
+            videoFileName: data.videoFileName,
+            attachments: Array.isArray(data.attachments) ? data.attachments : [],
+            supervisorScore: data.supervisorScore,
+            supervisorComments: data.supervisorComments,
+            programRating: typeof data.programRating === 'number' ? data.programRating : 0,
+          };
+        });
+
+        setFeedbackByIntern((prev) => ({ ...prev, [intern.id]: items }));
+        setInterns((prev) => prev.map((x) => (x.id === intern.id ? { ...x, feedback: items } : x)));
+      });
+      unsubs.push(unsub);
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [interns]);
+
+  const handleOpenStoragePath = async (path: string) => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
+    window.open(url, '_blank');
+  };
+
+  useEffect(() => {
     if (activeFeedback) {
       setTempScore(activeFeedback.supervisorScore || 0);
       setTempComment(activeFeedback.supervisorComments || '');
     }
   }, [activeFeedbackId, selectedInternId]);
+
+  useEffect(() => {
+    if (!selectedInternId) return;
+    if (activeTab !== 'feedback') return;
+    if (!selectedIntern?.feedback || selectedIntern.feedback.length === 0) return;
+
+    const exists = selectedIntern.feedback.some((f) => f.id === activeFeedbackId);
+    if (exists && activeFeedbackId !== '1m') return;
+
+    const preferred = selectedIntern.feedback.find(feedbackHasData) ?? selectedIntern.feedback[0];
+    if (preferred && preferred.id !== activeFeedbackId) setActiveFeedbackId(preferred.id);
+  }, [activeTab, activeFeedbackId, selectedInternId, selectedIntern?.feedback]);
 
   useEffect(() => {
     setSelectedInternId(null);
@@ -287,24 +369,49 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     }));
   };
 
-  const handleSaveFeedback = () => {
+  const handleSaveFeedback = async () => {
     if (!selectedInternId || !activeFeedbackId) return;
-    setInterns(prev => prev.map(intern => {
-      if (intern.id !== selectedInternId) return intern;
-      return {
-        ...intern,
-        feedback: intern.feedback.map(f => {
-          if (f.id !== activeFeedbackId) return f;
-          return {
-            ...f,
-            status: 'reviewed',
-            supervisorScore: tempScore,
-            supervisorComments: tempComment
-          };
-        })
-      };
-    }));
-    alert('Feedback assessment deployed successfully.');
+
+    const nextScore = Number.isFinite(tempScore) ? tempScore : 0;
+    const nextComment = typeof tempComment === 'string' ? tempComment : '';
+
+    setInterns((prev) =>
+      prev.map((intern) => {
+        if (intern.id !== selectedInternId) return intern;
+
+        return {
+          ...intern,
+          feedback: intern.feedback.map((f) => {
+            if (f.id !== activeFeedbackId) return f;
+            return {
+              ...f,
+              status: 'reviewed',
+              supervisorScore: nextScore,
+              supervisorComments: nextComment,
+            };
+          }),
+        };
+      }),
+    );
+
+    try {
+      await setDoc(
+        doc(firestoreDb, 'users', selectedInternId, 'feedbackMilestones', activeFeedbackId),
+        {
+          status: 'reviewed',
+          supervisorScore: nextScore,
+          supervisorComments: nextComment,
+          supervisorReviewedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      alert('Feedback assessment deployed successfully.');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      console.error('Failed to save mentor evaluation', e);
+      alert(`Failed to save mentor evaluation: ${e?.code ?? 'unknown'} ${e?.message ?? ''}`);
+    }
   };
 
   const assignableInterns = useMemo(() => {
@@ -508,6 +615,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 tempComment={tempComment}
                 onTempCommentChange={setTempComment}
                 onSave={handleSaveFeedback}
+                onOpenStoragePath={handleOpenStoragePath}
               />
             )}
 

@@ -1,28 +1,25 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Video, 
-  MessageSquare, 
+  MessageSquare,
   Star, 
   Upload, 
-  CheckCircle2, 
-  Clock, 
-  ChevronRight,
+  Clock,
   User,
   ShieldCheck,
   Play,
   FileText,
-  AlertCircle,
-  Briefcase,
   ExternalLink,
-  Target,
   Heart,
-  ThumbsUp,
-  BarChart3,
-  MessageCircle,
   Zap
 } from 'lucide-react';
 import { Language, UserProfile } from '@/types';
+import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+
+import { firestoreDb, firebaseStorage } from '@/firebase';
+import { useAppContext } from '@/app/AppContext';
 
 interface FeedbackMilestone {
   id: string;
@@ -32,6 +29,9 @@ interface FeedbackMilestone {
   internReflection?: string;
   internProgramFeedback?: string;
   videoUrl?: string;
+  videoStoragePath?: string;
+  videoFileName?: string;
+  attachments?: Array<{ fileName: string; storagePath: string }>;
   supervisorScore?: number;
   supervisorComments?: string;
   programRating?: number;
@@ -44,6 +44,7 @@ interface FeedbackPageProps {
 }
 
 const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
+  const { user: authedUser } = useAppContext();
   const t = {
     EN: {
       title: "Feedback Hub",
@@ -91,23 +92,188 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     }
   }[lang];
 
-  const INITIAL_MILESTONES: FeedbackMilestone[] = [
-    { id: '1w', label: { EN: 'Week 1', TH: 'สัปดาห์ที่ 1' }, period: { EN: 'Onboarding & Foundations', TH: 'การรับเข้าทำงานและพื้นฐาน' }, status: 'reviewed', internReflection: "The first week was great.", internProgramFeedback: "Documentation was clear.", videoUrl: "v1.mp4", supervisorScore: 92, programRating: 5, supervisorComments: "Exceptional adaptability.", submissionDate: "2024-11-05" },
-    { id: '1m', label: { EN: 'Month 1', TH: 'เดือนที่ 1' }, period: { EN: 'Skill Deep-Dive', TH: 'การเจาะลึกทักษะ' }, status: 'submitted', internReflection: "Completed the user authentication module.", internProgramFeedback: "I'd like more 1-on-1 time.", videoUrl: "v2.mp4", programRating: 4, submissionDate: "2024-12-05" },
-    { id: '2m', label: { EN: 'Month 2', TH: 'เดือนที่ 2' }, period: { EN: 'System Integration', TH: 'การรวมระบบ' }, status: 'pending' },
-    { id: '3m', label: { EN: 'Month 3', TH: 'เดือนที่ 3' }, period: { EN: 'Advanced Prototyping', TH: 'การทำต้นแบบขั้นสูง' }, status: 'pending' },
-    { id: '4m', label: { EN: 'Month 4', TH: 'เดือนที่ 4' }, period: { EN: 'User Research', TH: 'การวิจัยผู้ใช้' }, status: 'pending' },
-    { id: '5m', label: { EN: 'Month 5', TH: 'เดือนที่ 5' }, period: { EN: 'Design Handoff', TH: 'การส่งมอบงานดีไซน์' }, status: 'pending' },
-    { id: '6m', label: { EN: 'Month 6', TH: 'เดือนที่ 6' }, period: { EN: 'Final Capstone', TH: 'โปรเจกต์จบการศึกษา' }, status: 'pending' },
-    { id: 'exit', label: { EN: 'Exit Interview', TH: 'สัมภาษณ์แจ้งออก' }, period: { EN: 'Final Wrap-up', TH: 'บทสรุปส่งท้าย' }, status: 'pending' }
-  ];
+  const BASE_MILESTONES: FeedbackMilestone[] = useMemo(
+    () => [
+      {
+        id: '1w',
+        label: { EN: 'Week 1', TH: 'สัปดาห์ที่ 1' },
+        period: { EN: 'Onboarding & Foundations', TH: 'การรับเข้าทำงานและพื้นฐาน' },
+        status: 'pending',
+      },
+      {
+        id: '1m',
+        label: { EN: 'Month 1', TH: 'เดือนที่ 1' },
+        period: { EN: 'Skill Deep-Dive', TH: 'การเจาะลึกทักษะ' },
+        status: 'pending',
+      },
+      {
+        id: '2m',
+        label: { EN: 'Month 2', TH: 'เดือนที่ 2' },
+        period: { EN: 'System Integration', TH: 'การรวมระบบ' },
+        status: 'pending',
+      },
+      {
+        id: '3m',
+        label: { EN: 'Month 3', TH: 'เดือนที่ 3' },
+        period: { EN: 'Advanced Prototyping', TH: 'การทำต้นแบบขั้นสูง' },
+        status: 'pending',
+      },
+      {
+        id: '4m',
+        label: { EN: 'Month 4', TH: 'เดือนที่ 4' },
+        period: { EN: 'User Research', TH: 'การวิจัยผู้ใช้' },
+        status: 'pending',
+      },
+      {
+        id: '5m',
+        label: { EN: 'Month 5', TH: 'เดือนที่ 5' },
+        period: { EN: 'Design Handoff', TH: 'การส่งมอบงานดีไซน์' },
+        status: 'pending',
+      },
+      {
+        id: '6m',
+        label: { EN: 'Month 6', TH: 'เดือนที่ 6' },
+        period: { EN: 'Final Capstone', TH: 'โปรเจกต์จบการศึกษา' },
+        status: 'pending',
+      },
+      {
+        id: 'exit',
+        label: { EN: 'Exit Interview', TH: 'สัมภาษณ์แจ้งออก' },
+        period: { EN: 'Final Wrap-up', TH: 'บทสรุปส่งท้าย' },
+        status: 'pending',
+      },
+    ],
+    [],
+  );
 
-  const [milestones] = useState<FeedbackMilestone[]>(INITIAL_MILESTONES);
+  const [milestones, setMilestones] = useState<FeedbackMilestone[]>(BASE_MILESTONES);
   const [activeId, setActiveId] = useState('1m');
   const [tempProgramRating, setTempProgramRating] = useState(0);
-  const videoInputRef = useRef<HTMLInputElement>(null);
+  const [tempReflection, setTempReflection] = useState('');
+  const [tempProgramFeedback, setTempProgramFeedback] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const active = milestones.find(m => m.id === activeId) || milestones[0];
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const attachmentsInputRef = useRef<HTMLInputElement>(null);
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+
+  const active = milestones.find((m) => m.id === activeId) || milestones[0];
+
+  const effectiveUser = authedUser ?? user ?? null;
+
+  useEffect(() => {
+    if (!effectiveUser) return;
+
+    const unsubs = BASE_MILESTONES.map((m) => {
+      const ref = doc(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones', m.id);
+      return onSnapshot(ref, (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as Partial<FeedbackMilestone>;
+        setMilestones((prev) =>
+          prev.map((x) =>
+            x.id !== m.id
+              ? x
+              : {
+                  ...x,
+                  status: (data.status as FeedbackMilestone['status']) ?? x.status,
+                  internReflection: typeof data.internReflection === 'string' ? data.internReflection : x.internReflection,
+                  internProgramFeedback:
+                    typeof data.internProgramFeedback === 'string' ? data.internProgramFeedback : x.internProgramFeedback,
+                  programRating: typeof data.programRating === 'number' ? data.programRating : x.programRating,
+                  supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : x.supervisorScore,
+                  supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : x.supervisorComments,
+                  submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
+                  videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
+                  videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
+                  attachments: Array.isArray(data.attachments) ? (data.attachments as any) : x.attachments,
+                },
+          ),
+        );
+      });
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [BASE_MILESTONES, effectiveUser]);
+
+  useEffect(() => {
+    if (!active) return;
+    setTempProgramRating(active.programRating ?? 0);
+    setTempReflection(active.internReflection ?? '');
+    setTempProgramFeedback(active.internProgramFeedback ?? '');
+    setPendingVideo(null);
+    setPendingAttachments([]);
+    setSubmitError(null);
+  }, [activeId]);
+
+  const openStoragePath = async (path: string) => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
+    window.open(url, '_blank');
+  };
+
+  const handleSubmit = async () => {
+    if (!effectiveUser) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const milestoneId = activeId;
+      const ref = doc(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones', milestoneId);
+
+      let nextVideoStoragePath: string | undefined;
+      let nextVideoFileName: string | undefined;
+      if (pendingVideo) {
+        const p = `users/${effectiveUser.id}/feedbackMilestones/${milestoneId}/video/${Date.now()}_${pendingVideo.name}`;
+        await uploadBytes(storageRef(firebaseStorage, p), pendingVideo);
+        nextVideoStoragePath = p;
+        nextVideoFileName = pendingVideo.name;
+      }
+
+      let nextAttachments: Array<{ fileName: string; storagePath: string }> = Array.isArray(active.attachments)
+        ? [...active.attachments]
+        : [];
+      if (pendingAttachments.length > 0) {
+        for (const f of pendingAttachments) {
+          const p = `users/${effectiveUser.id}/feedbackMilestones/${milestoneId}/attachments/${Date.now()}_${f.name}`;
+          await uploadBytes(storageRef(firebaseStorage, p), f);
+          nextAttachments = [...nextAttachments, { fileName: f.name, storagePath: p }];
+        }
+      }
+
+      const today = new Date();
+      const submissionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      await setDoc(
+        ref,
+        {
+          id: milestoneId,
+          status: 'submitted',
+          internReflection: tempReflection,
+          internProgramFeedback: tempProgramFeedback,
+          programRating: tempProgramRating,
+          submissionDate,
+          attachments: nextAttachments,
+          ...(nextVideoStoragePath ? { videoStoragePath: nextVideoStoragePath } : {}),
+          ...(nextVideoFileName ? { videoFileName: nextVideoFileName } : {}),
+          submittedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      if (videoInputRef.current) videoInputRef.current.value = '';
+      if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
+      setPendingVideo(null);
+      setPendingAttachments([]);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setSubmitError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Submit failed'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="h-full w-full flex flex-col bg-[#F8FAFC] overflow-hidden relative">
@@ -150,27 +316,53 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t.milestoneHeader}</p>
                     </div>
                   </div>
-                  {active.status === 'pending' && (
-                    <button className="px-10 py-4 bg-blue-600 text-white rounded-full font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all">
-                      {t.submitMilestone}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => void handleSubmit()}
+                    className="px-10 py-4 bg-blue-600 text-white rounded-full font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={isSubmitting || !effectiveUser}
+                  >
+                    {isSubmitting ? (lang === 'TH' ? 'กำลังส่ง...' : 'Submitting...') : t.submitMilestone}
+                  </button>
                 </div>
+
+                {submitError && (
+                  <div className="mb-8 bg-rose-50 border border-rose-100 text-rose-700 rounded-[2rem] px-6 py-4 text-sm font-bold relative z-10">
+                    {submitError}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
                    <div className="space-y-4">
                       <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Video size={14}/> {t.videoReflect}</h4>
-                      {active.videoUrl ? (
-                         <div className="relative aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden group/v">
-                            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 group-hover/v:bg-slate-900/20 transition-all">
-                               <Play size={40} className="text-white fill-white" />
-                            </div>
-                         </div>
+                      {active.videoStoragePath ? (
+                        <div
+                          onClick={() => void openStoragePath(active.videoStoragePath!)}
+                          className="relative aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden group/v cursor-pointer"
+                        >
+                          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 group-hover/v:bg-slate-900/20 transition-all">
+                            <Play size={40} className="text-white fill-white" />
+                          </div>
+                          <div className="absolute bottom-5 left-6 right-6 flex items-center justify-between text-white/70 text-[10px] font-black uppercase tracking-widest">
+                            <span className="truncate">{active.videoFileName || 'Video'}</span>
+                            <span className="flex items-center gap-2">
+                              <ExternalLink size={14} /> OPEN
+                            </span>
+                          </div>
+                        </div>
                       ) : (
-                        <div onClick={() => videoInputRef.current?.click()} className="aspect-video rounded-[2.5rem] border-4 border-dashed border-slate-100 bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:border-blue-200 transition-all">
-                           <input type="file" ref={videoInputRef} className="hidden" />
-                           <Video size={32} className="text-slate-300 mb-2"/>
-                           <p className="text-[10px] font-black text-slate-400 uppercase">{t.uploadVideo}</p>
+                        <div
+                          onClick={() => videoInputRef.current?.click()}
+                          className="aspect-video rounded-[2.5rem] border-4 border-dashed border-slate-100 bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:border-blue-200 transition-all"
+                        >
+                          <input
+                            type="file"
+                            accept="video/*"
+                            ref={videoInputRef}
+                            className="hidden"
+                            onChange={(e) => setPendingVideo(e.target.files?.[0] ?? null)}
+                          />
+                          <Video size={32} className="text-slate-300 mb-2" />
+                          <p className="text-[10px] font-black text-slate-400 uppercase">{pendingVideo ? pendingVideo.name : t.uploadVideo}</p>
                         </div>
                       )}
                    </div>
@@ -180,37 +372,87 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                          {[1,2,3,4,5].map(star => (
                            <button 
                             key={star} 
-                            disabled={active.status !== 'pending'}
                             onClick={() => setTempProgramRating(star)}
                             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
-                              (active.programRating || tempProgramRating) >= star 
+                              tempProgramRating >= star 
                                 ? 'bg-amber-500 text-white shadow-lg' 
                                 : 'bg-slate-50 text-slate-300 border border-slate-100'
                             }`}
                            >
-                             <Star size={20} fill={(active.programRating || tempProgramRating) >= star ? 'currentColor' : 'none'} />
+                             <Star size={20} fill={tempProgramRating >= star ? 'currentColor' : 'none'} />
                            </button>
                          ))}
                       </div>
                    </div>
                 </div>
 
+                <div className="mb-12">
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><FileText size={14}/> {lang === 'TH' ? 'แนบไฟล์' : 'Attachments'}</h4>
+                  <div className="mt-4 flex items-center gap-4 flex-wrap">
+                    <button
+                      onClick={() => attachmentsInputRef.current?.click()}
+                      className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2"
+                    >
+                      <Upload size={16} /> {lang === 'TH' ? 'เลือกไฟล์' : 'Choose Files'}
+                    </button>
+                    <input
+                      ref={attachmentsInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => setPendingAttachments(Array.from(e.target.files ?? []))}
+                    />
+                    {pendingAttachments.length > 0 && (
+                      <div className="text-[11px] font-black text-slate-500">
+                        {pendingAttachments.length} {lang === 'TH' ? 'ไฟล์ที่เลือก' : 'files selected'}
+                      </div>
+                    )}
+                  </div>
+
+                  {Array.isArray(active.attachments) && active.attachments.length > 0 && (
+                    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {active.attachments.map((a, idx) => (
+                        <button
+                          key={`${a.storagePath}-${idx}`}
+                          onClick={() => void openStoragePath(a.storagePath)}
+                          className="p-5 bg-slate-50 border border-slate-100 rounded-[2rem] flex items-center justify-between gap-4 hover:bg-white hover:border-blue-200 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 border border-slate-100 flex-shrink-0">
+                              <FileText size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">ATTACHMENT</p>
+                              <p className="text-[12px] font-black truncate text-slate-800">{a.fileName}</p>
+                            </div>
+                          </div>
+                          <div className="text-blue-600 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
+                            <ExternalLink size={14} /> OPEN
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-10">
                    <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100">
                       <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><User size={14}/> {t.internReflectionLabel}</h4>
-                      {active.status === 'pending' ? (
-                        <textarea className="w-full bg-white border border-slate-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]" placeholder={t.placeholderReflect} />
-                      ) : (
-                        <p className="text-sm text-slate-600 leading-relaxed font-medium italic">"{active.internReflection}"</p>
-                      )}
+                      <textarea
+                        className="w-full bg-white border border-slate-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]"
+                        placeholder={t.placeholderReflect}
+                        value={tempReflection}
+                        onChange={(e) => setTempReflection(e.target.value)}
+                      />
                    </div>
                    <div className="p-8 bg-blue-50/30 rounded-[2rem] border border-blue-100/50">
                       <h4 className="text-[11px] font-black text-blue-700 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><MessageSquare size={14}/> {t.internProgramLabel}</h4>
-                      {active.status === 'pending' ? (
-                        <textarea className="w-full bg-white border border-blue-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]" placeholder={t.placeholderProgram} />
-                      ) : (
-                        <p className="text-sm text-slate-600 leading-relaxed font-medium italic">"{active.internProgramFeedback}"</p>
-                      )}
+                      <textarea
+                        className="w-full bg-white border border-blue-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]"
+                        placeholder={t.placeholderProgram}
+                        value={tempProgramFeedback}
+                        onChange={(e) => setTempProgramFeedback(e.target.value)}
+                      />
                    </div>
                 </div>
               </div>
