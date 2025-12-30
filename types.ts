@@ -25,6 +25,8 @@ export interface UserProfile {
   lineId?: string;
   position?: string;
   internPeriod?: string;
+  supervisorId?: string;
+  supervisorName?: string;
   assignedInterns?: string[]; // IDs of interns (for Supervisors)
   isDualRole?: boolean; // Can act as both Admin and Sup
 }

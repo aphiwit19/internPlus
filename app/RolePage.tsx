@@ -30,13 +30,15 @@ import AdminInternManagementPage from '@/pages/admin/InternManagementPage';
 import AdminInvitationsPage from '@/pages/admin/InvitationsPage';
 import AdminSystemSettingsPage from '@/pages/admin/SystemSettingsPage';
 import AdminLeaveRequestPage from '@/pages/admin/LeaveRequestPage';
+import AdminCertificatesPage from '@/pages/admin/CertificatesPage';
 
 import SupervisorDashboardPage from '@/pages/supervisor/DashboardPage';
 import SupervisorInternManagementPage from '@/pages/supervisor/InternManagementPage';
 import SupervisorLeaveRequestPage from '@/pages/supervisor/LeaveRequestPage';
- import SupervisorProfilePage from '@/pages/supervisor/ProfilePage';
+import SupervisorProfilePage from '@/pages/supervisor/ProfilePage';
+import SupervisorCertificatesPage from '@/pages/supervisor/CertificatesPage';
 
- import AdminProfilePage from '@/pages/admin/ProfilePage';
+import AdminProfilePage from '@/pages/admin/ProfilePage';
 
 export default function RolePage() {
   const navigate = useNavigate();
@@ -110,6 +112,8 @@ export default function RolePage() {
         return <SupervisorInternManagementPage user={user} onNavigate={onNavigate} lang={lang} />;
       case 'profile':
         return <SupervisorProfilePage user={user} lang={lang} />;
+      case 'certificates':
+        return <SupervisorCertificatesPage lang={lang} user={user} />;
       case 'leave':
         return <SupervisorLeaveRequestPage lang={lang} role={roleFromRoute} />;
       default:
@@ -125,6 +129,8 @@ export default function RolePage() {
         return <AdminInternManagementPage />;
       case 'profile':
         return <AdminProfilePage user={user} lang={lang} />;
+      case 'certificates':
+        return <AdminCertificatesPage lang={lang} />;
       case 'leave':
         return <AdminLeaveRequestPage lang={lang} role={roleFromRoute} />;
       case 'invitations':

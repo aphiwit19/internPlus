@@ -31,6 +31,8 @@ import {
   CalendarDays
 } from 'lucide-react';
 
+import { useNavigate } from 'react-router-dom';
+
 import { arrayRemove, arrayUnion, collection, doc, onSnapshot, query, updateDoc } from 'firebase/firestore';
 
 import { AdminTab } from './components/AdminDashboardTabs';
@@ -93,6 +95,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
 
   // Modal States
@@ -303,7 +306,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
              <TabBtn active={activeTab === 'roster'} onClick={() => setActiveTab('roster')} icon={<Users size={16}/>} label="Roster" />
              <TabBtn active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} icon={<Clock size={16}/>} label="Attendance" />
              <TabBtn active={activeTab === 'absences'} onClick={() => setActiveTab('absences')} icon={<UserX size={16}/>} label="Absences" />
-             <TabBtn active={activeTab === 'certificates'} onClick={() => setActiveTab('certificates')} icon={<Award size={16}/>} label="Certs" />
+             <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16}/>} label="Certs" />
              <TabBtn active={activeTab === 'allowances'} onClick={() => setActiveTab('allowances')} icon={<CreditCard size={16}/>} label="Payouts" />
           </div>
         </div>

@@ -45,6 +45,8 @@ export async function getUserProfileByUid(uid: string): Promise<UserProfile | nu
     lineId: data.lineId,
     position: data.position,
     internPeriod: data.internPeriod,
+    supervisorId: (data as any).supervisorId,
+    supervisorName: (data as any).supervisorName,
     assignedInterns: data.assignedInterns,
     isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
   };
@@ -78,6 +80,8 @@ export function subscribeUserProfileByUid(
         lineId: data.lineId,
         position: data.position,
         internPeriod: data.internPeriod,
+        supervisorId: (data as any).supervisorId,
+        supervisorName: (data as any).supervisorName,
         assignedInterns: data.assignedInterns,
         isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
       });
