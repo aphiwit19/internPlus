@@ -33,6 +33,7 @@ export function isPageId(value: string): value is PageId {
     value === 'activities' ||
     value === 'feedback' ||
     value === 'evaluation' ||
+    value === 'university-evaluation' ||
     value === 'self-evaluation' ||
     value === 'certificates' ||
     value === 'offboarding' ||

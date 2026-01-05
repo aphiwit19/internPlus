@@ -10,6 +10,7 @@ export type PageId =
   | 'activities'
   | 'feedback'
   | 'evaluation'
+  | 'university-evaluation'
   | 'self-evaluation'
   | 'certificates'
   | 'offboarding'
