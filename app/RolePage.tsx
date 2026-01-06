@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
 import { PageId } from '@/pageTypes';
 import { NAV_ITEMS } from '@/constants';
-import { UserRole } from '@/types';
+import { PostProgramAccessLevel, UserRole } from '@/types';
 
 import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
@@ -63,6 +63,52 @@ export default function RolePage() {
   const allowed = NAV_ITEMS.some((it) => it.id === resolvedPageId && it.roles.includes(roleFromRoute));
   if (!allowed) {
     return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
+  }
+
+  if (roleFromRoute === 'INTERN' && user.lifecycleStatus === 'WITHDRAWN') {
+    const level: PostProgramAccessLevel = user.postProgramAccessLevel ?? 'EXTENDED';
+
+    if (level === 'REVOCATION') {
+      return (
+        <div className="h-full w-full flex items-center justify-center p-10 bg-slate-50">
+          <div className="max-w-xl w-full bg-white border border-slate-100 rounded-[2.5rem] p-10 shadow-sm text-center">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+              {lang === 'EN' ? 'Access Revoked' : 'ถูกระงับการเข้าถึง'}
+            </div>
+            <div className="text-2xl font-black text-slate-900 mb-4">
+              {lang === 'EN' ? 'Your account access has been revoked.' : 'บัญชีของคุณถูกระงับการเข้าถึงแล้ว'}
+            </div>
+            <div className="text-sm text-slate-500 font-medium">
+              {lang === 'EN' ? 'Please contact HR for further assistance.' : 'กรุณาติดต่อฝ่ายบุคคลเพื่อขอความช่วยเหลือเพิ่มเติม'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (level === 'LIMITED') {
+      const limitedAllowed: PageId[] = ['dashboard', 'profile', 'certificates'];
+      if (!limitedAllowed.includes(resolvedPageId)) {
+        return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
+      }
+    }
+
+    if (level === 'EXTENDED') {
+      const extendedAllowed: PageId[] = [
+        'dashboard',
+        'profile',
+        'documents',
+        'training',
+        'activities',
+        'feedback',
+        'evaluation',
+        'self-evaluation',
+        'certificates',
+      ];
+      if (!extendedAllowed.includes(resolvedPageId)) {
+        return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
+      }
+    }
   }
 
   const onNavigate = (id: PageId) => navigate(pageIdToPath(roleFromRoute, id));

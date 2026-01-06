@@ -4,6 +4,15 @@ import { PageId } from './pageTypes';
 export type UserRole = 'INTERN' | 'SUPERVISOR' | 'HR_ADMIN';
 export type Language = 'EN' | 'TH';
 
+export type LifecycleStatus =
+  | 'ACTIVE'
+  | 'WITHDRAWAL_REQUESTED'
+  | 'WITHDRAWN'
+  | 'COMPLETION_REPORTED'
+  | 'COMPLETED';
+
+export type PostProgramAccessLevel = 'REVOCATION' | 'LIMITED' | 'EXTENDED';
+
 export interface PerformanceMetrics {
   technical: number;
   communication: number;
@@ -29,6 +38,13 @@ export interface UserProfile {
   supervisorName?: string;
   assignedInterns?: string[]; // IDs of interns (for Supervisors)
   isDualRole?: boolean; // Can act as both Admin and Sup
+  lifecycleStatus?: LifecycleStatus;
+  withdrawalRequestedAt?: unknown;
+  completionReportedAt?: unknown;
+  withdrawalReason?: string;
+  withdrawalDetail?: string;
+  postProgramAccessLevel?: PostProgramAccessLevel;
+  postProgramRetentionPeriod?: string;
 }
 
 export interface NavItem {

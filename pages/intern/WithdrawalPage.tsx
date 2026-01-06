@@ -16,12 +16,17 @@ import {
   Info
 } from 'lucide-react';
 import { Language } from '@/types';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { firestoreDb } from '@/firebase';
+import { useAppContext } from '@/app/AppContext';
 
 interface WithdrawalPageProps {
   lang: Language;
 }
 
 const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
+  const { user } = useAppContext();
+
   const t = {
     EN: {
       title: "Withdrawal Program",
@@ -91,6 +96,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
   const [isDataPurgeAgreed, setIsDataPurgeAgreed] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -137,9 +143,25 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!user) return;
     if (!reason || !isAgreed || !isDataPurgeAgreed || !hasSigned) return;
-    setIsSubmitted(true);
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        lifecycleStatus: 'WITHDRAWAL_REQUESTED',
+        withdrawalRequestedAt: serverTimestamp(),
+        withdrawalReason: reason,
+        withdrawalDetail: detailedReason,
+        updatedAt: serverTimestamp(),
+      });
+      setIsSubmitted(true);
+    } catch {
+      alert(lang === 'EN' ? 'Failed to submit withdrawal request.' : 'ไม่สามารถส่งคำขอถอนตัวได้');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
@@ -217,7 +239,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
                   {hasSigned && <button onClick={clearSignature} className="absolute top-6 right-6 p-3 bg-white/80 rounded-xl text-slate-400 hover:text-rose-500"><Eraser size={24} /></button>}
                 </div>
               </div>
-              <button onClick={handleSubmit} disabled={!reason || !isAgreed || !isDataPurgeAgreed || !hasSigned} className="w-full py-5 bg-slate-900 text-white rounded-full font-black text-lg hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-3">{t.submitBtn}</button>
+              <button onClick={handleSubmit} disabled={!user || isSubmitting || !reason || !isAgreed || !isDataPurgeAgreed || !hasSigned} className="w-full py-5 bg-slate-900 text-white rounded-full font-black text-lg hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmitting ? (lang === 'EN' ? 'Submitting...' : 'กำลังส่ง...') : t.submitBtn}</button>
             </section>
             <div className="p-8 bg-slate-100 rounded-[2.5rem] flex gap-5"><Lock size={20} className="text-slate-400 shrink-0" /><p className="text-[11px] text-slate-500 font-bold uppercase">{t.recordNote}</p></div>
           </div>

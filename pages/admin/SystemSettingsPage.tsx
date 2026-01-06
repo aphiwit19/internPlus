@@ -53,16 +53,41 @@ import {
   Circle
 } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
-import { Language } from '@/types';
+import { Language, PostProgramAccessLevel } from '@/types';
 import { PageId } from '@/pageTypes';
 import { firestoreDb } from '@/firebase';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
 
 type SettingsTab = 'onboarding' | 'policy' | 'allowance' | 'access';
 
 type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
+
+type WithdrawalUserRow = {
+  id: string;
+  name: string;
+  avatar: string;
+  email?: string;
+  withdrawalReason?: string;
+  withdrawalDetail?: string;
+  postProgramAccessLevel?: PostProgramAccessLevel;
+  postProgramRetentionPeriod?: string;
+};
+
+type PendingUserOperation =
+  | {
+      type: 'APPLY_WITHDRAWAL';
+      userId: string;
+      accessLevel: PostProgramAccessLevel;
+      retentionPeriod: string;
+      name: string;
+      avatar: string;
+      email?: string;
+      withdrawalReason?: string;
+      withdrawalDetail?: string;
+    }
+  ;
 
 interface RoadmapStep {
   id: string;
@@ -172,16 +197,90 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
-  const [whitelist] = useState([
-    { id: 'u-1', name: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop' }
-  ]);
+  const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
+  const [pendingUserOperations, setPendingUserOperations] = useState<Record<string, PendingUserOperation>>({});
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWAL_REQUESTED'));
+    return onSnapshot(q, (snap) => {
+      setWithdrawalRequests(
+        snap.docs.map((d) => {
+          const data = d.data() as {
+            name?: string;
+            avatar?: string;
+            email?: string;
+            withdrawalReason?: string;
+            withdrawalDetail?: string;
+          };
+          return {
+            id: d.id,
+            name: data.name || 'Unknown',
+            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            email: data.email,
+            withdrawalReason: data.withdrawalReason,
+            withdrawalDetail: data.withdrawalDetail,
+          };
+        }),
+      );
+    });
+  }, []);
+
+  const stageSelectWithdrawalUser = (u: WithdrawalUserRow) => {
+    setPendingUserOperations((prev) => ({
+      ...prev,
+      [u.id]: {
+        type: 'APPLY_WITHDRAWAL',
+        userId: u.id,
+        accessLevel: accessLevel as PostProgramAccessLevel,
+        retentionPeriod,
+        name: u.name,
+        avatar: u.avatar,
+        email: u.email,
+        withdrawalReason: u.withdrawalReason,
+        withdrawalDetail: u.withdrawalDetail,
+      },
+    }));
+  };
+
+  const updatePendingApply = (userId: string, updates: Partial<Pick<PendingUserOperation, 'accessLevel' | 'retentionPeriod'>>) => {
+    setPendingUserOperations((prev) => {
+      const existing = prev[userId];
+      if (!existing || existing.type !== 'APPLY_WITHDRAWAL') return prev;
+      return {
+        ...prev,
+        [userId]: {
+          ...existing,
+          ...updates,
+        },
+      };
+    });
+  };
+
+  const selectedUserIds = new Set(
+    (Object.values(pendingUserOperations) as PendingUserOperation[])
+      .filter((op) => op.type === 'APPLY_WITHDRAWAL')
+      .map((op) => op.userId),
+  );
+
+  const clearPendingUserOperation = (userId: string) => {
+    setPendingUserOperations((prev) => {
+      if (!prev[userId]) return prev;
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  };
+
+
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const orderedSteps = [...onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      const batch = writeBatch(firestoreDb);
+
       const ref = doc(firestoreDb, 'config', 'systemSettings');
-      await setDoc(
+      batch.set(
         ref,
         {
           onboardingSteps: orderedSteps,
@@ -189,7 +288,23 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         },
         { merge: true },
       );
+
+      for (const op of Object.values(pendingUserOperations) as PendingUserOperation[]) {
+        const userRef = doc(firestoreDb, 'users', op.userId);
+        if (op.type === 'APPLY_WITHDRAWAL') {
+          batch.update(userRef, {
+            lifecycleStatus: 'WITHDRAWN',
+            postProgramAccessLevel: op.accessLevel,
+            postProgramRetentionPeriod: op.retentionPeriod,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+
       setOnboardingSteps(orderedSteps);
+      setPendingUserOperations({});
       alert(lang === 'EN' ? 'System configuration deployed successfully.' : 'ปรับใช้การตั้งค่าระบบเรียบร้อยแล้ว');
     } catch {
       alert(lang === 'EN' ? 'Failed to deploy config.' : 'ไม่สามารถปรับใช้การตั้งค่าได้');
@@ -751,6 +866,50 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                              </div>
                           </div>
                        </div>
+
+                       <div className="pt-8 border-t border-slate-100">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">WITHDRAWAL REQUESTS</div>
+                          <div className="space-y-3">
+                            {withdrawalRequests.length === 0 ? (
+                              <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                <Users size={28} className="text-slate-200" />
+                                <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No withdrawal requests' : 'ยังไม่มีคำขอถอนตัว'}</p>
+                              </div>
+                            ) : (
+                              withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).map((u) => (
+                                (() => {
+                                  const pending = pendingUserOperations[u.id];
+                                  const isSelected = pending?.type === 'APPLY_WITHDRAWAL';
+                                  return (
+                                <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col md:flex-row md:items-center gap-4">
+                                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || '-'}</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      onClick={() => stageSelectWithdrawalUser(u)}
+                                      disabled={isSelected}
+                                      className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                    >
+                                      {isSelected ? (lang === 'EN' ? 'Selected' : 'เลือกแล้ว') : (lang === 'EN' ? 'Select' : 'เลือก')}
+                                    </button>
+                                  </div>
+
+                                  {u.withdrawalDetail && (
+                                    <div className="md:col-span-2 text-[11px] text-slate-500 font-medium italic pt-1 break-words">{u.withdrawalDetail}</div>
+                                  )}
+                                </div>
+                                  );
+                                })()
+                              ))
+                            )}
+                          </div>
+                       </div>
                     </div>
                   </section>
                </div>
@@ -760,28 +919,68 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                   <div className="bg-white border border-slate-100 rounded-[3.5rem] p-10 flex flex-col h-full shadow-sm">
                      <div className="flex items-center gap-3 mb-8">
                         <Plus size={20} className="text-slate-400" />
-                        <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">EXTENDED ACCESS LIST</h3>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">POST-PROGRAM ACCESS LIST</h3>
                      </div>
                      <p className="text-slate-400 text-xs leading-relaxed font-medium mb-10">
-                        Whitelisted interns who retain system access regardless of global settings (e.g., Alums or Freelancers).
+                        {lang === 'EN' ? 'Selected withdrawal requests waiting for deploy.' : 'รายการที่ถูกเลือกเพื่อกำหนดสิทธิ์ (รอกด Deploy)'}
                      </p>
 
                      <div className="space-y-3 mb-10 flex-1">
-                        {whitelist.map(user => (
-                          <div key={user.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between group hover:bg-white hover:border-blue-100 transition-all">
-                             <div className="flex items-center gap-4">
-                                <img src={user.avatar} className="w-10 h-10 rounded-xl object-cover ring-2 ring-white" alt="" />
-                                <span className="text-sm font-black text-slate-700">{user.name}</span>
-                             </div>
-                             <button className="p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                                <Trash2 size={16} />
-                             </button>
+                        {(Object.values(pendingUserOperations) as PendingUserOperation[]).filter((op) => op.type === 'APPLY_WITHDRAWAL').length === 0 ? (
+                          <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                            <History size={32} className="text-slate-200" />
+                            <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No selected users yet' : 'ยังไม่มีรายชื่อที่ถูกเลือก'}</p>
                           </div>
-                        ))}
+                        ) : (
+                          (Object.values(pendingUserOperations) as PendingUserOperation[])
+                            .filter((op) => op.type === 'APPLY_WITHDRAWAL')
+                            .map((op) => (
+                              <div key={op.userId} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-3 hover:bg-white hover:border-blue-100 transition-all">
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-4 min-w-0">
+                                    <img src={op.avatar} className="w-10 h-10 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-black text-slate-700 truncate">{op.name}</div>
+                                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{op.withdrawalReason || op.email || op.userId}</div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {op.withdrawalDetail && (
+                                  <div className="text-[10px] text-slate-500 font-medium italic break-words">{op.withdrawalDetail}</div>
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-700"
+                                    value={op.accessLevel}
+                                    onChange={(e) => updatePendingApply(op.userId, { accessLevel: e.target.value as PostProgramAccessLevel })}
+                                  >
+                                    <option value="REVOCATION">REVOCATION</option>
+                                    <option value="LIMITED">LIMITED</option>
+                                    <option value="EXTENDED">EXTENDED</option>
+                                  </select>
+
+                                  <input
+                                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black tracking-widest text-slate-700"
+                                    value={op.retentionPeriod}
+                                    onChange={(e) => updatePendingApply(op.userId, { retentionPeriod: e.target.value })}
+                                  />
+
+                                  <button
+                                    onClick={() => clearPendingUserOperation(op.userId)}
+                                    className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all"
+                                  >
+                                    {lang === 'EN' ? 'Delete' : 'ลบ'}
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                        )}
                      </div>
 
-                     <button className="w-full py-5 border-2 border-dashed border-blue-200 text-blue-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 transition-all">
-                        ADD WHITELIST INTERN
+                     <button className="w-full py-5 border-2 border-dashed border-blue-200 text-blue-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 transition-all" disabled>
+                        {lang === 'EN' ? 'ADD USER (COMING SOON)' : 'เพิ่มรายชื่อ (เร็วๆ นี้)'}
                      </button>
                   </div>
                </div>

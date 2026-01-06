@@ -1,4 +1,4 @@
-import { UserProfile, UserRole } from '@/types';
+import { LifecycleStatus, PostProgramAccessLevel, UserProfile, UserRole } from '@/types';
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
@@ -16,6 +16,13 @@ type UserProfileDoc = Omit<UserProfile, 'id'> & {
   createdAt?: unknown;
   updatedAt?: unknown;
   role?: UserRole;
+  lifecycleStatus?: LifecycleStatus;
+  withdrawalRequestedAt?: unknown;
+  completionReportedAt?: unknown;
+  withdrawalReason?: string;
+  withdrawalDetail?: string;
+  postProgramAccessLevel?: PostProgramAccessLevel;
+  postProgramRetentionPeriod?: string;
 };
 
 function normalizeRoles(data: { roles?: UserRole[]; role?: UserRole; isDualRole?: boolean } | null | undefined): UserRole[] {
@@ -49,6 +56,13 @@ export async function getUserProfileByUid(uid: string): Promise<UserProfile | nu
     supervisorName: (data as any).supervisorName,
     assignedInterns: data.assignedInterns,
     isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
+    lifecycleStatus: data.lifecycleStatus,
+    withdrawalRequestedAt: data.withdrawalRequestedAt,
+    completionReportedAt: data.completionReportedAt,
+    withdrawalReason: data.withdrawalReason,
+    withdrawalDetail: data.withdrawalDetail,
+    postProgramAccessLevel: data.postProgramAccessLevel,
+    postProgramRetentionPeriod: data.postProgramRetentionPeriod,
   };
 }
 
@@ -84,6 +98,13 @@ export function subscribeUserProfileByUid(
         supervisorName: (data as any).supervisorName,
         assignedInterns: data.assignedInterns,
         isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : data.isDualRole,
+        lifecycleStatus: data.lifecycleStatus,
+        withdrawalRequestedAt: data.withdrawalRequestedAt,
+        completionReportedAt: data.completionReportedAt,
+        withdrawalReason: data.withdrawalReason,
+        withdrawalDetail: data.withdrawalDetail,
+        postProgramAccessLevel: data.postProgramAccessLevel,
+        postProgramRetentionPeriod: data.postProgramRetentionPeriod,
       });
     },
     (err) => {
@@ -125,6 +146,7 @@ export async function createUserProfileIfMissing(input: CreateUserProfileInput):
     position: 'Intern',
     internPeriod: 'TBD',
     isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN') ? true : false,
+    lifecycleStatus: 'ACTIVE',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };

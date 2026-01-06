@@ -1,7 +1,7 @@
 import React from 'react';
 import { NAV_ITEMS } from '@/constants';
 import { Briefcase, X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-react';
-import { UserProfile, Language, UserRole } from '@/types';
+import { UserProfile, Language, UserRole, PostProgramAccessLevel } from '@/types';
 import { PageId } from '@/pageTypes';
 
 interface SidebarProps {
@@ -28,7 +28,29 @@ const Sidebar: React.FC<SidebarProps> = ({
   lang 
 }) => {
   // Use activeRole instead of user.role for filtering navigation
-  const filteredNavItems = NAV_ITEMS.filter(item => item.roles.includes(activeRole));
+  let filteredNavItems = NAV_ITEMS.filter(item => item.roles.includes(activeRole));
+
+  if (activeRole === 'INTERN' && user.lifecycleStatus === 'WITHDRAWN') {
+    const level: PostProgramAccessLevel = user.postProgramAccessLevel ?? 'EXTENDED';
+    if (level === 'REVOCATION') {
+      filteredNavItems = [];
+    } else if (level === 'LIMITED') {
+      filteredNavItems = filteredNavItems.filter((item) => item.id === 'dashboard' || item.id === 'profile' || item.id === 'certificates');
+    } else {
+      const extendedAllowed = new Set([
+        'dashboard',
+        'profile',
+        'documents',
+        'training',
+        'activities',
+        'feedback',
+        'evaluation',
+        'self-evaluation',
+        'certificates',
+      ]);
+      filteredNavItems = filteredNavItems.filter((item) => extendedAllowed.has(item.id));
+    }
+  }
 
   const translations: Record<string, string> = {
     'dashboard': lang === 'TH' ? 'แผงควบคุม' : 'Dashboard',
