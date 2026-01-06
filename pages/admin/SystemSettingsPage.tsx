@@ -87,7 +87,24 @@ type PendingUserOperation =
       withdrawalReason?: string;
       withdrawalDetail?: string;
     }
-  ;
+  | {
+      type: 'UPDATE_POST_PROGRAM';
+      userId: string;
+      accessLevel?: PostProgramAccessLevel;
+      retentionPeriod?: string;
+      name: string;
+      avatar: string;
+      email?: string;
+      withdrawalReason?: string;
+      withdrawalDetail?: string;
+    }
+  | {
+      type: 'RESTORE_ACTIVE';
+      userId: string;
+      name: string;
+      avatar: string;
+      email?: string;
+    };
 
 interface RoadmapStep {
   id: string;
@@ -198,6 +215,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
   const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
+  const [withdrawnUsers, setWithdrawnUsers] = useState<WithdrawalUserRow[]>([]);
+  const [withdrawnAccessOverrides, setWithdrawnAccessOverrides] = useState<Record<string, PostProgramAccessLevel>>({});
+  const [withdrawnRetentionOverrides, setWithdrawnRetentionOverrides] = useState<Record<string, string>>({});
+  const [withdrawnDirty, setWithdrawnDirty] = useState<Record<string, boolean>>({});
   const [pendingUserOperations, setPendingUserOperations] = useState<Record<string, PendingUserOperation>>({});
 
   useEffect(() => {
@@ -225,6 +246,35 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     });
   }, []);
 
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWN'));
+    return onSnapshot(q, (snap) => {
+      setWithdrawnUsers(
+        snap.docs.map((d) => {
+          const data = d.data() as {
+            name?: string;
+            avatar?: string;
+            email?: string;
+            withdrawalReason?: string;
+            withdrawalDetail?: string;
+            postProgramAccessLevel?: PostProgramAccessLevel;
+            postProgramRetentionPeriod?: string;
+          };
+          return {
+            id: d.id,
+            name: data.name || 'Unknown',
+            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            email: data.email,
+            withdrawalReason: data.withdrawalReason,
+            withdrawalDetail: data.withdrawalDetail,
+            postProgramAccessLevel: data.postProgramAccessLevel,
+            postProgramRetentionPeriod: data.postProgramRetentionPeriod,
+          };
+        }),
+      );
+    });
+  }, []);
+
   const stageSelectWithdrawalUser = (u: WithdrawalUserRow) => {
     setPendingUserOperations((prev) => ({
       ...prev,
@@ -242,7 +292,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     }));
   };
 
-  const updatePendingApply = (userId: string, updates: Partial<Pick<PendingUserOperation, 'accessLevel' | 'retentionPeriod'>>) => {
+  const updatePendingApply = (
+    userId: string,
+    updates: Partial<Pick<Extract<PendingUserOperation, { type: 'APPLY_WITHDRAWAL' }>, 'accessLevel' | 'retentionPeriod'>>,
+  ) => {
     setPendingUserOperations((prev) => {
       const existing = prev[userId];
       if (!existing || existing.type !== 'APPLY_WITHDRAWAL') return prev;
@@ -262,6 +315,53 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       .map((op) => op.userId),
   );
 
+  const stageUpdateWithdrawnUser = (u: WithdrawalUserRow) => {
+    setPendingUserOperations((prev) => ({
+      ...prev,
+      [u.id]: {
+        type: 'UPDATE_POST_PROGRAM',
+        userId: u.id,
+        accessLevel: u.postProgramAccessLevel,
+        retentionPeriod: u.postProgramRetentionPeriod,
+        name: u.name,
+        avatar: u.avatar,
+        email: u.email,
+        withdrawalReason: u.withdrawalReason,
+        withdrawalDetail: u.withdrawalDetail,
+      },
+    }));
+  };
+
+  const updatePendingUpdate = (
+    userId: string,
+    updates: Partial<Pick<Extract<PendingUserOperation, { type: 'UPDATE_POST_PROGRAM' }>, 'accessLevel' | 'retentionPeriod'>>,
+  ) => {
+    setPendingUserOperations((prev) => {
+      const existing = prev[userId];
+      if (!existing || existing.type !== 'UPDATE_POST_PROGRAM') return prev;
+      return {
+        ...prev,
+        [userId]: {
+          ...existing,
+          ...updates,
+        },
+      };
+    });
+  };
+
+  const stageRestoreWithdrawnUser = (u: WithdrawalUserRow) => {
+    setPendingUserOperations((prev) => ({
+      ...prev,
+      [u.id]: {
+        type: 'RESTORE_ACTIVE',
+        userId: u.id,
+        name: u.name,
+        avatar: u.avatar,
+        email: u.email,
+      },
+    }));
+  };
+
   const clearPendingUserOperation = (userId: string) => {
     setPendingUserOperations((prev) => {
       if (!prev[userId]) return prev;
@@ -269,6 +369,67 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       delete next[userId];
       return next;
     });
+  };
+
+  const handleCancelWithdrawnEdit = (userId: string) => {
+    if (
+      withdrawnDirty[userId] === true &&
+      !window.confirm(lang === 'EN' ? 'Discard unsaved changes?' : 'ยกเลิกการเปลี่ยนแปลงที่ยังไม่บันทึกใช่ไหม?')
+    )
+      return;
+    setWithdrawnAccessOverrides((prev) => {
+      if (!prev[userId]) return prev;
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+    setWithdrawnRetentionOverrides((prev) => {
+      if (!prev[userId]) return prev;
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+    setWithdrawnDirty((prev) => ({ ...prev, [userId]: false }));
+  };
+
+  const handleSaveWithdrawnEdit = async (userId: string) => {
+    const u = withdrawnUsers.find((x) => x.id === userId);
+    if (!u) return;
+
+    if (!window.confirm(lang === 'EN' ? 'Save changes?' : 'บันทึกการเปลี่ยนแปลงใช่ไหม?')) return;
+
+    const nextLevel = withdrawnAccessOverrides[userId] ?? u.postProgramAccessLevel;
+    const nextRetention = withdrawnRetentionOverrides[userId] ?? u.postProgramRetentionPeriod;
+
+    try {
+      await updateDoc(doc(firestoreDb, 'users', userId), {
+        ...(nextLevel ? { postProgramAccessLevel: nextLevel } : {}),
+        ...(nextRetention ? { postProgramRetentionPeriod: nextRetention } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      setWithdrawnDirty((prev) => ({ ...prev, [userId]: false }));
+    } catch {
+      alert(lang === 'EN' ? 'Failed to save changes.' : 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+    }
+  };
+
+  const handleRestoreWithdrawnImmediate = async (userId: string) => {
+    if (!window.confirm(lang === 'EN' ? 'Restore this user to ACTIVE?' : 'ต้องการคืนสถานะผู้ใช้นี้เป็น ACTIVE ใช่ไหม?')) return;
+
+    try {
+      await updateDoc(doc(firestoreDb, 'users', userId), {
+        lifecycleStatus: 'ACTIVE',
+        withdrawalRequestedAt: deleteField(),
+        withdrawalReason: deleteField(),
+        withdrawalDetail: deleteField(),
+        postProgramAccessLevel: deleteField(),
+        postProgramRetentionPeriod: deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+      handleCancelWithdrawnEdit(userId);
+    } catch {
+      alert(lang === 'EN' ? 'Failed to restore user.' : 'ไม่สามารถคืนสถานะผู้ใช้ได้');
+    }
   };
 
 
@@ -296,6 +457,22 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             lifecycleStatus: 'WITHDRAWN',
             postProgramAccessLevel: op.accessLevel,
             postProgramRetentionPeriod: op.retentionPeriod,
+            updatedAt: serverTimestamp(),
+          });
+        } else if (op.type === 'UPDATE_POST_PROGRAM') {
+          batch.update(userRef, {
+            ...(op.accessLevel ? { postProgramAccessLevel: op.accessLevel } : {}),
+            ...(op.retentionPeriod ? { postProgramRetentionPeriod: op.retentionPeriod } : {}),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (op.type === 'RESTORE_ACTIVE') {
+          batch.update(userRef, {
+            lifecycleStatus: 'ACTIVE',
+            withdrawalRequestedAt: deleteField(),
+            withdrawalReason: deleteField(),
+            withdrawalDetail: deleteField(),
+            postProgramAccessLevel: deleteField(),
+            postProgramRetentionPeriod: deleteField(),
             updatedAt: serverTimestamp(),
           });
         }
@@ -863,50 +1040,146 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                 <span className="text-[11px] font-black text-blue-700 leading-tight uppercase italic">
                                    COMPLIANT WITH ENTERPRISE <br /> DATA RETENTION POLICY V4.0
                                 </span>
-                             </div>
-                          </div>
-                       </div>
+                              </div>
+                           </div>
+                        </div>
 
                        <div className="pt-8 border-t border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">WITHDRAWAL REQUESTS</div>
                           <div className="space-y-3">
-                            {withdrawalRequests.length === 0 ? (
+                            {withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).length === 0 ? (
                               <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
                                 <Users size={28} className="text-slate-200" />
                                 <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No withdrawal requests' : 'ยังไม่มีคำขอถอนตัว'}</p>
                               </div>
                             ) : (
-                              withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).map((u) => (
-                                (() => {
-                                  const pending = pendingUserOperations[u.id];
-                                  const isSelected = pending?.type === 'APPLY_WITHDRAWAL';
-                                  return (
-                                <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col md:flex-row md:items-center gap-4">
-                                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                                    <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
-                                    <div className="min-w-0">
-                                      <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
-                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || '-'}</div>
+                              withdrawalRequests
+                                .filter((u) => !selectedUserIds.has(u.id))
+                                .map((u) => (
+                                  (() => {
+                                    const pending = pendingUserOperations[u.id];
+                                    const isSelected = pending?.type === 'APPLY_WITHDRAWAL';
+                                    return (
+                                      <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col md:flex-row md:items-center gap-4">
+                                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                                          <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                          <div className="min-w-0">
+                                            <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || '-'}</div>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                          <button
+                                            onClick={() => stageSelectWithdrawalUser(u)}
+                                            disabled={isSelected}
+                                            className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                          >
+                                            {isSelected ? (lang === 'EN' ? 'Selected' : 'เลือกแล้ว') : (lang === 'EN' ? 'Select' : 'เลือก')}
+                                          </button>
+                                        </div>
+
+                                        {u.withdrawalDetail && (
+                                          <div className="md:col-span-2 text-[11px] text-slate-500 font-medium italic pt-1 break-words">{u.withdrawalDetail}</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()
+                                ))
+                            )}
+                          </div>
+                       </div>
+
+                       <div className="pt-10 border-t border-slate-100">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">MANAGE WITHDRAWN USERS</div>
+                          <div className="space-y-3">
+                            {withdrawnUsers.length === 0 ? (
+                              <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                <History size={28} className="text-slate-200" />
+                                <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No withdrawn users' : 'ยังไม่มีรายชื่อที่ถูกถอนตัวแล้ว'}</p>
+                              </div>
+                            ) : (
+                              withdrawnUsers.map((u) => {
+                                const dirty = withdrawnDirty[u.id] === true;
+                                const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
+                                const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
+                                return (
+                                  <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex items-center gap-4 min-w-0">
+                                        <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || '-'}</div>
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        onClick={() => void handleRestoreWithdrawnImmediate(u.id)}
+                                        className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all whitespace-nowrap"
+                                      >
+                                        {lang === 'EN' ? 'Restore' : 'คืนค่า'}
+                                      </button>
                                     </div>
-                                  </div>
 
-                                  <div className="flex items-center gap-3">
-                                    <button
-                                      onClick={() => stageSelectWithdrawalUser(u)}
-                                      disabled={isSelected}
-                                      className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
-                                    >
-                                      {isSelected ? (lang === 'EN' ? 'Selected' : 'เลือกแล้ว') : (lang === 'EN' ? 'Select' : 'เลือก')}
-                                    </button>
-                                  </div>
+                                    {u.withdrawalDetail && (
+                                      <div className="text-[11px] text-slate-500 font-medium italic break-words">{u.withdrawalDetail}</div>
+                                    )}
 
-                                  {u.withdrawalDetail && (
-                                    <div className="md:col-span-2 text-[11px] text-slate-500 font-medium italic pt-1 break-words">{u.withdrawalDetail}</div>
-                                  )}
-                                </div>
-                                  );
-                                })()
-                              ))
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="space-y-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
+                                        <select
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
+                                          value={accessValue as PostProgramAccessLevel}
+                                          onChange={(e) => {
+                                            setWithdrawnAccessOverrides((prev) => ({ ...prev, [u.id]: e.target.value as PostProgramAccessLevel }));
+                                            setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                          }}
+                                        >
+                                          <option value="REVOCATION">REVOCATION</option>
+                                          <option value="LIMITED">LIMITED</option>
+                                          <option value="EXTENDED">EXTENDED</option>
+                                        </select>
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
+                                        <input
+                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
+                                          value={retentionValue}
+                                          onChange={(e) => {
+                                            setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
+                                            setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {dirty && (
+                                      <div className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-2xl p-4">
+                                        <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
+                                          {lang === 'EN' ? 'Unsaved changes' : 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก'}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          <button
+                                            onClick={() => void handleSaveWithdrawnEdit(u.id)}
+                                            className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                          >
+                                            {lang === 'EN' ? 'Save' : 'บันทึก'}
+                                          </button>
+                                          <button
+                                            onClick={() => handleCancelWithdrawnEdit(u.id)}
+                                            className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                                          >
+                                            {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
                             )}
                           </div>
                        </div>
