@@ -23,6 +23,9 @@ import {
   Check
 } from 'lucide-react';
 import { Language } from '@/types';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { firestoreDb } from '@/firebase';
+import { useAppContext } from '@/app/AppContext';
 
 interface OffboardingTask {
   id: string;
@@ -39,6 +42,7 @@ interface OffboardingPageProps {
 }
 
 const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
+  const { user } = useAppContext();
   const t = {
     EN: {
       title: "Offboarding Progress",
@@ -120,6 +124,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
   const [tasks, setTasks] = useState<OffboardingTask[]>(INITIAL_TASKS);
   const [activeActionTask, setActiveActionTask] = useState<OffboardingTask | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [receiptId, setReceiptId] = useState('');
   const [isAgreed, setIsAgreed] = useState(false);
   const [hasSigned, setHasSigned] = useState(false);
@@ -131,14 +136,61 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
   };
 
   const handleCompleteTask = (taskId: string) => {
-    setIsSubmitting(true);
+    setTasks(prev => prev.map(t => 
+      t.id === taskId ? { ...t, status: 'COMPLETED', completedAt: new Date().toLocaleDateString() } : t
+    ));
+  };
+
+  const [completedTaskId, setCompletedTaskId] = useState<string | null>(null);
+  const [showCompletionAnimation, setShowCompletionAnimation] = useState(false);
+
+  const handleCompleteTaskWithFeedback = (taskId: string) => {
+    setCompletedTaskId(taskId);
+    setShowCompletionAnimation(true);
+    setTasks(prev => prev.map(t => 
+      t.id === taskId ? { ...t, status: 'COMPLETED', completedAt: new Date().toLocaleDateString() } : t
+    ));
+    
     setTimeout(() => {
-      setTasks(prev => prev.map(t => 
-        t.id === taskId ? { ...t, status: 'COMPLETED', completedAt: new Date().toLocaleDateString() } : t
-      ));
+      setShowCompletionAnimation(false);
+      setCompletedTaskId(null);
+    }, 1500);
+  };
+
+  const handleSubmit = async () => {
+    if (!user) return;
+    if (!allCompleted || !isAgreed || !hasSigned) return;
+
+    setIsSubmitting(true);
+    try {
+      // Convert tasks to plain object to avoid Firestore serialization issues
+      const plainTasks = tasks.map(task => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        actionType: task.actionType,
+        completedAt: task.completedAt
+        // Note: We don't include the icon (React element) as it causes serialization issues
+      }));
+      
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        lifecycleStatus: 'OFFBOARDING_REQUESTED',
+        offboardingRequestedAt: serverTimestamp(),
+        offboardingTasks: plainTasks,
+        updatedAt: serverTimestamp(),
+      });
+      setIsSubmitted(true);
+    } catch (error) {
+      console.error('Failed to submit offboarding request:', error);
+      const errorMessage = (error as any).message || 'Unknown error';
+      alert(lang === 'EN' 
+        ? `Failed to submit offboarding request: ${errorMessage}` 
+        : `ไม่สามารถส่งคำขอแจ้งออกจากงาน: ${errorMessage}`
+      );
+    } finally {
       setIsSubmitting(false);
-      setActiveActionTask(null);
-    }, 1000);
+    }
   };
 
   const allCompleted = tasks.every(t => t.status === 'COMPLETED');
@@ -188,6 +240,27 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
     }
   };
 
+  if (isSubmitted) {
+    return (
+      <div className="h-full w-full flex items-center justify-center p-6 bg-slate-50">
+        <div className="bg-white rounded-[3rem] p-16 shadow-2xl border border-slate-100 max-w-2xl text-center">
+          <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center mx-auto mb-10 shadow-xl border border-emerald-100">
+            <ShieldCheck size={48} />
+          </div>
+          <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-4">
+            {lang === 'EN' ? 'Offboarding Request Submitted' : 'ส่งคำขอแจ้งออกจากงานเรียบร้อย'}
+          </h2>
+          <p className="text-slate-500 text-lg leading-relaxed mb-10">
+            {lang === 'EN' 
+              ? 'Your request has been securely transmitted. HR will contact you within 24-48 business hours.'
+              : 'คำขอของคุณถูกส่งไปยังฝ่ายบุคคลแล้ว เจ้าหน้าที่จะติดต่อคุณผ่านทางอีเมลภายใน 24-48 ชั่วโมงทำการ'
+            }
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
@@ -218,19 +291,40 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
               </div>
               <div className="space-y-4">
                 {tasks.map(task => (
-                  <div key={task.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-2xl border ${task.status === 'COMPLETED' ? 'bg-slate-50/50 border-slate-100' : 'bg-white border-slate-100 shadow-sm hover:border-blue-200 group'}`}>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${task.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-500' : 'bg-blue-50 text-blue-600'}`}>
+                  <div key={task.id} className={`flex flex-col sm:flex-row sm:items-center gap-4 p-5 rounded-2xl border transition-all duration-300 ${task.status === 'COMPLETED' ? 'bg-slate-50/50 border-slate-100' : 'bg-white border-slate-100 shadow-sm hover:border-blue-200 group'} ${completedTaskId === task.id && showCompletionAnimation ? 'bg-emerald-50 border-emerald-200 scale-[1.02]' : ''}`}>
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 ${task.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-500' : 'bg-blue-50 text-blue-600'} ${completedTaskId === task.id && showCompletionAnimation ? 'bg-emerald-100 text-emerald-600 scale-110' : ''}`}>
                       {task.status === 'COMPLETED' ? <FileCheck size={20} /> : task.icon}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-bold text-slate-900 truncate">{task.title}</h4>
                       <p className="text-[11px] text-slate-500 leading-relaxed truncate">{task.description}</p>
+                      {task.status === 'COMPLETED' && task.completedAt && (
+                        <p className="text-[10px] text-emerald-600 font-medium mt-1">
+                          {lang === 'EN' ? 'Completed' : 'เสร็จสิ้น'} • {task.completedAt}
+                        </p>
+                      )}
+                      {completedTaskId === task.id && showCompletionAnimation && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <CheckCircle2 size={12} className="text-emerald-600 animate-pulse" />
+                          <span className="text-[10px] text-emerald-600 font-medium animate-pulse">
+                            {lang === 'EN' ? 'Task completed!' : 'งานเสร็จสิ้น!'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-4">
-                      {task.status !== 'COMPLETED' && (
-                        <button onClick={() => setActiveActionTask(task)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 active:scale-95 transition-all">
+                      {task.status !== 'COMPLETED' ? (
+                        <button 
+                          onClick={() => handleCompleteTaskWithFeedback(task.id)} 
+                          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 active:scale-95 transition-all"
+                        >
                           {t.action}
                         </button>
+                      ) : (
+                        <div className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                          <Check size={12} />
+                          {lang === 'EN' ? 'Done' : 'เสร็จแล้ว'}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -281,7 +375,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                   )}
                 </div>
               </div>
-              <button disabled={!canSubmitClearance} className={`w-full py-4 rounded-full font-black text-[15px] tracking-tight transition-all ${canSubmitClearance ? 'bg-blue-600 text-white shadow-xl hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}>
+              <button disabled={!canSubmitClearance} onClick={handleSubmit} className={`w-full py-4 rounded-full font-black text-[15px] tracking-tight transition-all ${canSubmitClearance ? 'bg-blue-600 text-white shadow-xl hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}>
                 {t.submitBtn}
               </button>
               <div className="mt-10 flex items-center justify-center gap-2.5 text-rose-400">

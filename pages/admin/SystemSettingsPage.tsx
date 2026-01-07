@@ -53,7 +53,7 @@ import {
   Circle
 } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
-import { Language, PostProgramAccessLevel } from '@/types';
+import { Language, PostProgramAccessLevel, UserRole } from '@/types';
 import { PageId } from '@/pageTypes';
 import { firestoreDb } from '@/firebase';
 import { collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
@@ -88,6 +88,16 @@ type PendingUserOperation =
       withdrawalDetail?: string;
     }
   | {
+      type: 'APPLY_OFFBOARDING';
+      userId: string;
+      accessLevel: PostProgramAccessLevel;
+      retentionPeriod: string;
+      name: string;
+      avatar: string;
+      email?: string;
+      offboardingTasks?: any[];
+    }
+  | {
       type: 'UPDATE_POST_PROGRAM';
       userId: string;
       accessLevel?: PostProgramAccessLevel;
@@ -95,8 +105,7 @@ type PendingUserOperation =
       name: string;
       avatar: string;
       email?: string;
-      withdrawalReason?: string;
-      withdrawalDetail?: string;
+      offboardingTasks?: any[];
     }
   | {
       type: 'RESTORE_ACTIVE';
@@ -220,6 +229,11 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [withdrawnRetentionOverrides, setWithdrawnRetentionOverrides] = useState<Record<string, string>>({});
   const [withdrawnDirty, setWithdrawnDirty] = useState<Record<string, boolean>>({});
   const [pendingUserOperations, setPendingUserOperations] = useState<Record<string, PendingUserOperation>>({});
+  const [offboardingRequests, setOffboardingRequests] = useState<any[]>([]);
+
+  // Add state to store users by type
+  const [offboardingUsers, setOffboardingUsers] = useState<any[]>([]);
+  const [withdrawalUsers, setWithdrawalUsers] = useState<any[]>([]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWAL_REQUESTED'));
@@ -247,31 +261,72 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWN'));
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'OFFBOARDING_REQUESTED'));
     return onSnapshot(q, (snap) => {
-      setWithdrawnUsers(
+      setOffboardingRequests(
         snap.docs.map((d) => {
           const data = d.data() as {
             name?: string;
             avatar?: string;
             email?: string;
-            withdrawalReason?: string;
-            withdrawalDetail?: string;
-            postProgramAccessLevel?: PostProgramAccessLevel;
-            postProgramRetentionPeriod?: string;
+            offboardingTasks?: any[];
+            offboardingRequestedAt?: any;
           };
           return {
             id: d.id,
             name: data.name || 'Unknown',
             avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
             email: data.email,
-            withdrawalReason: data.withdrawalReason,
-            withdrawalDetail: data.withdrawalDetail,
-            postProgramAccessLevel: data.postProgramAccessLevel,
-            postProgramRetentionPeriod: data.postProgramRetentionPeriod,
+            offboardingTasks: data.offboardingTasks || [],
+            offboardingRequestedAt: data.offboardingRequestedAt,
           };
         }),
       );
+    });
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWN'));
+    return onSnapshot(q, (snap) => {
+      const users = snap.docs.map((d) => {
+        const data = d.data() as {
+          name?: string;
+          avatar?: string;
+          email?: string;
+          withdrawalReason?: string;
+          withdrawalDetail?: string;
+          postProgramAccessLevel?: PostProgramAccessLevel;
+          postProgramRetentionPeriod?: string;
+          roles?: UserRole[];
+          offboardingRequestedAt?: any;
+          withdrawalRequestedAt?: any;
+        };
+        return {
+          id: d.id,
+          name: data.name || 'Unknown',
+          avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+          email: data.email,
+          withdrawalReason: data.withdrawalReason,
+          withdrawalDetail: data.withdrawalDetail,
+          postProgramAccessLevel: data.postProgramAccessLevel,
+          postProgramRetentionPeriod: data.postProgramRetentionPeriod,
+          roles: data.roles || [],
+          offboardingRequestedAt: data.offboardingRequestedAt,
+          withdrawalRequestedAt: data.withdrawalRequestedAt,
+        };
+      });
+      setWithdrawnUsers(users);
+      
+      // Separate users by type
+      const offboarding = users.filter(u => u.offboardingRequestedAt);
+      const withdrawal = users.filter(u => u.withdrawalRequestedAt);
+      
+      console.log('🔍 Debug - Withdrawn Users:', users);
+      console.log('🟢 Offboarding Users:', offboarding);
+      console.log('🔴 Withdrawal Users:', withdrawal);
+      
+      setOffboardingUsers(offboarding);
+      setWithdrawalUsers(withdrawal);
     });
   }, []);
 
@@ -288,6 +343,23 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         email: u.email,
         withdrawalReason: u.withdrawalReason,
         withdrawalDetail: u.withdrawalDetail,
+      },
+    }));
+  };
+
+  const stageSelectOffboardingUser = (u: any) => {
+    // Add to POST-PROGRAM ACCESS LIST instead of MANAGE WITHDRAWN USERS
+    setPendingUserOperations((prev) => ({
+      ...prev,
+      [u.id]: {
+        type: 'UPDATE_POST_PROGRAM',
+        userId: u.id,
+        accessLevel: accessLevel as PostProgramAccessLevel,
+        retentionPeriod,
+        name: u.name,
+        avatar: u.avatar,
+        email: u.email,
+        offboardingTasks: u.offboardingTasks,
       },
     }));
   };
@@ -311,7 +383,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
   const selectedUserIds = new Set(
     (Object.values(pendingUserOperations) as PendingUserOperation[])
-      .filter((op) => op.type === 'APPLY_WITHDRAWAL')
+      .filter((op) => op.type === 'APPLY_WITHDRAWAL' || op.type === 'UPDATE_POST_PROGRAM')
       .map((op) => op.userId),
   );
 
@@ -457,20 +529,44 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             lifecycleStatus: 'WITHDRAWN',
             postProgramAccessLevel: op.accessLevel,
             postProgramRetentionPeriod: op.retentionPeriod,
+            withdrawalRequestedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (op.type === 'APPLY_OFFBOARDING') {
+          batch.update(userRef, {
+            lifecycleStatus: 'WITHDRAWN',
+            postProgramAccessLevel: op.accessLevel,
+            postProgramRetentionPeriod: op.retentionPeriod,
+            offboardingRequestedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
         } else if (op.type === 'UPDATE_POST_PROGRAM') {
-          batch.update(userRef, {
-            ...(op.accessLevel ? { postProgramAccessLevel: op.accessLevel } : {}),
-            ...(op.retentionPeriod ? { postProgramRetentionPeriod: op.retentionPeriod } : {}),
-            updatedAt: serverTimestamp(),
-          });
+          // Check if this is an offboarding user by checking if they have offboardingTasks
+          if (op.offboardingTasks) {
+            batch.update(userRef, {
+              lifecycleStatus: 'WITHDRAWN',
+              postProgramAccessLevel: op.accessLevel,
+              postProgramRetentionPeriod: op.retentionPeriod,
+              offboardingRequestedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            // Regular withdrawal user
+            batch.update(userRef, {
+              lifecycleStatus: 'WITHDRAWN',
+              postProgramAccessLevel: op.accessLevel,
+              postProgramRetentionPeriod: op.retentionPeriod,
+              withdrawalRequestedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
         } else if (op.type === 'RESTORE_ACTIVE') {
           batch.update(userRef, {
             lifecycleStatus: 'ACTIVE',
             withdrawalRequestedAt: deleteField(),
             withdrawalReason: deleteField(),
             withdrawalDetail: deleteField(),
+            offboardingRequestedAt: deleteField(),
             postProgramAccessLevel: deleteField(),
             postProgramRetentionPeriod: deleteField(),
             updatedAt: serverTimestamp(),
@@ -1055,6 +1151,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                             ) : (
                               withdrawalRequests
                                 .filter((u) => !selectedUserIds.has(u.id))
+                                .slice(0, 3)
                                 .map((u) => (
                                   (() => {
                                     const pending = pendingUserOperations[u.id];
@@ -1087,100 +1184,264 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                   })()
                                 ))
                             )}
+                            {withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).length > 3 && (
+                              <button className="w-full py-3 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                                {lang === 'EN' ? `View ${withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).length - 3} more` : `ดูอีก ${withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).length - 3} รายการ`}
+                              </button>
+                            )}
+                          </div>
+                       </div>
+
+                       <div className="pt-8 border-t border-slate-100">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">OFFBOARDING REQUESTS</div>
+                          <div className="space-y-3">
+                            {offboardingRequests.length === 0 ? (
+                              <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                <Users size={28} className="text-slate-200" />
+                                <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No offboarding requests' : 'ยังไม่มีคำขอแจ้งออกจากงาน'}</p>
+                              </div>
+                            ) : (
+                              offboardingRequests
+                                .filter((u) => !selectedUserIds.has(u.id))
+                                .slice(0, 3)
+                                .map((u) => (
+                                  <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col md:flex-row md:items-center gap-4">
+                                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                                      <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                      <div className="min-w-0">
+                                        <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                                          {u.offboardingTasks?.filter((t: any) => t.status === 'COMPLETED').length || 0}/{u.offboardingTasks?.length || 0} tasks completed
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={() => stageSelectOffboardingUser(u)}
+                                        className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                      >
+                                        {lang === 'EN' ? 'Review' : 'ตรวจสอบ'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                            )}
+                            {offboardingRequests.filter((u) => !selectedUserIds.has(u.id)).length > 3 && (
+                              <button className="w-full py-3 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                                {lang === 'EN' ? `View ${offboardingRequests.filter((u) => !selectedUserIds.has(u.id)).length - 3} more` : `ดูอีก ${offboardingRequests.filter((u) => !selectedUserIds.has(u.id)).length - 3} รายการ`}
+                              </button>
+                            )}
                           </div>
                        </div>
 
                        <div className="pt-10 border-t border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">MANAGE WITHDRAWN USERS</div>
-                          <div className="space-y-3">
-                            {withdrawnUsers.length === 0 ? (
-                              <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
-                                <History size={28} className="text-slate-200" />
-                                <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No withdrawn users' : 'ยังไม่มีรายชื่อที่ถูกถอนตัวแล้ว'}</p>
-                              </div>
-                            ) : (
-                              withdrawnUsers.map((u) => {
-                                const dirty = withdrawnDirty[u.id] === true;
-                                const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
-                                const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
-                                return (
-                                  <div key={u.id} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="flex items-center gap-4 min-w-0">
-                                        <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
-                                        <div className="min-w-0">
-                                          <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
-                                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || '-'}</div>
+                          
+                          {/* OFFBOARDING USERS */}
+                          <div className="mb-8">
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                              <h4 className="text-sm font-bold text-slate-700">OFFBOARDING USERS</h4>
+                              <span className="text-xs text-slate-400">
+                                ({offboardingUsers.length} users)
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {offboardingUsers.length === 0 ? (
+                                <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                  <Users size={24} className="text-slate-200" />
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No offboarding users</p>
+                                </div>
+                              ) : (
+                                offboardingUsers.map((u) => {
+                                  const dirty = withdrawnDirty[u.id] === true;
+                                  const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
+                                  const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
+                                  return (
+                                    <div key={u.id} className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col gap-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-center gap-4 min-w-0">
+                                          <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                          <div className="min-w-0">
+                                            <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase rounded-full">OFFBOARDING</span>
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                                                Completed process
+                                              </div>
+                                            </div>
+                                          </div>
                                         </div>
-                                      </div>
 
-                                      <button
-                                        onClick={() => void handleRestoreWithdrawnImmediate(u.id)}
-                                        className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all whitespace-nowrap"
-                                      >
-                                        {lang === 'EN' ? 'Restore' : 'คืนค่า'}
-                                      </button>
-                                    </div>
-
-                                    {u.withdrawalDetail && (
-                                      <div className="text-[11px] text-slate-500 font-medium italic break-words">{u.withdrawalDetail}</div>
-                                    )}
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                      <div className="space-y-1">
-                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
-                                        <select
-                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
-                                          value={accessValue as PostProgramAccessLevel}
-                                          onChange={(e) => {
-                                            setWithdrawnAccessOverrides((prev) => ({ ...prev, [u.id]: e.target.value as PostProgramAccessLevel }));
-                                            setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
-                                          }}
+                                        <button
+                                          onClick={() => void handleRestoreWithdrawnImmediate(u.id)}
+                                          className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all whitespace-nowrap"
                                         >
-                                          <option value="REVOCATION">REVOCATION</option>
-                                          <option value="LIMITED">LIMITED</option>
-                                          <option value="EXTENDED">EXTENDED</option>
-                                        </select>
+                                          {lang === 'EN' ? 'Restore' : 'คืนค่า'}
+                                        </button>
                                       </div>
 
-                                      <div className="space-y-1">
-                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
-                                        <input
-                                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
-                                          value={retentionValue}
-                                          onChange={(e) => {
-                                            setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
-                                            setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
-                                          }}
-                                        />
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
+                                          <select
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
+                                            value={accessValue as PostProgramAccessLevel}
+                                            onChange={(e) => {
+                                              setWithdrawnAccessOverrides((prev) => ({ ...prev, [u.id]: e.target.value as PostProgramAccessLevel }));
+                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                            }}
+                                          >
+                                            <option value="REVOCATION">REVOCATION</option>
+                                            <option value="LIMITED">LIMITED</option>
+                                            <option value="EXTENDED">EXTENDED</option>
+                                          </select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
+                                          <input
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
+                                            value={retentionValue}
+                                            onChange={(e) => {
+                                              setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
+                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                            }}
+                                          />
+                                        </div>
                                       </div>
+
+                                      {dirty && (
+                                        <div className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-2xl p-4">
+                                          <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
+                                            {lang === 'EN' ? 'Unsaved changes' : 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก'}
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <button
+                                              onClick={() => void handleSaveWithdrawnEdit(u.id)}
+                                              className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                            >
+                                              {lang === 'EN' ? 'Save' : 'บันทึก'}
+                                            </button>
+                                            <button
+                                              onClick={() => handleCancelWithdrawnEdit(u.id)}
+                                              className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                                            >
+                                              {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
 
-                                    {dirty && (
-                                      <div className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-2xl p-4">
-                                        <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
-                                          {lang === 'EN' ? 'Unsaved changes' : 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก'}
+                          {/* WITHDRAWAL USERS */}
+                          <div>
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                              <h4 className="text-sm font-bold text-slate-700">WITHDRAWAL USERS</h4>
+                              <span className="text-xs text-slate-400">
+                                ({withdrawalUsers.length} users)
+                              </span>
+                            </div>
+                            <div className="space-y-3">
+                              {withdrawalUsers.length === 0 ? (
+                                <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                  <Users size={24} className="text-slate-200" />
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No withdrawal users</p>
+                                </div>
+                              ) : (
+                                withdrawalUsers.map((u) => {
+                                  const dirty = withdrawnDirty[u.id] === true;
+                                  const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
+                                  const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
+                                  return (
+                                    <div key={u.id} className="p-5 bg-rose-50 border border-rose-100 rounded-2xl flex flex-col gap-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-center gap-4 min-w-0">
+                                          <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                          <div className="min-w-0">
+                                            <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="px-2 py-1 bg-rose-100 text-rose-600 text-[8px] font-black uppercase rounded-full">WITHDRAWAL</span>
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || 'Early withdrawal'}</div>
+                                            </div>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                          <button
-                                            onClick={() => void handleSaveWithdrawnEdit(u.id)}
-                                            className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+
+                                        <button
+                                          onClick={() => void handleRestoreWithdrawnImmediate(u.id)}
+                                          className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all whitespace-nowrap"
+                                        >
+                                          {lang === 'EN' ? 'Restore' : 'คืนค่า'}
+                                        </button>
+                                      </div>
+
+                                      {u.withdrawalDetail && (
+                                        <div className="text-[11px] text-slate-500 font-medium italic break-words">{u.withdrawalDetail}</div>
+                                      )}
+
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
+                                          <select
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
+                                            value={accessValue as PostProgramAccessLevel}
+                                            onChange={(e) => {
+                                              setWithdrawnAccessOverrides((prev) => ({ ...prev, [u.id]: e.target.value as PostProgramAccessLevel }));
+                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                            }}
                                           >
-                                            {lang === 'EN' ? 'Save' : 'บันทึก'}
-                                          </button>
-                                          <button
-                                            onClick={() => handleCancelWithdrawnEdit(u.id)}
-                                            className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
-                                          >
-                                            {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
-                                          </button>
+                                            <option value="REVOCATION">REVOCATION</option>
+                                            <option value="LIMITED">LIMITED</option>
+                                            <option value="EXTENDED">EXTENDED</option>
+                                          </select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
+                                          <input
+                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
+                                            value={retentionValue}
+                                            onChange={(e) => {
+                                              setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
+                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
+                                            }}
+                                          />
                                         </div>
                                       </div>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            )}
+
+                                      {dirty && (
+                                        <div className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-2xl p-4">
+                                          <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
+                                            {lang === 'EN' ? 'Unsaved changes' : 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก'}
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <button
+                                              onClick={() => void handleSaveWithdrawnEdit(u.id)}
+                                              className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+                                            >
+                                              {lang === 'EN' ? 'Save' : 'บันทึก'}
+                                            </button>
+                                            <button
+                                              onClick={() => handleCancelWithdrawnEdit(u.id)}
+                                              className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                                            >
+                                              {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
                           </div>
                        </div>
                     </div>
@@ -1195,57 +1456,51 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                         <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">POST-PROGRAM ACCESS LIST</h3>
                      </div>
                      <p className="text-slate-400 text-xs leading-relaxed font-medium mb-10">
-                        {lang === 'EN' ? 'Selected withdrawal requests waiting for deploy.' : 'รายการที่ถูกเลือกเพื่อกำหนดสิทธิ์ (รอกด Deploy)'}
+                        {lang === 'EN' ? 'Selected withdrawal and offboarding requests waiting for deploy.' : 'รายการที่ถูกเลือกเพื่อกำหนดสิทธิ์ (รอกด Deploy)'}
                      </p>
 
                      <div className="space-y-3 mb-10 flex-1">
-                        {(Object.values(pendingUserOperations) as PendingUserOperation[]).filter((op) => op.type === 'APPLY_WITHDRAWAL').length === 0 ? (
+                        {(Object.values(pendingUserOperations) as PendingUserOperation[]).filter((op) => op.type === 'APPLY_WITHDRAWAL' || op.type === 'UPDATE_POST_PROGRAM').length === 0 ? (
                           <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
                             <History size={32} className="text-slate-200" />
                             <p className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No selected users yet' : 'ยังไม่มีรายชื่อที่ถูกเลือก'}</p>
                           </div>
                         ) : (
                           (Object.values(pendingUserOperations) as PendingUserOperation[])
-                            .filter((op) => op.type === 'APPLY_WITHDRAWAL')
+                            .filter((op) => op.type === 'APPLY_WITHDRAWAL' || op.type === 'UPDATE_POST_PROGRAM')
                             .map((op) => (
                               <div key={op.userId} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-3 hover:bg-white hover:border-blue-100 transition-all">
                                 <div className="flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-4 min-w-0">
+                                  <div className="flex items-center gap-3 min-w-0">
                                     <img src={op.avatar} className="w-10 h-10 rounded-xl object-cover ring-2 ring-white" alt="" />
                                     <div className="min-w-0">
-                                      <div className="text-sm font-black text-slate-700 truncate">{op.name}</div>
-                                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{op.withdrawalReason || op.email || op.userId}</div>
+                                      <div className="text-sm font-black text-slate-800 truncate">{op.name}</div>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-1 text-[8px] font-black uppercase rounded-full ${op.type === 'APPLY_WITHDRAWAL' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                          {op.type === 'APPLY_WITHDRAWAL' ? 'WITHDRAWAL' : 'OFFBOARDING'}
+                                        </span>
+                                        {op.type === 'APPLY_WITHDRAWAL' && (op as any).withdrawalReason && (
+                                          <span className="text-[10px] text-slate-400 truncate">{(op as any).withdrawalReason}</span>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-
-                                {op.withdrawalDetail && (
-                                  <div className="text-[10px] text-slate-500 font-medium italic break-words">{op.withdrawalDetail}</div>
-                                )}
-
-                                <div className="flex items-center gap-2">
-                                  <select
-                                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-700"
-                                    value={op.accessLevel}
-                                    onChange={(e) => updatePendingApply(op.userId, { accessLevel: e.target.value as PostProgramAccessLevel })}
-                                  >
-                                    <option value="REVOCATION">REVOCATION</option>
-                                    <option value="LIMITED">LIMITED</option>
-                                    <option value="EXTENDED">EXTENDED</option>
-                                  </select>
-
-                                  <input
-                                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[9px] font-black tracking-widest text-slate-700"
-                                    value={op.retentionPeriod}
-                                    onChange={(e) => updatePendingApply(op.userId, { retentionPeriod: e.target.value })}
-                                  />
-
                                   <button
                                     onClick={() => clearPendingUserOperation(op.userId)}
-                                    className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all"
+                                    className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
                                   >
-                                    {lang === 'EN' ? 'Delete' : 'ลบ'}
+                                    <X size={16} />
                                   </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                    <div className="text-[10px] text-slate-400 uppercase mb-1">Access Level</div>
+                                    <div className="text-sm font-black text-slate-800">{op.accessLevel}</div>
+                                  </div>
+                                  <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                    <div className="text-[10px] text-slate-400 uppercase mb-1">Retention</div>
+                                    <div className="text-sm font-black text-slate-800">{op.retentionPeriod}</div>
+                                  </div>
                                 </div>
                               </div>
                             ))
