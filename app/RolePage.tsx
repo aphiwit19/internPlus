@@ -29,6 +29,8 @@ import AdminDashboardPage from '@/pages/admin/DashboardPage';
 import AdminInternManagementPage from '@/pages/admin/InternManagementPage';
 import AdminInvitationsPage from '@/pages/admin/InvitationsPage';
 import AdminSystemSettingsPage from '@/pages/admin/SystemSettingsPage';
+import WithdrawnOffboardingUsersPage from '@/pages/admin/WithdrawnOffboardingUsersPage';
+import WithdrawnWithdrawalUsersPage from '@/pages/admin/WithdrawnWithdrawalUsersPage';
 import AdminLeaveRequestPage from '@/pages/admin/LeaveRequestPage';
 import AdminCertificatesPage from '@/pages/admin/CertificatesPage';
 import AdminUniversityEvaluationPage from '@/pages/admin/UniversityEvaluationPage';
@@ -60,7 +62,10 @@ export default function RolePage() {
     return <Navigate to={pageIdToPath(activeRole, 'dashboard')} replace />;
   }
 
-  const allowed = NAV_ITEMS.some((it) => it.id === resolvedPageId && it.roles.includes(roleFromRoute));
+  const allowed =
+    NAV_ITEMS.some((it) => it.id === resolvedPageId && it.roles.includes(roleFromRoute)) ||
+    (roleFromRoute === 'HR_ADMIN' &&
+      (resolvedPageId === 'withdrawn-offboarding-users' || resolvedPageId === 'withdrawn-withdrawal-users'));
   if (!allowed) {
     return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
   }
@@ -189,6 +194,10 @@ export default function RolePage() {
         return <AdminInvitationsPage />;
       case 'system-settings':
         return <AdminSystemSettingsPage lang={lang} />;
+      case 'withdrawn-offboarding-users':
+        return <WithdrawnOffboardingUsersPage lang={lang} />;
+      case 'withdrawn-withdrawal-users':
+        return <WithdrawnWithdrawalUsersPage lang={lang} />;
       default:
         return <Navigate to={pageIdToPath(roleFromRoute, 'dashboard')} replace />;
     }

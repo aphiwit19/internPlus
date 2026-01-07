@@ -131,6 +131,9 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  const alreadyRequested =
+    user?.lifecycleStatus === 'OFFBOARDING_REQUESTED' || Boolean((user as any)?.offboardingRequestedAt);
+
   const completeAllTasks = () => {
     setTasks(prev => prev.map(t => ({ ...t, status: 'COMPLETED', completedAt: new Date().toLocaleDateString() })));
   };
@@ -240,7 +243,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
     }
   };
 
-  if (isSubmitted) {
+  if (isSubmitted || alreadyRequested) {
     return (
       <div className="h-full w-full flex items-center justify-center p-6 bg-slate-50">
         <div className="bg-white rounded-[3rem] p-16 shadow-2xl border border-slate-100 max-w-2xl text-center">
@@ -252,8 +255,8 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
           </h2>
           <p className="text-slate-500 text-lg leading-relaxed mb-10">
             {lang === 'EN' 
-              ? 'Your request has been securely transmitted. HR will contact you within 24-48 business hours.'
-              : 'คำขอของคุณถูกส่งไปยังฝ่ายบุคคลแล้ว เจ้าหน้าที่จะติดต่อคุณผ่านทางอีเมลภายใน 24-48 ชั่วโมงทำการ'
+              ? 'Your request has been securely forwarded.'
+              : 'คำขอของคุณได้รับการส่งต่ออย่างปลอดภัยแล้ว'
             }
           </p>
         </div>
@@ -330,19 +333,6 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                   </div>
                 ))}
               </div>
-            </section>
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { label: t.totalHours, value: '160', color: 'text-blue-600 bg-blue-50/30 border-blue-100' },
-                { label: t.tasksDone, value: '45', color: 'text-emerald-600 bg-emerald-50/30 border-emerald-100' },
-                { label: t.certificates, value: '5', color: 'text-amber-600 bg-amber-50/30 border-amber-100' },
-                { label: t.finalScore, value: '4.8', color: 'text-indigo-600 bg-indigo-50/30 border-indigo-100' },
-              ].map((stat, idx) => (
-                <div key={idx} className={`rounded-[2rem] p-6 border text-center ${stat.color}`}>
-                  <p className="text-3xl font-black tracking-tighter mb-1">{stat.value}</p>
-                  <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{stat.label}</p>
-                </div>
-              ))}
             </section>
           </div>
 

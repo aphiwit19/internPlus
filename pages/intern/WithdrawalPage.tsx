@@ -56,7 +56,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
       submitBtn: "Submit Confidential Request",
       recordNote: "This document is a formal record. Submission will be logged.",
       successTitle: "Request Submitted",
-      successMsg: "Your request has been securely transmitted. HR will contact you within 24-48 business hours."
+      successMsg: "Your request has been securely forwarded."
     },
     TH: {
       title: "โปรแกรมการถอนตัว",
@@ -86,7 +86,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
       submitBtn: "ส่งคำขอลาออกอย่างเป็นทางการ",
       recordNote: "เอกสารนี้เป็นบันทึกทางการ การส่งข้อมูลจะถูกบันทึกด้วย ID และที่อยู่ IP ของคุณ",
       successTitle: "ส่งคำขอเรียบร้อยแล้ว",
-      successMsg: "คำขอของคุณถูกส่งไปยังฝ่ายบุคคลแล้ว เจ้าหน้าที่จะติดต่อคุณผ่านทางอีเมลภายใน 24-48 ชั่วโมงทำการ"
+      successMsg: "คำขอของคุณได้รับการส่งต่ออย่างปลอดภัยแล้ว"
     }
   }[lang];
 
@@ -99,6 +99,9 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const alreadyRequested =
+    user?.lifecycleStatus === 'WITHDRAWAL_REQUESTED' || Boolean((user as any)?.withdrawalRequestedAt);
 
   const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
@@ -164,7 +167,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
     }
   };
 
-  if (isSubmitted) {
+  if (isSubmitted || alreadyRequested) {
     return (
       <div className="h-full w-full flex items-center justify-center p-6 bg-slate-50">
         <div className="bg-white rounded-[3rem] p-16 shadow-2xl border border-slate-100 max-w-2xl text-center">

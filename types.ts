@@ -7,6 +7,7 @@ export type Language = 'EN' | 'TH';
 export type LifecycleStatus =
   | 'ACTIVE'
   | 'WITHDRAWAL_REQUESTED'
+  | 'OFFBOARDING_REQUESTED'
   | 'WITHDRAWN'
   | 'COMPLETION_REPORTED'
   | 'COMPLETED';
@@ -40,9 +41,11 @@ export interface UserProfile {
   isDualRole?: boolean; // Can act as both Admin and Sup
   lifecycleStatus?: LifecycleStatus;
   withdrawalRequestedAt?: unknown;
+  offboardingRequestedAt?: unknown;
   completionReportedAt?: unknown;
   withdrawalReason?: string;
   withdrawalDetail?: string;
+  offboardingTasks?: unknown;
   postProgramAccessLevel?: PostProgramAccessLevel;
   postProgramRetentionPeriod?: string;
 }

@@ -16,6 +16,8 @@ export type PageId =
   | 'offboarding'
   | 'allowance'
   | 'withdrawal'
+  | 'withdrawn-offboarding-users'
+  | 'withdrawn-withdrawal-users'
   | 'manage-interns'
   | 'invitations'
   | 'system-settings';

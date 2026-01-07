@@ -39,6 +39,8 @@ export function isPageId(value: string): value is PageId {
     value === 'offboarding' ||
     value === 'allowance' ||
     value === 'withdrawal' ||
+    value === 'withdrawn-offboarding-users' ||
+    value === 'withdrawn-withdrawal-users' ||
     value === 'manage-interns' ||
     value === 'invitations' ||
     value === 'system-settings'
