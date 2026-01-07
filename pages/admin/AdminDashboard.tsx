@@ -68,6 +68,7 @@ type UserDoc = {
   assignedInterns?: string[];
   supervisorId?: string;
   supervisorName?: string;
+  lifecycleStatus?: string;
 };
 
 function normalizeRoles(data: Pick<UserDoc, 'roles' | 'role' | 'isDualRole'> | null | undefined): UserRole[] {
@@ -79,13 +80,23 @@ function normalizeRoles(data: Pick<UserDoc, 'roles' | 'role' | 'isDualRole'> | n
 }
 
 function toInternRecord(id: string, data: UserDoc): InternRecord {
+  // Map lifecycleStatus to display status - same logic as InternManagementPage
+  let status: InternRecord['status'] = 'Active';
+  
+  if (data.lifecycleStatus === 'WITHDRAWN' || 
+      data.lifecycleStatus === 'COMPLETED') {
+    status = 'WITHDRAWN'; // Use WITHDRAWN for Inactive
+  } else {
+    status = 'Active';
+  }
+
   return {
     id,
     name: data.name || 'Unknown',
     avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
     position: data.position || 'Intern',
     dept: data.department || 'Unknown',
-    status: 'Active',
+    status,
     supervisor: null,
   };
 }

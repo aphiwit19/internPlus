@@ -15,9 +15,9 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between mb-10">
           <div className="space-y-1">
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Active Program Roster</h3>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Intern Status Overview</h3>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
-              Total Active: {internRoster.filter(i => i.status === 'Active').length}
+              Active: {internRoster.filter(i => i.status === 'Active').length} | Inactive: {internRoster.filter(i => i.status === 'WITHDRAWN').length}
             </p>
           </div>
         </div>
@@ -34,7 +34,12 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {internRoster.map(intern => (
+              {internRoster
+                .filter(intern => 
+                  intern.status === 'Active' || 
+                  intern.status === 'WITHDRAWN'
+                )
+                .map(intern => (
                 <tr key={intern.id} className="group hover:bg-slate-50/50 transition-all">
                   <td className="py-6 pl-4">
                     <div className="flex items-center gap-4">
@@ -65,12 +70,10 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
                       className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase border transition-colors ${
                         intern.status === 'Active'
                           ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                          : intern.status === 'Onboarding'
-                            ? 'bg-blue-50 text-blue-600 border-blue-100'
-                            : 'bg-slate-50 text-slate-400 border-slate-100'
+                          : 'bg-rose-50 text-rose-600 border-rose-100'
                       }`}
                     >
-                      {intern.status}
+                      {intern.status === 'Active' ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="py-6 text-right pr-4">

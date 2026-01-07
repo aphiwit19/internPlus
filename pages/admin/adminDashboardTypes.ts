@@ -24,7 +24,7 @@ export interface InternRecord {
   avatar: string;
   position: string;
   dept: string;
-  status: 'Active' | 'Onboarding' | 'Completed';
+  status: 'Active' | 'Onboarding' | 'Completed' | 'WITHDRAWAL_REQUESTED' | 'OFFBOARDING_REQUESTED' | 'WITHDRAWN' | 'COMPLETED_REPORTED';
   supervisor: {
     name: string;
     avatar: string;

@@ -78,7 +78,7 @@ interface InternDetail {
   position: string;
   internPeriod: string;
   progress: number;
-  status: 'Active' | 'Review Needed' | 'On Break';
+  status: 'Active' | 'Inactive';
   attendance: string;
   department: string;
   email: string;
@@ -129,8 +129,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [interns, setInterns] = useState<InternDetail[]>([]);
   const [allInterns, setAllInterns] = useState<InternDetail[]>([]);
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [activeFeedbackId, setActiveFeedbackId] = useState('1m');
   const [tempScore, setTempScore] = useState(0);
   const [tempComment, setTempComment] = useState('');
@@ -175,6 +176,20 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         overallRating: typeof rawSupPerf?.overallRating === 'number' ? rawSupPerf.overallRating : DEFAULT_PERFORMANCE.overallRating,
       };
 
+      // Map lifecycleStatus to display status - same logic as Admin version
+      let status: 'Active' | 'Inactive' = 'Active';
+      console.log('🔍 Supervisor Debug - Intern Data:', id, data.lifecycleStatus);
+      
+      if (data.lifecycleStatus === 'WITHDRAWN' || 
+          data.lifecycleStatus === 'COMPLETED') {
+        status = 'Inactive'; // Use Inactive for withdrawn/completed interns
+      } else if (data.lifecycleStatus === 'WITHDRAWAL_REQUESTED' || 
+                 data.lifecycleStatus === 'OFFBOARDING_REQUESTED') {
+        status = 'Active'; // Still active until processed
+      } else {
+        status = 'Active';
+      }
+
       return {
         id,
         name: data?.name || 'Unknown',
@@ -182,7 +197,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         position: data?.position || 'Intern',
         internPeriod: data?.internPeriod || 'TBD',
         progress: 0,
-        status: 'Active',
+        status,
         attendance: '—',
         department: data?.department || 'Unknown',
         email: data?.email || '-',
@@ -353,10 +368,19 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     setSelectedInternId(null);
   }, [currentTab]);
 
-  const filteredInterns = interns.filter(i => 
-    i.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    i.position.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredInterns = useMemo(() => {
+    if (!user) return [];
+    
+    // For supervisor, only show interns assigned to this supervisor
+    return interns.filter(i => 
+      i.supervisorId === user.id || 
+      i.supervisorName === user.name ||
+      (user.assignedInterns && user.assignedInterns.includes(i.id))
+    ).filter(i => 
+      i.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      i.position.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [interns, searchQuery, user]);
 
   const handleUpdateTaskStatus = (taskId: string, status: 'DONE' | 'REVISION') => {
     if (!selectedInternId) return;
@@ -636,115 +660,124 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                       <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Team Overview</h1>
                       <p className="text-slate-400 text-sm font-medium mt-4 italic">Performance data for the <span className="text-blue-600 font-bold not-italic">Product</span> division.</p>
                     </div>
-                <button 
-                  onClick={() => onNavigate('manage-interns')}
-                  className="flex items-center gap-3 px-10 py-4 bg-[#0B0F19] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-2xl active:scale-95"
-                >
-                  <Users size={18} strokeWidth={2.5}/> MANAGE FULL ROSTER
-                </button>
-              </div>
+                    <button 
+                      onClick={() => onNavigate('manage-interns')}
+                      className="flex items-center gap-3 px-10 py-4 bg-[#0B0F19] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-2xl active:scale-95"
+                    >
+                      <Users size={18} strokeWidth={2.5}/> MANAGE FULL ROSTER
+                    </button>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-                <StatBox icon={<Users className="text-blue-600" size={24} />} label="TOTAL INTERNS" value={interns.length.toString().padStart(2, '0')} />
-                <StatBox icon={<Star className="text-amber-500" fill="currentColor" size={24} />} label="AVG PERFORMANCE" value="4.52" />
-                <StatBox icon={<Clock className="text-emerald-500" size={24} />} label="PUNCTUALITY SCORE" value="98%" />
-                <StatBox icon={<CheckCircle2 className="text-indigo-600" size={24} />} label="TASKS APPROVED" value="12" />
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
+                    <StatBox icon={<Users className="text-blue-600" size={24} />} label="TOTAL INTERNS" value={interns.length.toString().padStart(2, '0')} />
+                    <StatBox icon={<Star className="text-amber-500" fill="currentColor" size={24} />} label="AVG PERFORMANCE" value="4.52" />
+                    <StatBox icon={<Clock className="text-emerald-500" size={24} />} label="PUNCTUALITY SCORE" value="98%" />
+                    <StatBox icon={<CheckCircle2 className="text-indigo-600" size={24} />} label="TASKS APPROVED" value="12" />
+                  </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                <div className="lg:col-span-8 bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
-                   <div className="flex items-center justify-between mb-12">
-                      <div className="flex items-center gap-4">
-                         <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center">
-                            <CircleAlert size={26} />
-                         </div>
-                         <h3 className="text-2xl font-black text-slate-900 tracking-tight">Pending Action Items</h3>
-                      </div>
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">3 ITEMS REQUIRING REVIEW</span>
-                   </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    <div className="lg:col-span-8 bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
+                       <div className="flex items-center justify-between mb-12">
+                          <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center">
+                                <CircleAlert size={26} />
+                             </div>
+                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Pending Action Items</h3>
+                          </div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">3 ITEMS REQUIRING REVIEW</span>
+                       </div>
 
-                   <div className="space-y-4">
-                      {interns.filter(i => i.status === 'Review Needed').map(intern => (
-                        <div key={intern.id} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
-                           <div className="flex items-center gap-5">
-                              <img src={intern.avatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
-                              <div>
-                                <h4 className="text-lg font-black text-slate-900 leading-tight">{intern.name}</h4>
-                                <div className="flex items-center gap-2 mt-1">
-                                   <FileText size={14} className="text-amber-50" />
-                                   <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">TASK SUBMISSION PENDING REVIEW</span>
+                       <div className="space-y-4">
+                          {interns.filter(i => i.status === 'Review Needed').map(intern => (
+                            <div key={intern.id} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
+                               <div className="flex items-center gap-5">
+                                  <img src={intern.avatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
+                                  <div>
+                                    <h4 className="text-lg font-black text-slate-900 leading-tight">{intern.name}</h4>
+                                    <div className="flex items-center gap-2 mt-1">
+                                       <FileText size={14} className="text-amber-50" />
+                                       <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">TASK SUBMISSION PENDING REVIEW</span>
+                                    </div>
+                                  </div>
+                               </div>
+                               <div className="flex items-center gap-6">
+                                  <button onClick={() => { setSelectedInternId(intern.id); setIsAssigningTask(true); }} className="flex items-center gap-2 px-8 py-3 bg-[#EBF3FF] text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                                     <Plus size={16} strokeWidth={3}/> Assign Task
+                                  </button>
+                                  <ChevronRight size={24} className="text-slate-200 group-hover:text-blue-500 transition-colors" />
+                               </div>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+
+                    <div className="lg:col-span-4 space-y-8">
+                       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
+                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Presence</h3>
+                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">WHO IS AWAY TODAY</p>
+                          
+                          <div className="space-y-6">
+                             <div className="flex items-center justify-between p-4 bg-rose-50/50 rounded-2xl border border-rose-100">
+                                <div className="flex items-center gap-4">
+                                   <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-rose-500 shadow-sm border border-rose-100">
+                                      <UserX size={20} />
+                                   </div>
+                                   <div>
+                                      <p className="text-sm font-black text-slate-900 leading-none">James Wilson</p>
+                                      <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">SICK LEAVE (UNPAID)</p>
+                                   </div>
                                 </div>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-6">
-                              <button onClick={() => { setSelectedInternId(intern.id); setIsAssigningTask(true); }} className="flex items-center gap-2 px-8 py-3 bg-[#EBF3FF] text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm">
-                                 <Plus size={16} strokeWidth={3}/> Assign Task
-                              </button>
-                              <ChevronRight size={24} className="text-slate-200 group-hover:text-blue-500 transition-colors" />
-                           </div>
-                        </div>
-                      ))}
-                   </div>
-                </div>
+                             </div>
+                             <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
+                                <PlaneTakeoff size={32} className="text-slate-200 mb-3" />
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO UPCOMING LEAVES <br /> SCHEDULED FOR THIS WEEK</p>
+                             </div>
+                          </div>
+                       </div>
 
-                <div className="lg:col-span-4 space-y-8">
-                   <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
-                      <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Presence</h3>
-                      <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">WHO IS AWAY TODAY</p>
-                      
-                      <div className="space-y-6">
-                         <div className="flex items-center justify-between p-4 bg-rose-50/50 rounded-2xl border border-rose-100">
-                            <div className="flex items-center gap-4">
-                               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-rose-500 shadow-sm border border-rose-100">
-                                  <UserX size={20} />
-                               </div>
-                               <div>
-                                  <p className="text-sm font-black text-slate-900 leading-none">James Wilson</p>
-                                  <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">SICK LEAVE (UNPAID)</p>
-                               </div>
-                            </div>
-                         </div>
-                         <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
-                            <PlaneTakeoff size={32} className="text-slate-200 mb-3" />
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO UPCOMING LEAVES <br /> SCHEDULED FOR THIS WEEK</p>
-                         </div>
-                      </div>
-                   </div>
-
-                   <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
-                      <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Sentiment</h3>
-                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-12">Morale and feedback levels.</p>
-                      <div className="flex flex-col items-center">
-                         <div className="relative mb-12 flex items-center justify-center">
-                            <div className="w-44 h-44 rounded-full border-[18px] border-slate-50 flex items-center justify-center">
-                               <span className="text-5xl font-black text-blue-600 tracking-tighter">88%</span>
-                            </div>
-                            <div className="absolute inset-0 border-[18px] border-blue-600 rounded-full border-t-transparent border-l-transparent -rotate-45"></div>
-                         </div>
-                         <p className="text-sm text-slate-500 font-medium italic text-center max-w-[200px] leading-relaxed">
-                           "The team currently shows high engagement."
-                         </p>
-                      </div>
-                   </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <InternListSection
-                interns={filteredInterns}
-                searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
-                onOpenAssignIntern={() => setIsAssigningIntern(true)}
-                showAssignButton={false}
-                onSelectIntern={setSelectedInternId}
-              />
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
+                       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
+                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Sentiment</h3>
+                          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-12">Morale and feedback levels.</p>
+                          <div className="flex flex-col items-center">
+                             <div className="relative mb-12 flex items-center justify-center">
+                                <div className="w-44 h-44 rounded-full border-[18px] border-slate-50 flex items-center justify-center">
+                                   <span className="text-5xl font-black text-blue-600 tracking-tighter">88%</span>
+                                </div>
+                                <div className="absolute inset-0 border-[18px] border-blue-600 rounded-full border-t-transparent border-l-transparent -rotate-45"></div>
+                             </div>
+                             <p className="text-sm text-slate-500 font-medium italic text-center max-w-[200px] leading-relaxed">
+                               "The team currently shows high engagement."
+                             </p>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col md:flex-row md:items-end justify-between mb-14 gap-8">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-3">INTERNPLUS <span className="mx-1 text-slate-200">/</span> TEAM INTELLIGENCE</p>
+                      <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">My Interns</h1>
+                      <p className="text-slate-400 text-sm font-medium mt-4 italic">Manage and monitor your assigned interns' performance.</p>
+                    </div>
+                  </div>
+                  <InternListSection
+                    interns={filteredInterns}
+                    searchQuery={searchQuery}
+                    statusFilter={statusFilter}
+                    onSearchQueryChange={setSearchQuery}
+                    onStatusFilterChange={setStatusFilter}
+                    onOpenAssignIntern={() => setIsAssigningIntern(true)}
+                    showAssignButton={false}
+                    onSelectIntern={setSelectedInternId}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        );
+      };
 
   return (
     <div className="h-full w-full bg-slate-50 overflow-hidden flex flex-col">

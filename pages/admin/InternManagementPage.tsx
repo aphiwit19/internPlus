@@ -22,7 +22,7 @@ interface AdminInternDetail {
   position: string;
   internPeriod: string;
   progress: number;
-  status: 'Active' | 'Review Needed' | 'On Break';
+  status: 'Active' | 'Inactive';
   attendance: string;
   department: string;
   email: string;
@@ -106,6 +106,7 @@ const InternManagementPage: React.FC = () => {
           internPeriod?: string;
           department?: string;
           email?: string;
+          lifecycleStatus?: string;
           performance?: Partial<PerformanceMetrics>;
           adminSummary?: string;
           selfPerformance?: Partial<PerformanceMetrics>;
@@ -113,6 +114,17 @@ const InternManagementPage: React.FC = () => {
           supervisorPerformance?: Partial<PerformanceMetrics>;
           supervisorSummary?: string;
         };
+
+        // Map lifecycleStatus to display status
+        let status: AdminInternDetail['status'] = 'Active';
+        console.log('🔍 Debug - Intern Data:', d.id, data.lifecycleStatus);
+        
+        if (data.lifecycleStatus === 'WITHDRAWN' || 
+            data.lifecycleStatus === 'COMPLETED') {
+          status = 'Inactive';
+        } else {
+          status = 'Active';
+        }
 
         const rawPerf = data.performance ?? null;
         const normalizedPerf: PerformanceMetrics = {
@@ -150,7 +162,7 @@ const InternManagementPage: React.FC = () => {
           department: data.department || 'Unknown',
           email: data.email || '-',
           progress: 0,
-          status: 'Active',
+          status,
           attendance: '—',
           performance: normalizedPerf,
           adminSummary: typeof data.adminSummary === 'string' ? data.adminSummary : '',
@@ -218,12 +230,16 @@ const InternManagementPage: React.FC = () => {
     return activeEvalSource === 'SELF' ? selectedIntern.selfSummary : selectedIntern.supervisorSummary;
   }, [activeEvalSource, selectedIntern]);
 
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
   const filteredInterns = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return interns.filter(
-      (i) => i.name.toLowerCase().includes(q) || i.position.toLowerCase().includes(q),
-    );
-  }, [interns, searchQuery]);
+    return interns.filter((i) => {
+      const matchesSearch = i.name.toLowerCase().includes(q) || i.position.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === 'all' || i.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [interns, searchQuery, statusFilter]);
 
   useEffect(() => {
     if (!selectedInternId) return;
@@ -390,7 +406,9 @@ const InternManagementPage: React.FC = () => {
             <InternListSection
               interns={filteredInterns}
               searchQuery={searchQuery}
+              statusFilter={statusFilter}
               onSearchQueryChange={setSearchQuery}
+              onStatusFilterChange={setStatusFilter}
               onOpenAssignIntern={() => navigate(pageIdToPath('HR_ADMIN', 'invitations'))}
               onSelectIntern={(internId) => {
                 setSelectedInternId(internId);
