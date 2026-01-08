@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { 
   Layers, 
   ArrowRight, 
@@ -26,6 +26,13 @@ import {
 } from 'lucide-react';
 import { Language, SubTask, TaskLog } from '@/types';
 
+import { addDoc, collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
+
+import { ref as storageRef, uploadBytes } from 'firebase/storage';
+
+import { firestoreDb, firebaseStorage } from '@/firebase';
+import { useAppContext } from '@/app/AppContext';
+
 interface Project {
   id: string;
   title: string;
@@ -40,53 +47,12 @@ interface AssignmentPageProps {
 }
 
 const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
-  const [projects, setProjects] = useState<Project[]>([
-    {
-      id: 'p1',
-      title: 'User Flow Mapping',
-      description: 'Create comprehensive user flows for the new onboarding module.',
-      status: 'IN PROGRESS',
-      date: '2024-11-20',
-      tasks: [
-        { 
-          id: 't1', 
-          title: 'Define User Personas', 
-          type: 'SINGLE', 
-          status: 'DONE', 
-          plannedStart: new Date(2024, 10, 18, 9, 0).toISOString(),
-          plannedEnd: new Date(2024, 10, 18, 12, 30).toISOString(),
-          actualEnd: new Date(2024, 10, 18, 12, 15).toISOString(),
-          timeLogs: [{ id: 'l1', startTime: new Date(2024, 10, 18, 9, 0).toISOString(), endTime: new Date(2024, 10, 18, 12, 15).toISOString() }],
-          attachments: ['Personas_v1.pdf', 'Market_Research.pdf'],
-          isSessionActive: false
-        },
-        { 
-          id: 't2', 
-          title: 'Draft Lo-fi Wireframes', 
-          type: 'CONTINUE', 
-          status: 'IN_PROGRESS', 
-          plannedStart: new Date(2024, 10, 19, 13, 45).toISOString(),
-          plannedEnd: new Date(2024, 10, 21, 18, 0).toISOString(),
-          timeLogs: [{ id: 'l2', startTime: new Date(2024, 10, 19, 13, 45).toISOString(), endTime: new Date(2024, 10, 19, 17, 30).toISOString() }],
-          attachments: [],
-          isSessionActive: false
-        },
-        { 
-          id: 't3', 
-          title: 'High-Fidelity Prototyping', 
-          type: 'CONTINUE', 
-          status: 'IN_PROGRESS', 
-          plannedStart: new Date(2024, 10, 22, 9, 0).toISOString(),
-          plannedEnd: new Date(2024, 10, 24, 18, 0).toISOString(),
-          timeLogs: [],
-          attachments: [],
-          isSessionActive: false
-        }
-      ]
-    }
-  ]);
+  const { user } = useAppContext();
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [assignedProjects, setAssignedProjects] = useState<Project[]>([]);
+  const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
+
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
   const [isPlanningTask, setIsPlanningTask] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isExtendingDeadline, setIsExtendingDeadline] = useState<string | null>(null);
@@ -109,7 +75,52 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
   const [newProject, setNewProject] = useState({ title: '', description: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
+
+  const [selectedProofFiles, setSelectedProofFiles] = useState<File[]>([]);
+
+  const allProjects = useMemo(() => {
+    return {
+      assigned: assignedProjects,
+      personal: personalProjects,
+    };
+  }, [assignedProjects, personalProjects]);
+
+  const selectedProject = useMemo(() => {
+    if (!selectedProjectKey) return null;
+    const [kind, id] = selectedProjectKey.split(':', 2);
+    if (kind === 'assigned') return allProjects.assigned.find((p) => p.id === id) ?? null;
+    if (kind === 'personal') return allProjects.personal.find((p) => p.id === id) ?? null;
+    return null;
+  }, [allProjects.assigned, allProjects.personal, selectedProjectKey]);
+
+  const selectedKind = useMemo(() => {
+    if (!selectedProjectKey) return null;
+    const [kind] = selectedProjectKey.split(':', 1);
+    return kind === 'assigned' || kind === 'personal' ? kind : null;
+  }, [selectedProjectKey]);
+
+  const isSelectedAssigned = selectedKind === 'assigned';
+
+  useEffect(() => {
+    if (!user) return;
+
+    const assignedRef = collection(firestoreDb, 'users', user.id, 'assignmentProjects');
+    const unsubAssigned = onSnapshot(assignedRef, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }));
+      setAssignedProjects(list);
+    });
+
+    const personalRef = collection(firestoreDb, 'users', user.id, 'personalProjects');
+    const unsubPersonal = onSnapshot(personalRef, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }));
+      setPersonalProjects(list);
+    });
+
+    return () => {
+      unsubAssigned();
+      unsubPersonal();
+    };
+  }, [user]);
 
   const calculateTotalWorkTime = (logs: TaskLog[]) => {
     let totalMs = 0;
@@ -124,8 +135,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
   const t = {
     EN: {
-      title: "My Assignments",
-      subtitle: "Review your projects and individual tasks.",
+      title: "Assignments",
+      subtitle: "Track assigned work and manage your personal projects.",
+      assignedTitle: "Assigned",
+      personalTitle: "My Projects",
+      assignedBadge: "ASSIGNED",
       createNew: "Create New Project",
       projectBrief: "PROJECT BRIEF",
       taskMgmt: "TASK MANAGEMENT",
@@ -152,11 +166,15 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       extend: "Extend Deadline",
       plannedRange: "Planned Target",
       shiftMessage: "Subsequent tasks shifted automatically to maintain timeline integrity.",
-      applyExt: "Apply Extension & Shift Timeline"
+      applyExt: "Apply Extension & Shift Timeline",
+      assignedReadOnlyHint: "This project is assigned. You can plan tasks, track time, and submit work.",
     },
     TH: {
       title: "งานที่ได้รับมอบหมาย",
-      subtitle: "ตรวจสอบโครงการและงานส่วนตัวของคุณ",
+      subtitle: "ติดตามงานที่มอบหมาย และจัดการงานส่วนตัวของคุณ",
+      assignedTitle: "งานที่มอบหมาย",
+      personalTitle: "งานของฉัน",
+      assignedBadge: "มอบหมาย",
       createNew: "สร้างโครงการใหม่",
       projectBrief: "สรุปโครงการ",
       taskMgmt: "การจัดการงาน",
@@ -183,77 +201,123 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       extend: "ขยายเวลา",
       plannedRange: "ระยะเวลาที่วางแผน",
       shiftMessage: "ระบบขยับตารางงานลำดับถัดไปให้โดยอัตโนมัติเพื่อให้แผนงานต่อเนื่องกัน",
-      applyExt: "ยืนยันขยายเวลาและปรับแผน"
+      applyExt: "ยืนยันขยายเวลาและปรับแผน",
+      assignedReadOnlyHint: "โปรเจกต์นี้ถูกมอบหมาย คุณสามารถวางแผนงาน จับเวลา และส่งงานได้",
     }
   }[lang];
 
-  const handleToggleSession = (taskId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
+  const updateSelectedProjectTasks = async (nextTasks: SubTask[]) => {
+    if (!user || !selectedProject || !selectedKind) return;
+    const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
+    await updateDoc(doc(firestoreDb, 'users', user.id, colName, selectedProject.id), {
+      tasks: nextTasks,
+      updatedAt: serverTimestamp(),
+    });
+  };
+
+  const handleSubmitWithProof = async (taskId: string) => {
+    if (!user || !selectedProject || !selectedKind) return;
+    const now = new Date();
+    const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
+
+    const uploaded = [] as Array<{ fileName: string; storagePath: string }>;
+    for (const f of selectedProofFiles) {
+      const safeName = f.name;
+      const path = `users/${user.id}/${colName}/${selectedProject.id}/${taskId}/${Date.now()}_${safeName}`;
+      await uploadBytes(storageRef(firebaseStorage, path), f);
+      uploaded.push({ fileName: safeName, storagePath: path });
+    }
+
+    const nextTasks = selectedProject.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const pEnd = new Date(t.plannedEnd);
+      let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
+      if (now > pEnd) finalStatus = 'DELAYED';
+
+      const mergedAttachments = [...(t.attachments ?? []), ...uploaded];
+
       return {
-        ...p,
-        tasks: p.tasks.map(t => {
-          if (t.id !== taskId) return t;
-          if (t.isSessionActive) {
-            const lastLog = t.timeLogs[t.timeLogs.length - 1];
-            return {
-              ...t,
-              isSessionActive: false,
-              timeLogs: t.timeLogs.map(l => l.id === lastLog.id ? { ...l, endTime: new Date().toISOString() } : l)
-            };
-          } else {
-            const newLog: TaskLog = { id: Date.now().toString(), startTime: new Date().toISOString() };
-            return {
-              ...t,
-              isSessionActive: true,
-              timeLogs: [...t.timeLogs, newLog]
-            };
-          }
-        })
+        ...t,
+        status: finalStatus,
+        actualEnd: now.toISOString(),
+        isSessionActive: false,
+        attachments: mergedAttachments,
+        timeLogs: t.isSessionActive
+          ? t.timeLogs.map((l, i) => (i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l))
+          : t.timeLogs,
       };
-    }));
+    });
+
+    await updateDoc(doc(firestoreDb, 'users', user.id, colName, selectedProject.id), {
+      tasks: nextTasks,
+      updatedAt: serverTimestamp(),
+    });
+
+    setSelectedProofFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setUploadTaskId(null);
+  };
+
+  const handleToggleSession = (taskId: string) => {
+    if (!selectedProject) return;
+
+    const nextTasks = selectedProject.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      if (t.isSessionActive) {
+        const lastLog = t.timeLogs[t.timeLogs.length - 1];
+        return {
+          ...t,
+          isSessionActive: false,
+          timeLogs: t.timeLogs.map((l) => (l.id === lastLog.id ? { ...l, endTime: new Date().toISOString() } : l)),
+        };
+      }
+
+      const newLog: TaskLog = { id: Date.now().toString(), startTime: new Date().toISOString() };
+      return {
+        ...t,
+        isSessionActive: true,
+        timeLogs: [...t.timeLogs, newLog],
+      };
+    });
+
+    void updateSelectedProjectTasks(nextTasks);
   };
 
   const handleFinishTask = (taskId: string) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
+    if (!selectedProject) return;
+    const now = new Date();
+
+    const nextTasks = selectedProject.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const pEnd = new Date(t.plannedEnd);
+      let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
+      if (now > pEnd) finalStatus = 'DELAYED';
+
       return {
-        ...p,
-        tasks: p.tasks.map(t => {
-          if (t.id !== taskId) return t;
-          const now = new Date();
-          const pEnd = new Date(t.plannedEnd);
-          let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
-          if (now > pEnd) finalStatus = 'DELAYED';
-          
-          return {
-            ...t,
-            status: finalStatus,
-            actualEnd: now.toISOString(),
-            isSessionActive: false,
-            timeLogs: t.isSessionActive 
-              ? t.timeLogs.map((l, i) => i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l)
-              : t.timeLogs
-          };
-        })
+        ...t,
+        status: finalStatus,
+        actualEnd: now.toISOString(),
+        isSessionActive: false,
+        timeLogs: t.isSessionActive
+          ? t.timeLogs.map((l, i) => (i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l))
+          : t.timeLogs,
       };
-    }));
+    });
+
+    void updateSelectedProjectTasks(nextTasks);
     setUploadTaskId(null);
   };
 
   const handleExtendDeadline = () => {
-    if (!selectedProjectId || !isExtendingDeadline) return;
+    if (!selectedProject || !isExtendingDeadline) return;
     
     const newDeadlineDate = new Date(`${extensionDate.date}T${extensionDate.time}`);
     const newDeadlineISO = newDeadlineDate.toISOString();
     let hasShiftedAnything = false;
 
-    setProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
-      
-      const updatedTasks = [...p.tasks];
+    const updatedTasks = [...selectedProject.tasks];
       const taskIndex = updatedTasks.findIndex(t => t.id === isExtendingDeadline);
-      if (taskIndex === -1) return p;
+      if (taskIndex === -1) return;
 
       // Update the targeted task
       updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], plannedEnd: newDeadlineISO };
@@ -290,14 +354,13 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
         setTimeout(() => setShowShiftNotice(false), 4000);
       }
 
-      return { ...p, tasks: updatedTasks };
-    }));
+      void updateSelectedProjectTasks(updatedTasks);
     
     setIsExtendingDeadline(null);
   };
 
   const handleAddTask = () => {
-    if (!selectedProjectId || !newTask.title) return;
+    if (!selectedProject || !newTask.title) return;
     const pStart = new Date(`${newTask.startDate}T${newTask.startTime}`).toISOString();
     const pEnd = new Date(`${newTask.endDate}T${newTask.endTime}`).toISOString();
     
@@ -313,12 +376,29 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       isSessionActive: false
     };
 
-    setProjects(prev => prev.map(p => {
-      if (p.id !== selectedProjectId) return p;
-      return { ...p, tasks: [...p.tasks, task] };
-    }));
+    void updateSelectedProjectTasks([...(selectedProject.tasks ?? []), task]);
     setIsPlanningTask(false);
     setNewTask({ title: '', type: 'SINGLE', startDate: new Date().toISOString().split('T')[0], startTime: '09:00', endDate: new Date().toISOString().split('T')[0], endTime: '18:00' });
+  };
+
+  const handleCreatePersonalProject = async () => {
+    if (!user) return;
+    const title = newProject.title.trim();
+    if (!title) return;
+
+    const nowDate = new Date().toISOString().split('T')[0];
+    await addDoc(collection(firestoreDb, 'users', user.id, 'personalProjects'), {
+      title,
+      description: newProject.description.trim(),
+      status: 'TODO',
+      date: nowDate,
+      tasks: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    } satisfies Omit<Project, 'id'> & { createdAt?: unknown; updatedAt?: unknown });
+
+    setIsCreatingProject(false);
+    setNewProject({ title: '', description: '' });
   };
 
   return (
@@ -340,40 +420,95 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
           <p className="text-slate-400 text-sm font-medium">{t.subtitle}</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {projects.map((project) => (
-            <div 
-              key={project.id}
-              onClick={() => setSelectedProjectId(project.id)}
-              className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
-            >
-              <div className="flex justify-between items-start mb-8">
-                <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                  project.status === 'IN PROGRESS' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-blue-50 text-blue-600 border-blue-100'
-                }`}>
-                  {project.status}
-                </span>
-                <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
-              </div>
-              <h3 className="text-xl font-black text-slate-900 mb-4 tracking-tight leading-tight">{project.title}</h3>
-              <p className="text-sm text-slate-400 font-medium leading-relaxed mb-12 line-clamp-2">{project.description}</p>
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{project.date}</span>
-                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
-                  <ArrowRight size={18} />
+        <div className="space-y-10">
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.assignedTitle}</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {assignedProjects.map((project) => (
+                <div
+                  key={project.id}
+                  onClick={() => setSelectedProjectKey(`assigned:${project.id}`)}
+                  className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                          project.status === 'IN PROGRESS'
+                            ? 'bg-amber-50 text-amber-600 border-amber-100'
+                            : 'bg-blue-50 text-blue-600 border-blue-100'
+                        }`}
+                      >
+                        {project.status}
+                      </span>
+                      <span className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
+                        {t.assignedBadge}
+                      </span>
+                    </div>
+                    <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-4 tracking-tight leading-tight">{project.title}</h3>
+                  <p className="text-sm text-slate-400 font-medium leading-relaxed mb-12 line-clamp-2">{project.description}</p>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{project.date}</span>
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                      <ArrowRight size={18} />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
-          <button 
-            onClick={() => setIsCreatingProject(true)}
-            className="border-4 border-dashed border-slate-100 rounded-[2.5rem] p-10 flex flex-col items-center justify-center gap-4 text-slate-300 hover:bg-white hover:border-blue-200 hover:text-blue-500 transition-all group min-h-[320px]"
-          >
-            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-600 transition-all">
-              <Plus size={32} />
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.personalTitle}</h2>
             </div>
-            <span className="text-xs font-black uppercase tracking-widest">{t.createNew}</span>
-          </button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {personalProjects.map((project) => (
+                <div
+                  key={project.id}
+                  onClick={() => setSelectedProjectKey(`personal:${project.id}`)}
+                  className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <span
+                      className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                        project.status === 'IN PROGRESS'
+                          ? 'bg-amber-50 text-amber-600 border-amber-100'
+                          : 'bg-blue-50 text-blue-600 border-blue-100'
+                      }`}
+                    >
+                      {project.status}
+                    </span>
+                    <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 mb-4 tracking-tight leading-tight">{project.title}</h3>
+                  <p className="text-sm text-slate-400 font-medium leading-relaxed mb-12 line-clamp-2">{project.description}</p>
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{project.date}</span>
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                      <ArrowRight size={18} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={() => setIsCreatingProject(true)}
+                className="border-4 border-dashed border-slate-100 rounded-[2.5rem] p-10 flex flex-col items-center justify-center gap-4 text-slate-300 hover:bg-white hover:border-blue-200 hover:text-blue-500 transition-all group min-h-[320px]"
+              >
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-50 group-hover:text-blue-600 transition-all">
+                  <Plus size={32} />
+                </div>
+                <span className="text-xs font-black uppercase tracking-widest">{t.createNew}</span>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -395,13 +530,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                   <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{selectedProject.title}</h2>
                 </div>
               </div>
-              <button onClick={() => setSelectedProjectId(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
+              <button onClick={() => setSelectedProjectKey(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-10 scrollbar-hide space-y-12 bg-white">
               <section>
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">{t.projectBrief}</h4>
                 <p className="text-base text-slate-600 font-medium leading-relaxed max-w-3xl">{selectedProject.description}</p>
+                {isSelectedAssigned && (
+                  <div className="mt-6 p-6 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{t.assignedReadOnlyHint}</p>
+                  </div>
+                )}
               </section>
 
               <section>
@@ -410,7 +550,10 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">{t.taskMgmt}</h4>
                     <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t.taskTimeline}</h3>
                   </div>
-                  <button onClick={() => setIsPlanningTask(true)} className="flex items-center gap-3 px-8 py-3.5 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all">
+                  <button
+                    onClick={() => setIsPlanningTask(true)}
+                    className="flex items-center gap-3 px-8 py-3.5 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
+                  >
                     <Plus size={18} strokeWidth={3} /> {t.planTask}
                   </button>
                 </div>
@@ -532,7 +675,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
             </div>
 
             <div className="p-8 md:p-10 bg-slate-50/50 border-t border-slate-100 flex justify-end">
-              <button onClick={() => setSelectedProjectId(null)} className="px-16 py-4 bg-[#111827] text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-600 shadow-2xl active:scale-95 transition-all">{t.saveChanges}</button>
+              <button onClick={() => setSelectedProjectKey(null)} className="px-16 py-4 bg-[#111827] text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-600 shadow-2xl active:scale-95 transition-all">{t.saveChanges}</button>
             </div>
           </div>
         </div>
@@ -654,12 +797,31 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                 </div>
                 Drop proof files here
               </button>
-              <input type="file" ref={fileInputRef} className="hidden" />
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                multiple
+                onChange={(e) => setSelectedProofFiles(Array.from(e.target.files ?? []))}
+              />
+
+              {selectedProofFiles.length > 0 && (
+                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    {lang === 'TH' ? 'ไฟล์ที่เลือก' : 'Selected files'}
+                  </div>
+                  <div className="space-y-2">
+                    {selectedProofFiles.map((f) => (
+                      <div key={f.name} className="text-sm font-bold text-slate-700 truncate">{f.name}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-4">
                  <button onClick={() => setUploadTaskId(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest">{t.cancel}</button>
                  <button 
-                  onClick={() => handleFinishTask(uploadTaskId)}
+                  onClick={() => void handleSubmitWithProof(uploadTaskId)}
                   className="flex-[2] py-5 bg-emerald-500 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-emerald-100 hover:bg-emerald-600"
                  >
                    {t.finishBtn}
@@ -689,10 +851,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
               </div>
               <div className="flex gap-4">
                  <button onClick={() => setIsCreatingProject(false)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase">{t.cancel}</button>
-                 <button onClick={() => {
-                   setProjects([{ id: Date.now().toString(), title: newProject.title, description: newProject.description, status: 'TODO', date: new Date().toISOString().split('T')[0], tasks: [] }, ...projects]);
-                   setIsCreatingProject(false);
-                 }} className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-blue-500/20">Initialize Project</button>
+                 <button onClick={() => void handleCreatePersonalProject()} className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-blue-500/20">Initialize Project</button>
               </div>
            </div>
         </div>

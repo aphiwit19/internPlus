@@ -1,6 +1,8 @@
 import React from 'react';
 import { Check, CheckCircle2, Clock, Download, FileText, Plus, RotateCcw } from 'lucide-react';
 
+import { TaskAttachment } from '@/types';
+
 export type TaskStatus = 'DONE' | 'IN_PROGRESS' | 'DELAYED' | 'REVISION';
 
 export interface TaskItem {
@@ -8,7 +10,7 @@ export interface TaskItem {
   title: string;
   status: TaskStatus;
   date?: string;
-  attachments: string[];
+  attachments: TaskAttachment[];
 }
 
 interface TasksTabProps {
@@ -18,6 +20,8 @@ interface TasksTabProps {
 }
 
 const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTaskStatus }) => {
+  const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500">
       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative">
@@ -70,7 +74,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
                         <div className="w-12 h-12 bg-slate-50 text-blue-600 rounded-2xl flex items-center justify-center group-hover/file:bg-blue-600 group-hover/file:text-white transition-all shadow-inner">
                           <FileText size={24} />
                         </div>
-                        <p className="text-[14px] font-black text-slate-800 truncate max-w-[200px] leading-none mb-1">{file}</p>
+                        <p className="text-[14px] font-black text-slate-800 truncate max-w-[200px] leading-none mb-1">{attachmentLabel(file)}</p>
                         <button className="w-11 h-11 bg-[#111827] text-white rounded-xl flex items-center justify-center hover:bg-blue-600 transition-all ml-2 shadow-xl shadow-slate-900/10 active:scale-95">
                           <Download size={20} />
                         </button>

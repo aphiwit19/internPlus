@@ -81,6 +81,13 @@ export interface TaskLog {
   endTime?: string;  // ISO string
 }
 
+export type TaskAttachment =
+  | string
+  | {
+      fileName: string;
+      storagePath: string;
+    };
+
 export interface SubTask {
   id: string;
   title: string;
@@ -90,7 +97,7 @@ export interface SubTask {
   plannedEnd: string;   // ISO string
   actualEnd?: string;   // ISO string
   timeLogs: TaskLog[];
-  attachments: string[];
+  attachments: TaskAttachment[];
   isSessionActive: boolean;
   // Compatibility fields for Supervisor view
   date?: string;

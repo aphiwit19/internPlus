@@ -61,7 +61,7 @@ import {
 } from 'lucide-react';
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
-import { UserProfile, PerformanceMetrics, Language, SubTask } from '@/types';
+import { UserProfile, PerformanceMetrics, Language, SubTask, TaskAttachment } from '@/types';
 import { PageId } from '@/pageTypes';
 import InternListSection from '@/pages/supervisor/components/InternListSection';
 import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/pages/supervisor/components/InternDeepDiveLayout';
@@ -69,6 +69,7 @@ import AttendanceTab from '@/pages/supervisor/components/AttendanceTab';
 import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
 import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
+import AssignmentsTab from '@/pages/admin/components/AssignmentsTab';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 
 interface InternDetail {
@@ -164,6 +165,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         (f.status && f.status !== 'pending'),
     );
   };
+
+  const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
 
   const mapUserToInternDetail = useMemo(() => {
     return (id: string, data: any): InternDetail => {
@@ -304,11 +307,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     };
   }, [mapUserToInternDetail, user.id]);
 
+  const feedbackInternIdsKey = useMemo(() => interns.map((i) => i.id).join('|'), [interns]);
+
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
-    for (const intern of interns) {
-      const colRef = collection(firestoreDb, 'users', intern.id, 'feedbackMilestones');
+    const internIds = feedbackInternIdsKey ? feedbackInternIdsKey.split('|').filter(Boolean) : [];
+
+    for (const internId of internIds) {
+      const colRef = collection(firestoreDb, 'users', internId, 'feedbackMilestones');
       const unsub = onSnapshot(colRef, (snap) => {
         const items: FeedbackItem[] = snap.docs.map((d) => {
           const data = d.data() as FeedbackMilestoneDoc;
@@ -329,8 +336,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           };
         });
 
-        setFeedbackByIntern((prev) => ({ ...prev, [intern.id]: items }));
-        setInterns((prev) => prev.map((x) => (x.id === intern.id ? { ...x, feedback: items } : x)));
+        setFeedbackByIntern((prev) => ({ ...prev, [internId]: items }));
+        setInterns((prev) => prev.map((x) => (x.id === internId ? { ...x, feedback: items } : x)));
       });
       unsubs.push(unsub);
     }
@@ -338,7 +345,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [interns]);
+  }, [feedbackInternIdsKey]);
 
   const handleOpenStoragePath = async (path: string) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, path));
@@ -475,6 +482,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         }}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        showAssignmentsTab
         onBack={() => {
           setSelectedInternId(null);
           setActiveTab('overview');
@@ -602,7 +610,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                       {selectedIntern.tasks.map(task => (
                         <React.Fragment key={task.id}>
                           {task.attachments.map((file, idx) => (
-                            <AssetCard key={`${task.id}-${idx}`} fileName={file} date={task.date} taskTitle={task.title} status={task.status} />
+                            <AssetCard
+                              key={`${task.id}-${idx}`}
+                              fileName={attachmentLabel(file)}
+                              date={task.date}
+                              taskTitle={task.title}
+                              status={task.status}
+                            />
                           ))}
                         </React.Fragment>
                       ))}
@@ -619,6 +633,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 onUpdateTaskStatus={handleUpdateTaskStatus}
               />
             )}
+
+            {activeTab === 'assignments' && selectedInternId && <AssignmentsTab internId={selectedInternId} />}
 
             {activeTab === 'attendance' && (
               <AttendanceTab
@@ -770,6 +786,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     onStatusFilterChange={setStatusFilter}
                     onOpenAssignIntern={() => setIsAssigningIntern(true)}
                     showAssignButton={false}
+                    showHeader={false}
                     onSelectIntern={setSelectedInternId}
                   />
                 </>

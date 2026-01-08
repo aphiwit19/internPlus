@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { useNavigate } from 'react-router-dom';
 
-import { PerformanceMetrics, SubTask } from '@/types';
+import { PerformanceMetrics, SubTask, TaskAttachment } from '@/types';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { pageIdToPath } from '@/app/routeUtils';
 
@@ -14,6 +14,7 @@ import AttendanceTab, { AttendanceViewMode } from '@/pages/supervisor/components
 import FeedbackTab, { FeedbackItem } from '@/pages/supervisor/components/FeedbackTab';
 import TasksTab from '@/pages/supervisor/components/TasksTab';
 import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
+import AssignmentsTab from '@/pages/admin/components/AssignmentsTab';
 
 interface AdminInternDetail {
   id: string;
@@ -256,6 +257,8 @@ const InternManagementPage: React.FC = () => {
   const renderDeepDive = () => {
     if (!selectedIntern) return null;
 
+    const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
+
     const showTabs = selectedInternId && activeTab === 'overview';
 
     const taskItems = selectedIntern.tasks.map((t) => ({
@@ -276,6 +279,7 @@ const InternManagementPage: React.FC = () => {
         }}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        showAssignmentsTab
         onBack={() => {
           setSelectedInternId(null);
           setActiveTab('overview');
@@ -360,7 +364,13 @@ const InternManagementPage: React.FC = () => {
                   {selectedIntern.tasks.map((task) => (
                     <React.Fragment key={task.id}>
                       {task.attachments.map((file, idx) => (
-                        <AssetCard key={`${task.id}-${idx}`} fileName={file} date={task.date} taskTitle={task.title} status={task.status} />
+                        <AssetCard
+                          key={`${task.id}-${idx}`}
+                          fileName={attachmentLabel(file)}
+                          date={task.date}
+                          taskTitle={task.title}
+                          status={task.status}
+                        />
                       ))}
                     </React.Fragment>
                   ))}
@@ -373,9 +383,11 @@ const InternManagementPage: React.FC = () => {
         {activeTab === 'tasks' && (
           <TasksTab
             tasks={taskItems}
-            onNewAssignment={() => alert('New Assignment (admin) - TODO')}
+            onNewAssignment={() => setActiveTab('assignments')}
           />
         )}
+
+        {activeTab === 'assignments' && <AssignmentsTab internId={selectedInternId} />}
 
         {activeTab === 'attendance' && (
           <AttendanceTab logs={selectedIntern.attendanceLog} viewMode={attendanceViewMode} onViewModeChange={setAttendanceViewMode} />

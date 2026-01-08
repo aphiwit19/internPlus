@@ -9,6 +9,8 @@ import RequireRole from './app/RequireRole';
 import RolePage from './app/RolePage';
 import RootRedirect from './app/RootRedirect';
 
+import AssignmentDetailRoute from './app/AssignmentDetailRoute';
+
 const App: React.FC = () => {
   return (
     <Routes>
@@ -17,7 +19,7 @@ const App: React.FC = () => {
       <Route path="/" element={<RootRedirect />} />
 
       <Route
-        path="/:roleSlug/:pageId"
+        path="/:roleSlug/:pageId/*"
         element={
           <RequireAuth>
             <RequireRole>
@@ -27,6 +29,8 @@ const App: React.FC = () => {
         }
       >
         <Route index element={<RolePage />} />
+
+        <Route path="assignment/:internId/:projectId" element={<AssignmentDetailRoute />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

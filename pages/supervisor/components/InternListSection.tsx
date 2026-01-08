@@ -22,6 +22,7 @@ interface InternListSectionProps {
   onStatusFilterChange: (value: string) => void;
   onOpenAssignIntern?: () => void;
   showAssignButton?: boolean;
+  showHeader?: boolean;
   onSelectIntern: (internId: string) => void;
 }
 
@@ -33,9 +34,13 @@ const InternListSection: React.FC<InternListSectionProps> = ({
   onStatusFilterChange,
   onOpenAssignIntern,
   showAssignButton = true,
+  showHeader = true,
   onSelectIntern,
 }) => {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
+  const activeCount = interns.filter((i) => i.status === 'Active').length;
+  const inactiveCount = interns.filter((i) => i.status === 'Inactive').length;
 
   const statusOptions = [
     { value: 'all', label: 'All Status' },
@@ -47,24 +52,38 @@ const InternListSection: React.FC<InternListSectionProps> = ({
     const matchesSearch = intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          intern.position.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || intern.status === statusFilter;
-    console.log('🔍 Debug - Intern Filter:', intern.name, intern.status, 'matchesStatus:', matchesStatus);
     return matchesSearch && matchesStatus;
   });
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-14 gap-8">
-        <div>
-          <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Intern Management</h1>
-          <p className="text-slate-400 text-sm font-medium mt-4">Review performance, approve tasks, and provide feedback.</p>
-          <div className="flex items-center gap-4 mt-4">
-            <span className="text-sm font-medium text-slate-600">
-              Active: <span className="text-emerald-600 font-bold ml-1">{interns.filter(i => i.status === 'Active').length}</span>
-            </span>
-            <span className="text-sm font-medium text-slate-600">
-              | Inactive: <span className="text-rose-600 font-bold ml-1">{interns.filter(i => i.status === 'Inactive').length}</span>
-            </span>
+        {showHeader ? (
+          <div>
+            <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Intern Management</h1>
+            <p className="text-slate-400 text-sm font-medium mt-4">Review performance, approve tasks, and provide feedback.</p>
+            <div className="flex items-center gap-4 mt-4">
+              <span className="text-sm font-medium text-slate-600">
+                Active:{' '}
+                <span className="text-emerald-600 font-bold ml-1">{activeCount}</span>
+              </span>
+              <span className="text-sm font-medium text-slate-600">
+                | Inactive:{' '}
+                <span className="text-rose-600 font-bold ml-1">{inactiveCount}</span>
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-end">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-slate-600">
+                Active: <span className="text-emerald-600 font-bold ml-1">{activeCount}</span>
+              </span>
+              <span className="text-sm font-medium text-slate-600">
+                | Inactive: <span className="text-rose-600 font-bold ml-1">{inactiveCount}</span>
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
