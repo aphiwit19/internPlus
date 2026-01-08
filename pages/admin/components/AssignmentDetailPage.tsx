@@ -7,12 +7,15 @@ import { firebaseStorage, firestoreDb } from '@/firebase';
 import { TaskAttachment } from '@/types';
 import { useAppContext } from '@/app/AppContext';
 
+type ProjectAttachment = { fileName: string; storagePath: string };
+
 type AssignmentProjectDoc = {
   title: string;
   description: string;
   status?: 'IN PROGRESS' | 'TODO';
   date?: string;
   tasks?: any[];
+  attachments?: ProjectAttachment[];
 };
 
 interface AssignmentDetailPageProps {
@@ -57,6 +60,11 @@ export default function AssignmentDetailPage({ internId, projectId, onBack }: As
     return url;
   };
 
+  const projectAttachmentUrl = async (a: ProjectAttachment): Promise<string> => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+    return url;
+  };
+
   if (!project) {
     return (
       <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
@@ -75,6 +83,7 @@ export default function AssignmentDetailPage({ internId, projectId, onBack }: As
   }
 
   const tasks = Array.isArray(project.tasks) ? project.tasks : [];
+  const projectAttachments = Array.isArray(project.attachments) ? project.attachments : [];
 
   return (
     <div className="w-full">
@@ -96,6 +105,38 @@ export default function AssignmentDetailPage({ internId, projectId, onBack }: As
               </div>
               <div className="text-3xl font-black text-slate-900 tracking-tight mt-3">{project.title}</div>
               {project.description ? <div className="mt-4 text-sm font-medium text-slate-500 max-w-3xl">{project.description}</div> : null}
+
+              {projectAttachments.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">{lang === 'TH' ? 'ไฟล์แนบชิ้นงาน' : 'Project attachments'}</div>
+                  <div className="flex flex-wrap gap-3">
+                    {projectAttachments.map((a, idx) => (
+                      <button
+                        key={`${a.storagePath}-${idx}`}
+                        onClick={() => {
+                          void projectAttachmentUrl(a).then((url) => {
+                            window.open(url, '_blank');
+                          });
+                        }}
+                        className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
+                        title={lang === 'TH' ? 'ดาวน์โหลด' : 'Download'}
+                        type="button"
+                      >
+                        <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
+                          <FileText size={18} />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{a.fileName}</div>
+                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                        </div>
+                        <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
+                          <Download size={18} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {project.date ? (

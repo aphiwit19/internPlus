@@ -12,6 +12,7 @@ import {
   Circle, 
   CalendarDays,
   Upload,
+  Download,
   FileText,
   Trash2,
   RefreshCw,
@@ -28,7 +29,7 @@ import { Language, SubTask, TaskLog } from '@/types';
 
 import { addDoc, collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 
-import { ref as storageRef, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
@@ -40,6 +41,7 @@ interface Project {
   status: 'IN PROGRESS' | 'TODO';
   date: string;
   tasks: SubTask[];
+  attachments?: Array<{ fileName: string; storagePath: string }>;
 }
 
 interface AssignmentPageProps {
@@ -77,6 +79,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedProofFiles, setSelectedProofFiles] = useState<File[]>([]);
+
+  const openProjectAttachment = async (a: { fileName: string; storagePath: string }) => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+    window.open(url, '_blank');
+  };
 
   const allProjects = useMemo(() => {
     return {
@@ -136,10 +143,9 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const t = {
     EN: {
       title: "Assignments",
-      subtitle: "Track assigned work and manage your personal projects.",
-      assignedTitle: "Assigned",
-      personalTitle: "My Projects",
+      subtitle: "Track assigned work and plan your tasks.",
       assignedBadge: "ASSIGNED",
+      personalBadge: "PERSONAL",
       createNew: "Create New Project",
       projectBrief: "PROJECT BRIEF",
       taskMgmt: "TASK MANAGEMENT",
@@ -171,10 +177,9 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     },
     TH: {
       title: "งานที่ได้รับมอบหมาย",
-      subtitle: "ติดตามงานที่มอบหมาย และจัดการงานส่วนตัวของคุณ",
-      assignedTitle: "งานที่มอบหมาย",
-      personalTitle: "งานของฉัน",
+      subtitle: "ติดตามงานที่มอบหมาย และวางแผนงานของคุณ",
       assignedBadge: "มอบหมาย",
+      personalBadge: "งานส่วนตัว",
       createNew: "สร้างโครงการใหม่",
       projectBrief: "สรุปโครงการ",
       taskMgmt: "การจัดการงาน",
@@ -422,10 +427,6 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
         <div className="space-y-10">
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.assignedTitle}</h2>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {assignedProjects.map((project) => (
                 <div
@@ -460,15 +461,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                   </div>
                 </div>
               ))}
-            </div>
-          </section>
 
-          <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.personalTitle}</h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {personalProjects.map((project) => (
                 <div
                   key={project.id}
@@ -476,15 +469,20 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                   className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
                 >
                   <div className="flex justify-between items-start mb-8">
-                    <span
-                      className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                        project.status === 'IN PROGRESS'
-                          ? 'bg-amber-50 text-amber-600 border-amber-100'
-                          : 'bg-blue-50 text-blue-600 border-blue-100'
-                      }`}
-                    >
-                      {project.status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                          project.status === 'IN PROGRESS'
+                            ? 'bg-amber-50 text-amber-600 border-amber-100'
+                            : 'bg-blue-50 text-blue-600 border-blue-100'
+                        }`}
+                      >
+                        {project.status}
+                      </span>
+                      <span className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
+                        {t.personalBadge}
+                      </span>
+                    </div>
                     <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
                   </div>
                   <h3 className="text-xl font-black text-slate-900 mb-4 tracking-tight leading-tight">{project.title}</h3>
@@ -515,7 +513,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       {/* --- PROJECT DETAIL MODAL --- */}
       {selectedProject && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-6xl rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+          <div className="bg-white w-full max-w-6xl rounded-[3.5rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 h-[calc(100vh-3rem)] max-h-[calc(100vh-3rem)]">
             
             <div className="p-8 md:p-10 border-b border-slate-50 flex items-center justify-between bg-white relative z-10">
               <div className="flex items-center gap-6">
@@ -525,7 +523,6 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                 <div>
                   <div className="flex items-center gap-3 mb-2">
                     <span className="text-[9px] font-black text-amber-50 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100">{selectedProject.status}</span>
-                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em]">{t.details}</span>
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{selectedProject.title}</h2>
                 </div>
@@ -533,15 +530,38 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
               <button onClick={() => setSelectedProjectKey(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-10 scrollbar-hide space-y-12 bg-white">
+            <div className="flex-1 min-h-0 overflow-y-auto p-10 scrollbar-hide space-y-12 bg-white">
               <section>
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">{t.projectBrief}</h4>
                 <p className="text-base text-slate-600 font-medium leading-relaxed max-w-3xl">{selectedProject.description}</p>
-                {isSelectedAssigned && (
-                  <div className="mt-6 p-6 bg-slate-50 border border-slate-100 rounded-[2rem]">
-                    <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{t.assignedReadOnlyHint}</p>
+
+                {isSelectedAssigned && Array.isArray(selectedProject.attachments) && selectedProject.attachments.length > 0 && (
+                  <div className="mt-8">
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">{lang === 'TH' ? 'ไฟล์แนบชิ้นงาน' : 'Project attachments'}</div>
+                    <div className="flex flex-wrap gap-3">
+                      {selectedProject.attachments.map((a, idx) => (
+                        <button
+                          key={`${a.storagePath}-${idx}`}
+                          type="button"
+                          onClick={() => void openProjectAttachment(a)}
+                          className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
+                        >
+                          <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
+                            <FileText size={18} />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{a.fileName}</div>
+                            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                          </div>
+                          <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
+                            <Download size={18} />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
+
               </section>
 
               <section>

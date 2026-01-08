@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, X, Layers, CalendarDays } from 'lucide-react';
-import { addDoc, collection, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { Plus, X, Layers, CalendarDays, FileText, Trash2, Upload } from 'lucide-react';
+import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { Link, useParams } from 'react-router-dom';
+import { deleteObject, ref as storageRef, uploadBytes } from 'firebase/storage';
 
-import { firestoreDb } from '@/firebase';
+import { firebaseStorage, firestoreDb } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
 
 type AssignmentProjectDoc = {
@@ -12,9 +13,11 @@ type AssignmentProjectDoc = {
   status: 'IN PROGRESS' | 'TODO';
   date: string;
   tasks: any[];
+  attachments?: Array<{ fileName: string; storagePath: string }>;
   createdAt?: unknown;
   updatedAt?: unknown;
   createdBy?: string;
+  createdById?: string;
 };
 
 type AssignmentProject = AssignmentProjectDoc & { id: string };
@@ -45,6 +48,9 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
 
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProject, setNewProject] = useState({ title: '', description: '' });
+  const [newProjectFiles, setNewProjectFiles] = useState<File[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<AssignmentProject | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const colRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
@@ -95,19 +101,90 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
     if (!title) return;
 
     const nowDate = new Date().toISOString().split('T')[0];
-    await addDoc(collection(firestoreDb, 'users', internId, 'assignmentProjects'), {
+    const docRef = await addDoc(collection(firestoreDb, 'users', internId, 'assignmentProjects'), {
       title,
       description: newProject.description.trim(),
       status: 'TODO',
       date: nowDate,
       tasks: [],
+      attachments: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       createdBy: user?.name ?? 'HR',
+      createdById: user?.id ?? null,
     } satisfies AssignmentProjectDoc);
+
+    if (newProjectFiles.length > 0) {
+      const uploaded = await Promise.all(
+        newProjectFiles.map(async (file) => {
+          const name = `${Date.now()}_${file.name}`;
+          const path = `users/${internId}/assignmentProjects/${docRef.id}/projectAttachments/${name}`;
+          await uploadBytes(storageRef(firebaseStorage, path), file);
+          return { fileName: file.name, storagePath: path };
+        }),
+      );
+      await updateDoc(doc(firestoreDb, 'users', internId, 'assignmentProjects', docRef.id), {
+        attachments: uploaded,
+        updatedAt: serverTimestamp(),
+      });
+    }
 
     setIsCreatingProject(false);
     setNewProject({ title: '', description: '' });
+    setNewProjectFiles([]);
+  };
+
+  const canDeleteProject = (p: AssignmentProject) => {
+    if (!user) return false;
+    // HR admin can delete any assignment; supervisor can delete only what they created.
+    if (user.roles.includes('HR_ADMIN')) return true;
+    if (p.createdById && p.createdById === user.id) return true;
+    // Backward-compat for old docs (createdById missing)
+    if (!p.createdById && p.createdBy && p.createdBy === user.name) return true;
+    return false;
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (!canDeleteProject(deleteTarget)) {
+      setDeleteTarget(null);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const attachmentPaths: string[] = [];
+
+      if (Array.isArray(deleteTarget.attachments)) {
+        for (const a of deleteTarget.attachments) {
+          if (a?.storagePath) attachmentPaths.push(a.storagePath);
+        }
+      }
+
+      const tasks = Array.isArray(deleteTarget.tasks) ? deleteTarget.tasks : [];
+      for (const t of tasks) {
+        const atts = Array.isArray(t?.attachments) ? t.attachments : [];
+        for (const a of atts) {
+          if (typeof a === 'string') continue;
+          if (a?.storagePath) attachmentPaths.push(a.storagePath);
+        }
+      }
+
+      await Promise.all(
+        attachmentPaths.map(async (path) => {
+          try {
+            await deleteObject(storageRef(firebaseStorage, path));
+          } catch {
+            // ignore missing/permission errors; still attempt to delete the doc
+          }
+        }),
+      );
+
+      await deleteDoc(doc(firestoreDb, 'users', internId, 'assignmentProjects', deleteTarget.id));
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -152,36 +229,101 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {projects.map((p) => (
-              <Link
-                key={p.id}
-                to={`/${baseRole}/${basePage}/assignment/${encodeURIComponent(internId)}/${encodeURIComponent(p.id)}`}
-                className="text-left p-8 rounded-[2.5rem] border border-slate-100 bg-white hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100">
-                      <Layers size={20} />
-                    </div>
-                    <div>
-                      <div className="text-lg font-black text-slate-900 leading-tight">{p.title}</div>
-                      <div className={`mt-3 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl border w-fit ${statusBadgeClass(p.status)}`}
-                      >
-                        {statusLabel(p.status)}
+              <div key={p.id} className="relative">
+                <Link
+                  to={`/${baseRole}/${basePage}/assignment/${encodeURIComponent(internId)}/${encodeURIComponent(p.id)}`}
+                  className="block text-left p-8 pb-20 rounded-[2.5rem] border border-slate-100 bg-white hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100">
+                        <Layers size={20} />
+                      </div>
+                      <div>
+                        <div className="text-lg font-black text-slate-900 leading-tight">{p.title}</div>
+                        <div className={`mt-3 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl border w-fit ${statusBadgeClass(p.status)}`}
+                        >
+                          {statusLabel(p.status)}
+                        </div>
                       </div>
                     </div>
+
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                      <CalendarDays size={14} /> {p.date}
+                    </div>
                   </div>
 
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                    <CalendarDays size={14} /> {p.date}
-                  </div>
-                </div>
+                  {p.description ? <div className="mt-6 text-sm text-slate-500 font-medium line-clamp-2">{p.description}</div> : null}
+                </Link>
 
-                {p.description ? <div className="mt-6 text-sm text-slate-500 font-medium line-clamp-2">{p.description}</div> : null}
-              </Link>
+                {canDeleteProject(p) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteTarget(p);
+                    }}
+                    className="absolute bottom-6 right-6 w-11 h-11 rounded-2xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all shadow-sm flex items-center justify-center"
+                    title={lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={() => (isDeleting ? null : setDeleteTarget(null))} />
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="w-full max-w-xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="text-xl font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ยืนยันการลบ' : 'Confirm delete'}</div>
+                <button
+                  onClick={() => (isDeleting ? null : setDeleteTarget(null))}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                  disabled={isDeleting}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="text-sm font-bold text-slate-600">
+                  {lang === 'TH' ? 'ต้องการลบชิ้นงานนี้ใช่ไหม?' : 'Do you want to delete this assignment?'}
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'ชิ้นงาน' : 'Assignment'}</div>
+                  <div className="mt-2 text-lg font-black text-slate-900">{deleteTarget.title}</div>
+                  {deleteTarget.description ? <div className="mt-2 text-sm font-bold text-slate-500">{deleteTarget.description}</div> : null}
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setDeleteTarget(null)}
+                    className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+                    disabled={isDeleting}
+                    type="button"
+                  >
+                    {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                  </button>
+                  <button
+                    onClick={() => void handleConfirmDelete()}
+                    className="px-8 py-3 bg-rose-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-xl shadow-rose-500/20"
+                    disabled={isDeleting}
+                    type="button"
+                  >
+                    {isDeleting ? (lang === 'TH' ? 'กำลังลบ...' : 'Deleting...') : lang === 'TH' ? 'ลบ' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {isCreatingProject && (
         <>
@@ -212,6 +354,57 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all h-28 resize-none"
                   />
                 </label>
+
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ไฟล์แนบ' : 'Attachments'}</div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      id="new-assignment-files"
+                      onChange={(e) => {
+                        const files = e.target.files ? Array.from(e.target.files) : [];
+                        setNewProjectFiles(files);
+                      }}
+                    />
+                    <label
+                      htmlFor="new-assignment-files"
+                      className="inline-flex items-center gap-3 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer"
+                    >
+                      <Upload size={16} /> {lang === 'TH' ? 'เลือกไฟล์' : 'Choose files'}
+                    </label>
+                    {newProjectFiles.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setNewProjectFiles([])}
+                        className="inline-flex items-center gap-2 px-5 py-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                      >
+                        <Trash2 size={16} /> {lang === 'TH' ? 'ล้างไฟล์' : 'Clear'}
+                      </button>
+                    )}
+                  </div>
+
+                  {newProjectFiles.length > 0 && (
+                    <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5">
+                      <div className="space-y-3">
+                        {newProjectFiles.map((f) => (
+                          <div key={`${f.name}-${f.size}-${f.lastModified}`} className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                <FileText size={18} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-black text-slate-900 truncate">{f.name}</div>
+                                <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{Math.ceil(f.size / 1024)} KB</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex justify-end gap-3">
                   <button
