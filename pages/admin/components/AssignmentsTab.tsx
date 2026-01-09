@@ -20,7 +20,9 @@ type AssignmentProjectDoc = {
   createdById?: string;
 };
 
-type AssignmentProject = AssignmentProjectDoc & { id: string };
+type ProjectKind = 'assigned' | 'personal';
+
+type AssignmentProject = AssignmentProjectDoc & { id: string; kind: ProjectKind };
 
 interface AssignmentsTabProps {
   internId: string;
@@ -53,20 +55,46 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    const colRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
+    const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
+    const personalRef = collection(firestoreDb, 'users', internId, 'personalProjects');
     setLoadError(null);
-    return onSnapshot(
-      colRef,
+
+    let assignedList: AssignmentProject[] = [];
+    let personalList: AssignmentProject[] = [];
+
+    const pushMerged = () => {
+      const merged = [...assignedList, ...personalList];
+      merged.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+      setProjects(merged);
+    };
+
+    const onErr = (err: unknown) => {
+      const e = err as { code?: string; message?: string };
+      setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load assignments.'}`);
+    };
+
+    const unsubAssigned = onSnapshot(
+      assignedRef,
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as AssignmentProjectDoc) }));
-        list.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
-        setProjects(list);
+        assignedList = snap.docs.map((d) => ({ id: d.id, kind: 'assigned', ...(d.data() as AssignmentProjectDoc) }));
+        pushMerged();
       },
-      (err) => {
-        const e = err as { code?: string; message?: string };
-        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load assignments.'}`);
-      },
+      onErr,
     );
+
+    const unsubPersonal = onSnapshot(
+      personalRef,
+      (snap) => {
+        personalList = snap.docs.map((d) => ({ id: d.id, kind: 'personal', ...(d.data() as AssignmentProjectDoc) }));
+        pushMerged();
+      },
+      onErr,
+    );
+
+    return () => {
+      unsubAssigned();
+      unsubPersonal();
+    };
   }, [internId]);
 
   const t = useMemo(
@@ -136,6 +164,7 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
 
   const canDeleteProject = (p: AssignmentProject) => {
     if (!user) return false;
+    if (p.kind !== 'assigned') return false;
     // HR admin can delete any assignment; supervisor can delete only what they created.
     if (user.roles.includes('HR_ADMIN')) return true;
     if (p.createdById && p.createdById === user.id) return true;
@@ -229,27 +258,34 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {projects.map((p) => (
-              <div key={p.id} className="relative">
+              <div key={p.id} className="relative h-full">
                 <Link
-                  to={`/${baseRole}/${basePage}/assignment/${encodeURIComponent(internId)}/${encodeURIComponent(p.id)}`}
-                  className="block text-left p-8 pb-20 rounded-[2.5rem] border border-slate-100 bg-white hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm"
+                  to={`/${baseRole}/${basePage}/assignment/${encodeURIComponent(internId)}/${encodeURIComponent(p.kind)}/${encodeURIComponent(p.id)}`}
+                  className="block h-full min-h-[240px] text-left p-8 pb-20 rounded-[2.5rem] border border-slate-100 bg-white hover:bg-slate-50 hover:border-blue-200 transition-all shadow-sm flex flex-col"
                 >
                   <div className="flex items-start justify-between gap-6">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
                       <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 border border-slate-100">
                         <Layers size={20} />
                       </div>
-                      <div>
-                        <div className="text-lg font-black text-slate-900 leading-tight">{p.title}</div>
-                        <div className={`mt-3 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl border w-fit ${statusBadgeClass(p.status)}`}
-                        >
-                          {statusLabel(p.status)}
+                      <div className="min-w-0">
+                        <div className="text-lg font-black text-slate-900 leading-tight line-clamp-1">{p.title}</div>
+                        <div className="mt-3 flex items-center gap-2 whitespace-nowrap">
+                          <div
+                            className={`shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl border w-fit ${statusBadgeClass(p.status)}`}
+                          >
+                            {statusLabel(p.status)}
+                          </div>
+                          <div className="shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl border w-fit bg-slate-50 text-slate-600 border-slate-100">
+                            {p.kind === 'personal' ? (lang === 'TH' ? 'งานส่วนตัว' : 'PERSONAL') : lang === 'TH' ? 'มอบหมาย' : 'ASSIGNED'}
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                      <CalendarDays size={14} /> {p.date}
+                    <div className="shrink-0 text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center justify-end gap-2 whitespace-nowrap">
+                      <CalendarDays size={14} className="shrink-0" />
+                      <span>{p.date}</span>
                     </div>
                   </div>
 

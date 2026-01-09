@@ -20,25 +20,64 @@ type AssignmentProjectDoc = {
 
 interface AssignmentDetailPageProps {
   internId: string;
+  projectKind?: string;
   projectId: string;
   onBack: () => void;
 }
 
-export default function AssignmentDetailPage({ internId, projectId, onBack }: AssignmentDetailPageProps) {
+export default function AssignmentDetailPage({ internId, projectKind, projectId, onBack }: AssignmentDetailPageProps) {
   const { lang } = useAppContext();
 
   const [project, setProject] = useState<(AssignmentProjectDoc & { id: string }) | null>(null);
 
   useEffect(() => {
-    const ref = doc(firestoreDb, 'users', internId, 'assignmentProjects', projectId);
-    return onSnapshot(ref, (snap) => {
-      if (!snap.exists()) {
-        setProject(null);
+    const normalizedKind = projectKind === 'assigned' || projectKind === 'personal' ? projectKind : null;
+
+    // If kind is known, subscribe only to the correct collection.
+    if (normalizedKind) {
+      const col = normalizedKind === 'personal' ? 'personalProjects' : 'assignmentProjects';
+      const ref = doc(firestoreDb, 'users', internId, col, projectId);
+      return onSnapshot(ref, (snap) => {
+        if (!snap.exists()) {
+          setProject(null);
+          return;
+        }
+        setProject({ id: snap.id, ...(snap.data() as AssignmentProjectDoc) });
+      });
+    }
+
+    // Backward-compat: legacy route doesn't include kind.
+    // Try assignmentProjects first; if not found, fall back to personalProjects.
+    let unsubPersonal: null | (() => void) = null;
+
+    const assignedRef = doc(firestoreDb, 'users', internId, 'assignmentProjects', projectId);
+    const unsubAssigned = onSnapshot(assignedRef, (snap) => {
+      if (snap.exists()) {
+        if (unsubPersonal) {
+          unsubPersonal();
+          unsubPersonal = null;
+        }
+        setProject({ id: snap.id, ...(snap.data() as AssignmentProjectDoc) });
         return;
       }
-      setProject({ id: snap.id, ...(snap.data() as AssignmentProjectDoc) });
+
+      if (!unsubPersonal) {
+        const personalRef = doc(firestoreDb, 'users', internId, 'personalProjects', projectId);
+        unsubPersonal = onSnapshot(personalRef, (pSnap) => {
+          if (!pSnap.exists()) {
+            setProject(null);
+            return;
+          }
+          setProject({ id: pSnap.id, ...(pSnap.data() as AssignmentProjectDoc) });
+        });
+      }
     });
-  }, [internId, projectId]);
+
+    return () => {
+      unsubAssigned();
+      if (unsubPersonal) unsubPersonal();
+    };
+  }, [internId, projectId, projectKind]);
 
   const statusLabel = useMemo(() => {
     const status = project?.status ?? 'TODO';

@@ -31,6 +31,7 @@ const App: React.FC = () => {
         <Route index element={<RolePage />} />
 
         <Route path="assignment/:internId/:projectId" element={<AssignmentDetailRoute />} />
+        <Route path="assignment/:internId/:projectKind/:projectId" element={<AssignmentDetailRoute />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

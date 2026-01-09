@@ -5,10 +5,11 @@ import AssignmentDetailPage from '@/pages/admin/components/AssignmentDetailPage'
 
 export default function AssignmentDetailRoute() {
   const navigate = useNavigate();
-  const { roleSlug, pageId, internId, projectId } = useParams<{
+  const { roleSlug, pageId, internId, projectKind, projectId } = useParams<{
     roleSlug: string;
     pageId: string;
     internId: string;
+    projectKind?: string;
     projectId: string;
   }>();
 
@@ -26,6 +27,7 @@ export default function AssignmentDetailRoute() {
   return (
     <AssignmentDetailPage
       internId={internId}
+      projectKind={projectKind}
       projectId={projectId}
       onBack={() => navigate(`/${roleSlug}/${pageId}`, { replace: true })}
     />
