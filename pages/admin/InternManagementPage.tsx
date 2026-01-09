@@ -46,6 +46,24 @@ interface AdminInternDetail {
   }[];
 }
 
+type ProjectKind = 'assigned' | 'personal';
+
+type HandoffAssetItem = {
+  key: string;
+  label: string;
+  date?: string;
+  projectTitle: string;
+  status?: string;
+  open: { type: 'storage'; storagePath: string } | { type: 'url'; url: string };
+};
+
+type HandoffProjectGroup = {
+  projectTitle: string;
+  date?: string;
+  status?: string;
+  items: HandoffAssetItem[];
+};
+
 type FeedbackMilestoneDoc = {
   status?: string;
   internReflection?: string;
@@ -77,6 +95,13 @@ const InternManagementPage: React.FC = () => {
   const [attendanceViewMode, setAttendanceViewMode] = useState<AttendanceViewMode>('LOG');
 
   const [activeEvalSource, setActiveEvalSource] = useState<'SELF' | 'SUPERVISOR'>('SELF');
+
+  const [handoffAssets, setHandoffAssets] = useState<HandoffAssetItem[]>([]);
+  const [handoffLoadError, setHandoffLoadError] = useState<string | null>(null);
+  const [handoffIsLoading, setHandoffIsLoading] = useState(false);
+  const [handoffHasLoaded, setHandoffHasLoaded] = useState(false);
+
+  const [handoffProjectOpen, setHandoffProjectOpen] = useState<HandoffProjectGroup | null>(null);
 
   const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
 
@@ -221,6 +246,166 @@ const InternManagementPage: React.FC = () => {
     window.open(url, '_blank');
   };
 
+  const handleOpenUrl = (url: string) => {
+    window.open(url, '_blank');
+  };
+
+  const handoffProjects = useMemo(() => {
+    const map = new Map<string, HandoffProjectGroup>();
+
+    for (const a of handoffAssets) {
+      const key = a.projectTitle;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { projectTitle: a.projectTitle, date: a.date, status: a.status, items: [a] });
+      } else {
+        existing.items.push(a);
+        // keep latest date/status if present
+        if (!existing.date && a.date) existing.date = a.date;
+        if (!existing.status && a.status) existing.status = a.status;
+      }
+    }
+
+    const list = Array.from(map.values());
+    list.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+    return list;
+  }, [handoffAssets]);
+
+  useEffect(() => {
+    if (!selectedInternId) {
+      setHandoffAssets([]);
+      setHandoffLoadError(null);
+      setHandoffIsLoading(false);
+      setHandoffHasLoaded(false);
+      return;
+    }
+    if (activeTab !== 'assets') return;
+
+    const assignedRef = collection(firestoreDb, 'users', selectedInternId, 'assignmentProjects');
+    const personalRef = collection(firestoreDb, 'users', selectedInternId, 'personalProjects');
+
+    let cancelled = false;
+    let gotAssigned = false;
+    let gotPersonal = false;
+    let assignedItems: HandoffAssetItem[] = [];
+    let personalItems: HandoffAssetItem[] = [];
+
+    const pushMerged = () => {
+      if (cancelled) return;
+      if (!gotAssigned || !gotPersonal) return;
+      const merged = [...assignedItems, ...personalItems];
+      setHandoffAssets(merged);
+      setHandoffIsLoading(false);
+      setHandoffHasLoaded(true);
+    };
+
+    const onErr = (err: unknown) => {
+      const e = err as { code?: string; message?: string };
+      setHandoffLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load handoff assets.'}`);
+      setHandoffIsLoading(false);
+      setHandoffHasLoaded(true);
+    };
+
+    setHandoffIsLoading(true);
+    setHandoffLoadError(null);
+    setHandoffHasLoaded(false);
+
+    const mapSnap = (snap: any, kind: ProjectKind): HandoffAssetItem[] => {
+      const items: HandoffAssetItem[] = [];
+      for (const d of snap.docs) {
+        const data = d.data() as {
+          title?: string;
+          handoffLatest?: {
+            version?: number;
+            status?: string;
+            submittedAt?: any;
+            files?: Array<{ fileName: string; storagePath: string }>;
+            videos?: Array<{ type: 'upload'; title?: string; fileName: string; storagePath: string }>;
+            links?: string[];
+          };
+        };
+
+        const hl = data.handoffLatest;
+        if (!hl) continue;
+
+        const title = data.title ?? '-';
+        const version = typeof hl.version === 'number' ? hl.version : undefined;
+        const status = typeof hl.status === 'string' ? hl.status : undefined;
+        const date = hl?.submittedAt?.toDate ? String(hl.submittedAt.toDate().toISOString().split('T')[0]) : undefined;
+        const projectTitle = `${title}${version ? ` (v${version})` : ''}`;
+
+        if (Array.isArray(hl.files)) {
+          for (const f of hl.files) {
+            if (!f?.storagePath) continue;
+            items.push({
+              key: `handoffLatest:${kind}:${d.id}:${f.storagePath}`,
+              label: f.fileName ?? 'Document',
+              date,
+              projectTitle,
+              status,
+              open: { type: 'storage', storagePath: f.storagePath },
+            });
+          }
+        }
+
+        if (Array.isArray(hl.videos)) {
+          for (const v of hl.videos) {
+            if (!v?.storagePath) continue;
+            items.push({
+              key: `handoffLatest:${kind}:${d.id}:${v.storagePath}`,
+              label: v.fileName ?? v.title ?? 'Video',
+              date,
+              projectTitle,
+              status,
+              open: { type: 'storage', storagePath: v.storagePath },
+            });
+          }
+        }
+
+        if (Array.isArray(hl.links)) {
+          for (const url of hl.links) {
+            if (!url) continue;
+            items.push({
+              key: `handoffLatest:${kind}:${d.id}:link:${url}`,
+              label: 'Link',
+              date,
+              projectTitle,
+              status,
+              open: { type: 'url', url },
+            });
+          }
+        }
+      }
+      return items;
+    };
+
+    const unsubAssigned = onSnapshot(
+      assignedRef,
+      (snap) => {
+        gotAssigned = true;
+        assignedItems = mapSnap(snap, 'assigned');
+        pushMerged();
+      },
+      onErr,
+    );
+
+    const unsubPersonal = onSnapshot(
+      personalRef,
+      (snap) => {
+        gotPersonal = true;
+        personalItems = mapSnap(snap, 'personal');
+        pushMerged();
+      },
+      onErr,
+    );
+
+    return () => {
+      cancelled = true;
+      unsubAssigned();
+      unsubPersonal();
+    };
+  }, [activeTab, selectedInternId]);
+
   const displayPerformance = useMemo(() => {
     if (!selectedIntern) return DEFAULT_PERFORMANCE;
     return activeEvalSource === 'SELF' ? selectedIntern.selfPerformance : selectedIntern.supervisorPerformance;
@@ -350,6 +535,45 @@ const InternManagementPage: React.FC = () => {
           </div>
         )}
 
+        {handoffProjectOpen && (
+          <>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={() => setHandoffProjectOpen(null)} />
+            <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+              <div className="w-full max-w-5xl bg-white rounded-[3rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</div>
+                    <div className="mt-2 text-2xl font-black text-slate-900 tracking-tight">{handoffProjectOpen.projectTitle}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHandoffProjectOpen(null)}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {handoffProjectOpen.items.map((a) => (
+                      <AssetCard
+                        key={a.key}
+                        fileName={a.label}
+                        date={a.date}
+                        taskTitle={handoffProjectOpen.projectTitle}
+                        status={a.status}
+                        onOpen={() =>
+                          a.open.type === 'storage' ? void handleOpenStoragePath(a.open.storagePath) : handleOpenUrl(a.open.url)
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {activeTab === 'assets' && (
           <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500 h-full flex flex-col">
             <div className="bg-white rounded-[3.5rem] p-10 border border-slate-100 shadow-sm flex-1 flex flex-col min-h-[600px]">
@@ -360,6 +584,51 @@ const InternManagementPage: React.FC = () => {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto scrollbar-hide px-2">
+                {handoffLoadError && (
+                  <div className="mb-6 p-6 bg-rose-50 border border-rose-100 rounded-[2rem]">
+                    <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Load Error</div>
+                    <div className="mt-2 text-sm font-bold text-rose-700 break-words">{handoffLoadError}</div>
+                  </div>
+                )}
+
+                {handoffIsLoading && handoffAssets.length === 0 && !handoffLoadError && (
+                  <div className="py-16 text-center">
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">Loading...</div>
+                  </div>
+                )}
+
+                {handoffHasLoaded && !handoffIsLoading && handoffAssets.length === 0 && !handoffLoadError && (
+                  <div className="py-16 text-center">
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">NO HANDOFF SUBMISSIONS YET</div>
+                    <div className="mt-3 text-sm font-bold text-slate-500">No project handoff has been submitted.</div>
+                  </div>
+                )}
+
+                {handoffAssets.length > 0 && (
+                  <div className="mb-10">
+                    <div className="px-2">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</h4>
+                      <p className="mt-1 text-[10px] font-black text-slate-300 uppercase tracking-widest">LATEST SUBMISSIONS</p>
+                    </div>
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {handoffProjects.map((p) => {
+                        const docCount = p.items.filter((x) => x.open.type === 'storage').length;
+                        const linkCount = p.items.filter((x) => x.open.type === 'url').length;
+                        return (
+                          <AssetCard
+                            key={p.projectTitle}
+                            fileName={p.projectTitle}
+                            date={p.date}
+                            taskTitle={`${docCount} files, ${linkCount} links`}
+                            status={p.status}
+                            onOpen={() => setHandoffProjectOpen(p)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {selectedIntern.tasks.map((task) => (
                     <React.Fragment key={task.id}>
@@ -370,6 +639,11 @@ const InternManagementPage: React.FC = () => {
                           date={task.date}
                           taskTitle={task.title}
                           status={task.status}
+                          onOpen={
+                            typeof file === 'string'
+                              ? undefined
+                              : () => void handleOpenStoragePath((file as any).storagePath)
+                          }
                         />
                       ))}
                     </React.Fragment>
@@ -449,11 +723,12 @@ const ProgressRow = ({ label, score, color }: { label: string; score: number; co
   </div>
 );
 
-const AssetCard: React.FC<{ fileName: string; date?: string; taskTitle?: string; status?: string }> = ({
+const AssetCard: React.FC<{ fileName: string; date?: string; taskTitle?: string; status?: string; onOpen?: () => void }> = ({
   fileName,
   date,
   taskTitle,
   status,
+  onOpen,
 }) => {
   const getIcon = () => {
     if (fileName.endsWith('.fig')) return <FileCode size={24} className="text-indigo-50" />;
@@ -465,7 +740,11 @@ const AssetCard: React.FC<{ fileName: string; date?: string; taskTitle?: string;
   };
 
   return (
-    <div className="bg-slate-50/50 border border-slate-100 p-5 rounded-[2rem] group hover:bg-white hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer">
+    <div
+      className="bg-slate-50/50 border border-slate-100 p-5 rounded-[2rem] group hover:bg-white hover:shadow-xl hover:border-blue-200 transition-all cursor-pointer"
+      onClick={onOpen}
+      role={onOpen ? 'button' : undefined}
+    >
       <div className="flex justify-between items-start mb-6">
         <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
           {getIcon()}

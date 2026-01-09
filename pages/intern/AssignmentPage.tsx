@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { Language, SubTask, TaskLog } from '@/types';
 
-import { addDoc, collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
@@ -42,7 +42,17 @@ interface Project {
   date: string;
   tasks: SubTask[];
   attachments?: Array<{ fileName: string; storagePath: string }>;
+  handoffLatest?: {
+    version?: number;
+    status?: string;
+    submittedAt?: unknown;
+    files?: Array<{ fileName: string; storagePath: string }>;
+    videos?: Array<{ type: 'upload'; title?: string; fileName: string; storagePath: string }>;
+    links?: string[];
+  };
 }
+
+type HandoffVideo = { type: 'upload'; title?: string; fileName: string; storagePath: string };
 
 interface AssignmentPageProps {
   lang: Language;
@@ -80,8 +90,23 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
   const [selectedProofFiles, setSelectedProofFiles] = useState<File[]>([]);
 
+  const [isSubmittingHandoff, setIsSubmittingHandoff] = useState(false);
+  const [isHandoffOpen, setIsHandoffOpen] = useState(false);
+  const [handoffLast, setHandoffLast] = useState<Project['handoffLatest'] | null>(null);
+  const [handoffLinks, setHandoffLinks] = useState<string[]>([]);
+  const [handoffLinkDraft, setHandoffLinkDraft] = useState('');
+  const [handoffExistingFiles, setHandoffExistingFiles] = useState<Array<{ fileName: string; storagePath: string }>>([]);
+  const [handoffExistingVideos, setHandoffExistingVideos] = useState<HandoffVideo[]>([]);
+  const [handoffDocFiles, setHandoffDocFiles] = useState<File[]>([]);
+  const [handoffVideoFiles, setHandoffVideoFiles] = useState<File[]>([]);
+
   const openProjectAttachment = async (a: { fileName: string; storagePath: string }) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+    window.open(url, '_blank');
+  };
+
+  const openStoragePath = async (path: string) => {
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
     window.open(url, '_blank');
   };
 
@@ -174,6 +199,14 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       shiftMessage: "Subsequent tasks shifted automatically to maintain timeline integrity.",
       applyExt: "Apply Extension & Shift Timeline",
       assignedReadOnlyHint: "This project is assigned. You can plan tasks, track time, and submit work.",
+      submitHandoff: 'Submit Handoff',
+      handoffTitle: 'Project Handoff',
+      handoffLinks: 'Deliverable Links',
+      addLink: 'Add Link',
+      docs: 'Documents',
+      videos: 'Videos',
+      submit: 'Submit',
+      submitting: 'Submitting...',
     },
     TH: {
       title: "งานที่ได้รับมอบหมาย",
@@ -208,8 +241,139 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       shiftMessage: "ระบบขยับตารางงานลำดับถัดไปให้โดยอัตโนมัติเพื่อให้แผนงานต่อเนื่องกัน",
       applyExt: "ยืนยันขยายเวลาและปรับแผน",
       assignedReadOnlyHint: "โปรเจกต์นี้ถูกมอบหมาย คุณสามารถวางแผนงาน จับเวลา และส่งงานได้",
+      submitHandoff: 'ส่งมอบชิ้นงาน',
+      handoffTitle: 'ส่งมอบชิ้นงานโปรเจกต์',
+      handoffLinks: 'ลิงก์ชิ้นงาน',
+      addLink: 'เพิ่มลิงก์',
+      docs: 'เอกสาร',
+      videos: 'วิดีโอ',
+      submit: 'ส่งมอบ',
+      submitting: 'กำลังส่งมอบ...',
     }
   }[lang];
+
+  const resetHandoffState = () => {
+    setHandoffLinks([]);
+    setHandoffLinkDraft('');
+    setHandoffExistingFiles([]);
+    setHandoffExistingVideos([]);
+    setHandoffDocFiles([]);
+    setHandoffVideoFiles([]);
+  };
+
+  useEffect(() => {
+    if (!isHandoffOpen) return;
+    const hl = selectedProject?.handoffLatest ?? null;
+    setHandoffLast(hl);
+    if (hl) {
+      const links = Array.isArray(hl.links)
+        ? hl.links
+            .map((raw: any) => (typeof raw === 'string' ? raw : String(raw?.url ?? raw?.link ?? raw?.href ?? '')))
+            .filter((u: string) => u.trim())
+        : [];
+      setHandoffLinks(links);
+
+      const existingFiles = Array.isArray(hl.files)
+        ? hl.files
+            .map((raw: any) => ({ fileName: String(raw?.fileName ?? 'Document'), storagePath: String(raw?.storagePath ?? '') }))
+            .filter((f: { storagePath: string }) => Boolean(f.storagePath))
+        : [];
+      setHandoffExistingFiles(existingFiles);
+
+      const existingVideos: HandoffVideo[] = Array.isArray(hl.videos)
+        ? hl.videos
+            .map((raw: any) => {
+              if (typeof raw === 'string') return { type: 'upload', fileName: 'Video', storagePath: raw } as HandoffVideo;
+              return {
+                type: 'upload',
+                title: typeof raw?.title === 'string' ? raw.title : undefined,
+                fileName: String(raw?.fileName ?? raw?.title ?? 'Video'),
+                storagePath: String(raw?.storagePath ?? ''),
+              } as HandoffVideo;
+            })
+            .filter((v: HandoffVideo) => Boolean(v.storagePath))
+        : [];
+      setHandoffExistingVideos(existingVideos);
+    } else {
+      setHandoffLinks([]);
+      setHandoffExistingFiles([]);
+      setHandoffExistingVideos([]);
+    }
+    setHandoffDocFiles([]);
+    setHandoffVideoFiles([]);
+  }, [isHandoffOpen, selectedProject?.id]);
+
+  const handleSubmitHandoff = async () => {
+    if (!user || !selectedProject || !selectedKind) return;
+    if (isSubmittingHandoff) return;
+
+    setIsSubmittingHandoff(true);
+    try {
+      const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
+      const projectRef = doc(firestoreDb, 'users', user.id, colName, selectedProject.id);
+      const submissionsRef = collection(firestoreDb, 'users', user.id, colName, selectedProject.id, 'handoffSubmissions');
+
+      const lastSnap = await getDocs(query(submissionsRef, orderBy('version', 'desc'), limit(1)));
+      const lastVersion = lastSnap.docs[0]?.data()?.version;
+      const nextVersion = (typeof lastVersion === 'number' ? lastVersion : 0) + 1;
+
+      const submissionDocRef = await addDoc(submissionsRef, {
+        version: nextVersion,
+        status: 'SUBMITTED',
+        links: handoffLinks.filter((l) => l.trim()),
+        files: [],
+        videos: [],
+        submittedAt: serverTimestamp(),
+        submittedById: user.id,
+        submittedByName: user.name,
+      });
+
+      const uploadedFilesNew = await Promise.all(
+        handoffDocFiles.map(async (f) => {
+          const name = `${Date.now()}_${f.name}`;
+          const path = `users/${user.id}/${colName}/${selectedProject.id}/handoff/v${nextVersion}/files/${name}`;
+          await uploadBytes(storageRef(firebaseStorage, path), f);
+          return { fileName: f.name, storagePath: path };
+        }),
+      );
+
+      const uploadedVideosNew: HandoffVideo[] = await Promise.all(
+        handoffVideoFiles.map(async (f) => {
+          const name = `${Date.now()}_${f.name}`;
+          const path = `users/${user.id}/${colName}/${selectedProject.id}/handoff/v${nextVersion}/videos/${name}`;
+          await uploadBytes(storageRef(firebaseStorage, path), f);
+          return { type: 'upload', title: f.name, fileName: f.name, storagePath: path };
+        }),
+      );
+
+      const mergedFiles = [...handoffExistingFiles, ...uploadedFilesNew];
+      const mergedVideos = [...handoffExistingVideos, ...uploadedVideosNew];
+      const mergedLinks = handoffLinks.filter((l) => l.trim());
+
+      await updateDoc(submissionDocRef, {
+        files: mergedFiles,
+        videos: mergedVideos,
+        links: mergedLinks,
+      });
+
+      await updateDoc(projectRef, {
+        handoffLatest: {
+          version: nextVersion,
+          status: 'SUBMITTED',
+          submittedAt: serverTimestamp(),
+          files: mergedFiles,
+          videos: mergedVideos,
+          links: mergedLinks,
+        },
+        updatedAt: serverTimestamp(),
+      });
+
+      setIsHandoffOpen(false);
+      resetHandoffState();
+    } finally {
+      setIsSubmittingHandoff(false);
+    }
+  };
 
   const updateSelectedProjectTasks = async (nextTasks: SubTask[]) => {
     if (!user || !selectedProject || !selectedKind) return;
@@ -695,7 +859,197 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
             </div>
 
             <div className="p-8 md:p-10 bg-slate-50/50 border-t border-slate-100 flex justify-end">
-              <button onClick={() => setSelectedProjectKey(null)} className="px-16 py-4 bg-[#111827] text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-600 shadow-2xl active:scale-95 transition-all">{t.saveChanges}</button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsHandoffOpen(true)}
+                  className="px-10 py-4 bg-white border border-slate-200 text-slate-700 rounded-[1.75rem] text-sm font-black uppercase hover:bg-slate-50 shadow-sm active:scale-95 transition-all"
+                >
+                  {t.submitHandoff}
+                </button>
+                <button onClick={() => setSelectedProjectKey(null)} className="px-16 py-4 bg-[#111827] text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-600 shadow-2xl active:scale-95 transition-all">{t.saveChanges}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isHandoffOpen && selectedProject && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl overflow-hidden">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{t.handoffTitle}</div>
+                <div className="mt-2 text-2xl font-black text-slate-900 tracking-tight">{selectedProject.title}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSubmittingHandoff) return;
+                  setIsHandoffOpen(false);
+                }}
+                className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                disabled={isSubmittingHandoff}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto scrollbar-hide">
+              <div className="space-y-4">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.handoffLinks}</div>
+                <input
+                  value={handoffLinkDraft}
+                  onChange={(e) => setHandoffLinkDraft(e.target.value)}
+                  placeholder={lang === 'TH' ? 'วางลิงก์ชิ้นงาน (URL)' : 'Paste deliverable URL'}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = handoffLinkDraft.trim();
+                      if (!url) return;
+                      setHandoffLinks((prev) => [...prev, url]);
+                      setHandoffLinkDraft('');
+                    }}
+                    className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                  >
+                    {t.addLink}
+                  </button>
+                </div>
+
+                {handoffLinks.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
+                    {handoffLinks.map((url, idx) => (
+                      <div key={`${url}-${idx}`} className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-[12px] font-black text-slate-900 truncate">{lang === 'TH' ? 'ลิงก์' : 'Link'}</div>
+                          <div className="text-[10px] font-bold text-slate-400 truncate">{url}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHandoffLinks((prev) => prev.filter((_, i) => i !== idx))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.docs}</div>
+                {handoffExistingFiles.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
+                    {handoffExistingFiles.map((f, idx) => (
+                      <div key={`${f.storagePath}-${idx}`} className="flex items-center justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => void openStoragePath(f.storagePath)}
+                          className="min-w-0 text-left hover:underline"
+                        >
+                          <div className="text-[12px] font-black text-slate-900 truncate">{f.fileName}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHandoffExistingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    setHandoffDocFiles(files);
+                  }}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700"
+                />
+                {handoffDocFiles.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
+                    {handoffDocFiles.map((f) => (
+                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="text-[12px] font-black text-slate-900 truncate">
+                        {f.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.videos}</div>
+                {handoffExistingVideos.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
+                    {handoffExistingVideos.map((v, idx) => (
+                      <div key={`${v.storagePath}-${idx}`} className="flex items-center justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => void openStoragePath(v.storagePath)}
+                          className="min-w-0 text-left hover:underline"
+                        >
+                          <div className="text-[12px] font-black text-slate-900 truncate">{v.fileName}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHandoffExistingVideos((prev) => prev.filter((_, i) => i !== idx))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input
+                  type="file"
+                  multiple
+                  accept="video/*"
+                  onChange={(e) => {
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    setHandoffVideoFiles(files);
+                  }}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700"
+                />
+                {handoffVideoFiles.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
+                    {handoffVideoFiles.map((f) => (
+                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="text-[12px] font-black text-slate-900 truncate">
+                        {f.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSubmittingHandoff) return;
+                  setIsHandoffOpen(false);
+                }}
+                className="px-8 py-4 bg-white border border-slate-200 text-slate-700 rounded-[1.75rem] text-sm font-black uppercase hover:bg-slate-50 transition-all"
+                disabled={isSubmittingHandoff}
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmitHandoff()}
+                className="px-12 py-4 bg-blue-600 text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-700 shadow-2xl shadow-blue-500/20 active:scale-95 transition-all"
+                disabled={isSubmittingHandoff}
+              >
+                {isSubmittingHandoff ? t.submitting : t.submit}
+              </button>
             </div>
           </div>
         </div>

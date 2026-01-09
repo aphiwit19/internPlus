@@ -37,6 +37,8 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
 
   const [projects, setProjects] = useState<AssignmentProject[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const statusLabel = (status: AssignmentProjectDoc['status']) => {
     if (status === 'IN PROGRESS') return lang === 'TH' ? 'กำลังดำเนินการ' : 'IN PROGRESS';
@@ -58,24 +60,34 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
     const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
     const personalRef = collection(firestoreDb, 'users', internId, 'personalProjects');
     setLoadError(null);
+    setIsLoading(true);
+    setHasLoaded(false);
 
     let assignedList: AssignmentProject[] = [];
     let personalList: AssignmentProject[] = [];
+    let gotAssigned = false;
+    let gotPersonal = false;
 
     const pushMerged = () => {
+      if (!gotAssigned || !gotPersonal) return;
       const merged = [...assignedList, ...personalList];
       merged.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
       setProjects(merged);
+      setIsLoading(false);
+      setHasLoaded(true);
     };
 
     const onErr = (err: unknown) => {
       const e = err as { code?: string; message?: string };
       setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load assignments.'}`);
+      setIsLoading(false);
+      setHasLoaded(true);
     };
 
     const unsubAssigned = onSnapshot(
       assignedRef,
       (snap) => {
+        gotAssigned = true;
         assignedList = snap.docs.map((d) => ({ id: d.id, kind: 'assigned', ...(d.data() as AssignmentProjectDoc) }));
         pushMerged();
       },
@@ -85,6 +97,7 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
     const unsubPersonal = onSnapshot(
       personalRef,
       (snap) => {
+        gotPersonal = true;
         personalList = snap.docs.map((d) => ({ id: d.id, kind: 'personal', ...(d.data() as AssignmentProjectDoc) }));
         pushMerged();
       },
@@ -241,7 +254,11 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
           </div>
         )}
 
-        {projects.length === 0 ? (
+        {isLoading && projects.length === 0 && !loadError ? (
+          <div className="py-24 text-center">
+            <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">Loading...</div>
+          </div>
+        ) : hasLoaded && !isLoading && projects.length === 0 && !loadError ? (
           <div className="py-24 text-center">
             <div className="mx-auto w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-300">
               <Layers size={26} />
