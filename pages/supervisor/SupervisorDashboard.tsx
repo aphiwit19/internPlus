@@ -57,9 +57,10 @@ import {
   PlaneTakeoff,
   History,
   Building2,
+  ChevronDown,
   Home
 } from 'lucide-react';
-import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { UserProfile, PerformanceMetrics, Language, SubTask, TaskAttachment } from '@/types';
 import { PageId } from '@/pageTypes';
@@ -156,6 +157,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [tempComment, setTempComment] = useState('');
   const [attendanceViewMode, setAttendanceViewMode] = useState<'LOG' | 'CALENDAR'>('LOG');
 
+  const [selectedInternAttendanceLog, setSelectedInternAttendanceLog] = useState<InternDetail['attendanceLog']>([]);
+
+  const [filterDate, setFilterDate] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
+  const [filterWorkMode, setFilterWorkMode] = useState<'ALL' | 'WFO' | 'WFH'>('ALL');
+  const [pendingFilterDate, setPendingFilterDate] = useState<string>('');
+  const [pendingFilterStatus, setPendingFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
+  const [pendingFilterWorkMode, setPendingFilterWorkMode] = useState<'ALL' | 'WFO' | 'WFH'>('ALL');
+
   const [editPerformance, setEditPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
   const [editSummary, setEditSummary] = useState('');
   const [isSavingEvaluation, setIsSavingEvaluation] = useState(false);
@@ -170,6 +180,55 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
+
+  useEffect(() => {
+    if (activeTab !== 'attendance') return;
+    setFilterDate('');
+    setFilterStatus('ALL');
+    setFilterWorkMode('ALL');
+    setPendingFilterDate('');
+    setPendingFilterStatus('ALL');
+    setPendingFilterWorkMode('ALL');
+  }, [activeTab, selectedInternId]);
+
+  const filteredAttendanceLogs = useMemo(() => {
+    return selectedInternAttendanceLog.filter((r) => {
+      if (filterDate && r.date !== filterDate) return false;
+      if (filterStatus !== 'ALL' && r.status !== filterStatus) return false;
+      if (filterWorkMode !== 'ALL' && r.mode !== filterWorkMode) return false;
+      return true;
+    });
+  }, [filterDate, filterStatus, filterWorkMode, selectedInternAttendanceLog]);
+
+  const formatTime = (value: unknown): string | null => {
+    if (!value) return null;
+    const maybe = value as { toDate?: () => Date };
+    if (typeof maybe?.toDate !== 'function') return null;
+    const d = maybe.toDate();
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const computeStatus = (clockInAt: unknown): 'PRESENT' | 'LATE' => {
+    const maybe = clockInAt as { toDate?: () => Date };
+    if (typeof maybe?.toDate !== 'function') return 'PRESENT';
+    const d = maybe.toDate();
+    const minutes = d.getHours() * 60 + d.getMinutes();
+    const lateAfterMinutes = 9 * 60;
+    return minutes > lateAfterMinutes ? 'LATE' : 'PRESENT';
+  };
+
+  const computeDuration = (clockInAt: unknown, clockOutAt: unknown): string | null => {
+    const a = clockInAt as { toDate?: () => Date };
+    const b = clockOutAt as { toDate?: () => Date };
+    if (typeof a?.toDate !== 'function' || typeof b?.toDate !== 'function') return null;
+    const start = a.toDate().getTime();
+    const end = b.toDate().getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+    const totalMinutes = Math.floor((end - start) / (1000 * 60));
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}h ${String(m).padStart(2, '0')}m`;
+  };
 
   const feedbackHasData = (f: FeedbackItem) => {
     return Boolean(
@@ -221,6 +280,51 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     list.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
     return list;
   }, [handoffAssets]);
+
+  useEffect(() => {
+    if (!selectedInternId) {
+      setSelectedInternAttendanceLog([]);
+      return;
+    }
+    if (activeTab !== 'attendance') return;
+
+    const attendanceRef = collection(firestoreDb, 'users', selectedInternId, 'attendance');
+    const q = query(attendanceRef, orderBy('date', 'desc'), limit(120));
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        const logs = snap.docs
+          .map((d) => {
+            const raw = d.data() as any;
+            const date = typeof raw?.date === 'string' ? raw.date : d.id;
+            const mode: 'WFO' | 'WFH' = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
+            const clockInAt = raw?.clockInAt;
+            const clockOutAt = raw?.clockOutAt;
+            const clockIn = formatTime(clockInAt);
+            if (!clockIn) return null;
+            const clockOut = formatTime(clockOutAt) ?? '--';
+            const status = computeStatus(clockInAt);
+            const duration = clockOutAt ? computeDuration(clockInAt, clockOutAt) : null;
+            return {
+              id: d.id,
+              date,
+              clockIn,
+              clockOut,
+              mode,
+              status,
+              duration: duration ?? '--',
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+        setSelectedInternAttendanceLog(logs);
+      },
+      () => {
+        setSelectedInternAttendanceLog([]);
+      },
+    );
+  }, [activeTab, selectedInternId]);
 
   useEffect(() => {
     if (!selectedInternId) {
@@ -909,11 +1013,78 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             {activeTab === 'assignments' && selectedInternId && <AssignmentsTab internId={selectedInternId} />}
 
             {activeTab === 'attendance' && (
-              <AttendanceTab
-                logs={selectedIntern.attendanceLog}
-                viewMode={attendanceViewMode}
-                onViewModeChange={setAttendanceViewMode}
-              />
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in slide-in-from-bottom-6 duration-500">
+                <div className="lg:col-span-4 xl:col-span-3 space-y-6">
+                  <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-900 mb-8">Time Report Filter</h3>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Date Range</label>
+                        <div className="flex flex-col gap-3">
+                          <input
+                            type="date"
+                            value={pendingFilterDate}
+                            onChange={(e) => setPendingFilterDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Status Filter</label>
+                        <div className="relative">
+                          <select
+                            value={pendingFilterStatus}
+                            onChange={(e) => setPendingFilterStatus(e.target.value as 'ALL' | 'PRESENT' | 'LATE')}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 appearance-none outline-none cursor-pointer"
+                          >
+                            <option value="ALL">All Status</option>
+                            <option value="PRESENT">PRESENT</option>
+                            <option value="LATE">LATE</option>
+                          </select>
+                          <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Work Mode</label>
+                        <div className="relative">
+                          <select
+                            value={pendingFilterWorkMode}
+                            onChange={(e) => setPendingFilterWorkMode(e.target.value as 'ALL' | 'WFO' | 'WFH')}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 appearance-none outline-none cursor-pointer"
+                          >
+                            <option value="ALL">All Mode</option>
+                            <option value="WFO">WFO</option>
+                            <option value="WFH">WFH</option>
+                          </select>
+                          <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setFilterDate(pendingFilterDate);
+                          setFilterStatus(pendingFilterStatus);
+                          setFilterWorkMode(pendingFilterWorkMode);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-blue-50 text-blue-600 py-3.5 rounded-2xl text-xs font-bold border border-blue-100/50"
+                      >
+                        <Filter size={16} /> Apply Filter
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-8 xl:col-span-9">
+                  <AttendanceTab
+                    key={`${selectedInternId ?? ''}|${filterDate}|${filterStatus}|${filterWorkMode}`}
+                    logs={filteredAttendanceLogs}
+                    viewMode={attendanceViewMode}
+                    onViewModeChange={setAttendanceViewMode}
+                  />
+                </div>
+              </div>
             )}
 
             {activeTab === 'feedback' && (

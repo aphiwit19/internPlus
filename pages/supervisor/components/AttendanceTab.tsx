@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronLeft, ChevronRight, History, Home } from 'lucide-react';
 
 export type AttendanceViewMode = 'LOG' | 'CALENDAR';
@@ -138,6 +138,24 @@ interface AttendanceTabProps {
 }
 
 const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewModeChange }) => {
+  const PAGE_SIZE = 8;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(logs.length / PAGE_SIZE)), [logs.length]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const pagedLogs = useMemo(
+    () => logs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [currentPage, logs],
+  );
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500">
       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative">
@@ -184,7 +202,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {logs.map((log) => (
+                {pagedLogs.map((log) => (
                   <tr key={log.id} className="group hover:bg-slate-50/50 transition-all">
                     <td className="py-6 pl-4 font-black text-slate-700 text-sm">{log.date}</td>
                     <td className="py-6 text-sm font-bold text-slate-600">{log.clockIn}</td>
@@ -218,6 +236,43 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
               <div className="py-32 text-center flex flex-col items-center">
                 <History size={48} className="text-slate-100 mb-6" />
                 <p className="text-slate-300 font-black uppercase tracking-[0.3em]">No attendance records found</p>
+              </div>
+            )}
+
+            {logs.length > PAGE_SIZE && (
+              <div className="mt-10 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                >
+                  {'<'}
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-10 h-10 rounded-xl border text-xs font-black transition-all ${
+                      page === currentPage
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                >
+                  {'>'}
+                </button>
               </div>
             )}
           </div>
