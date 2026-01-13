@@ -11,15 +11,16 @@ import {
   Calendar,
   Filter,
   Check,
-  X,
-  TrendingDown,
-  AlertCircle,
-  ShieldCheck
+  X
 } from 'lucide-react';
 import { Language, UserRole, LeaveRequest, LeaveType } from '@/types';
 
 import { useAppContext } from '@/app/AppContext';
 import { createLeaveRepository } from '@/app/leaveRepository';
+
+import { doc, getDoc } from 'firebase/firestore';
+
+import { firestoreDb } from '@/firebase';
 
 interface LeaveRequestCoreProps {
   lang: Language;
@@ -28,6 +29,7 @@ interface LeaveRequestCoreProps {
   headerSubtitle?: string;
   protocolTitle?: string;
   protocolSubtitle?: string;
+  sidePanel?: React.ReactNode | null;
 }
 
 const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
@@ -37,27 +39,11 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   headerSubtitle,
   protocolTitle,
   protocolSubtitle,
+  sidePanel,
 }) => {
   const isIntern = role === 'INTERN';
   const { user } = useAppContext();
   const leaveRepo = useMemo(() => createLeaveRepository(), []);
-
-  const quotaColorClasses = useMemo(() => {
-    return {
-      emerald: {
-        badge: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-        bar: 'bg-emerald-500',
-      },
-      amber: {
-        badge: 'bg-amber-50 text-amber-600 border-amber-100',
-        bar: 'bg-amber-500',
-      },
-      blue: {
-        badge: 'bg-blue-50 text-blue-600 border-blue-100',
-        bar: 'bg-blue-500',
-      },
-    } as const;
-  }, []);
 
   const t = {
     EN: {
@@ -69,6 +55,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       quotaSub: "Your remaining leave balance for this cohort.",
       historyTitle: "Incoming Requests",
       historySub: "REVIEW AND ACTION PENDING LEAVES.",
+      all: "All",
       leaveType: "Leave Type",
       startDate: "Start Date",
       endDate: "End Date",
@@ -85,6 +72,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       used: "Used",
       left: "Left",
       days: "Days",
+      overallLeave: "Overall Leave",
       approve: "APPROVE",
       reject: "REJECT",
       impactTitle: "Allowance Impact",
@@ -100,6 +88,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       quotaSub: "ยอดคงเหลือวันลาสำหรับโปรแกรมปัจจุบัน",
       historyTitle: "คำขอที่รอดำเนินการ",
       historySub: "ตรวจสอบและจัดการรายการลาที่ค้างอยู่",
+      all: "ทั้งหมด",
       leaveType: "ประเภทการลา",
       startDate: "วันที่เริ่ม",
       endDate: "วันที่สิ้นสุด",
@@ -116,6 +105,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       used: "ใช้ไป",
       left: "คงเหลือ",
       days: "วัน",
+      overallLeave: "การลา (รวม)",
       approve: "อนุมัติ",
       reject: "ปฏิเสธ",
       impactTitle: "ผลกระทบต่อเบี้ยเลี้ยง",
@@ -124,11 +114,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     }
   }[lang];
 
-  const QUOTA_DATA = [
-    { type: 'SICK', label: t.sick, total: 30, used: 2, color: 'emerald' },
-    { type: 'PERSONAL', label: t.personal, total: 6, used: 1, color: 'amber' },
-    { type: 'BUSINESS', label: t.business, total: 3, used: 0, color: 'blue' },
-  ];
+  const [totalLeaveQuotaDays, setTotalLeaveQuotaDays] = useState<number>(39);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -150,7 +136,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     setIsLoading(true);
 
     leaveRepo
-      .list()
+      .list({ role, user })
       .then((list) => {
         if (cancelled) return;
         setRequests(list);
@@ -167,7 +153,25 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [leaveRepo, role]);
+  }, [leaveRepo, role, user]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const ref = doc(firestoreDb, 'config', 'systemSettings');
+        const snap = await getDoc(ref);
+        if (!snap.exists()) return;
+        const data = snap.data() as { totalLeaveQuotaDays?: unknown };
+        const value = Number(data.totalLeaveQuotaDays);
+        if (Number.isFinite(value) && value > 0) {
+          setTotalLeaveQuotaDays(value);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void load();
+  }, []);
 
   const handleSubmit = async () => {
     setFormError(null);
@@ -220,18 +224,43 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     setErrorMessage(null);
     setIsLoading(true);
     leaveRepo
-      .list()
+      .list({ role, user })
       .then((list) => setRequests(list))
       .catch((err: unknown) => setErrorMessage(err instanceof Error ? err.message : 'Failed to load leave requests.'))
       .finally(() => setIsLoading(false));
   };
 
-  const totalUsedDays = useMemo(() => {
-    if (!isIntern) return requests.filter((r) => r.status === 'APPROVED').length;
-    if (!user) return 0;
-    return requests.filter((r) => r.status === 'APPROVED' && r.internName === user.name).length;
+  const approvedLeaveDays = useMemo(() => {
+    const toUtcMidnight = (value: string) => {
+      const d = new Date(`${value}T00:00:00.000Z`);
+      if (Number.isNaN(d.getTime())) return null;
+      return d;
+    };
+
+    const diffInclusiveDays = (start: string, end: string) => {
+      const s = toUtcMidnight(start);
+      const e = toUtcMidnight(end);
+      if (!s || !e) return 0;
+      const ms = e.getTime() - s.getTime();
+      const days = Math.floor(ms / (24 * 60 * 60 * 1000)) + 1;
+      return days > 0 ? days : 0;
+    };
+
+    const base = isIntern && user
+      ? requests.filter((r) => r.status === 'APPROVED' && r.internId === user.id)
+      : requests.filter((r) => r.status === 'APPROVED');
+
+    return base.reduce((sum, r) => sum + diffInclusiveDays(r.startDate, r.endDate), 0);
   }, [isIntern, requests, user]);
-  const potentialDeduction = totalUsedDays * 100;
+
+  const overallLeaveUsed = approvedLeaveDays;
+  const overallLeaveLeft = Math.max(0, totalLeaveQuotaDays - overallLeaveUsed);
+
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState<LeaveType | 'ALL'>('ALL');
+  const filteredRequests = useMemo(() => {
+    if (leaveTypeFilter === 'ALL') return requests;
+    return requests.filter((r) => r.type === leaveTypeFilter);
+  }, [leaveTypeFilter, requests]);
 
   const leaveTypeLabel = (type: LeaveType) => {
     const key = type.toLowerCase() as keyof typeof t;
@@ -246,6 +275,9 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     "All leave requests should be evaluated based on the intern's remaining quota and project deadlines. \n\nApproved leave is strictly \"Without Pay\" per company policy."
   );
 
+  const showSidePanel = isIntern || sidePanel !== null;
+  const resolvedSidePanel = sidePanel === undefined ? undefined : sidePanel;
+
   return (
     <div className="h-full w-full bg-slate-50 flex flex-col overflow-hidden p-6 md:p-10 lg:p-14">
       <div className="max-w-[1400px] mx-auto w-full flex flex-col h-full">
@@ -255,57 +287,51 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
             <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{resolvedHeaderTitle}</h1>
             <p className="text-slate-500 text-sm font-medium pt-2">{resolvedHeaderSubtitle}</p>
           </div>
-          
-          {isIntern && (
-            <div className="flex bg-white px-6 py-4 rounded-[2rem] border border-slate-200 shadow-sm items-center gap-6 animate-in slide-in-from-right-4">
-              <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
-                <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center">
-                  <TrendingDown size={20} />
-                </div>
-                <div>
-                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.totalDeduction}</p>
-                   <p className="text-sm font-black text-rose-600">-{potentialDeduction} THB</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                  <ShieldCheck size={20} />
-                </div>
-                <p className="text-sm font-black text-slate-900">Unpaid Leave Policy Active</p>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
             
-            <div className="lg:col-span-8 space-y-10">
+            <div className={`${showSidePanel ? 'lg:col-span-8' : 'lg:col-span-12'} space-y-10`}>
               {isIntern && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4">
-                  {QUOTA_DATA.map((item) => (
-                    <div key={item.type} className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-default relative overflow-hidden">
-                      <div className="flex justify-between items-start mb-6 relative z-10">
-                        <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border ${quotaColorClasses[item.color as keyof typeof quotaColorClasses].badge}`}>
-                          {item.label}
-                        </span>
-                        <Clock size={18} className="text-slate-200" />
+                  <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-default relative overflow-hidden md:col-span-3">
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                      <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border bg-indigo-50 text-indigo-600 border-indigo-100">
+                        {t.overallLeave}
+                      </span>
+                      <Clock size={18} className="text-slate-200" />
+                    </div>
+                    <div className="space-y-1 relative z-10">
+                      <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">
+                        {overallLeaveLeft}
+                        <span className="text-sm font-bold text-slate-300 ml-1 uppercase">{t.days} {t.left}</span>
+                      </h3>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.used} {overallLeaveUsed} OF {totalLeaveQuotaDays} {t.days}</p>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.total}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{totalLeaveQuotaDays} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
                       </div>
-                      <div className="space-y-1 relative z-10">
-                        <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">
-                          {item.total - item.used}
-                          <span className="text-sm font-bold text-slate-300 ml-1 uppercase">{t.days} {t.left}</span>
-                        </h3>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.used} {item.used} OF {item.total} {t.days}</p>
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.used}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveUsed} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
                       </div>
-                      <div className="mt-6 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 relative z-10">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-1000 ${quotaColorClasses[item.color as keyof typeof quotaColorClasses].bar}`} 
-                          style={{ width: `${(item.used / item.total) * 100}%` }}
-                        ></div>
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.left}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveLeft} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
                       </div>
                     </div>
-                  ))}
+
+                    <div className="mt-6 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 relative z-10">
+                      <div
+                        className="h-full rounded-full transition-all duration-1000 bg-indigo-500"
+                        style={{ width: `${totalLeaveQuotaDays > 0 ? (overallLeaveUsed / totalLeaveQuotaDays) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -316,9 +342,22 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                     <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t.historyTitle}</h3>
                     <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.15em] mt-1">{t.historySub}</p>
                   </div>
-                  <button className="w-12 h-12 flex items-center justify-center bg-slate-50 text-slate-400 rounded-2xl hover:text-blue-600 transition-all border border-slate-100 shadow-sm">
-                    <Filter size={20}/>
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 flex items-center justify-center bg-slate-50 text-slate-400 rounded-2xl border border-slate-100 shadow-sm">
+                      <Filter size={20} />
+                    </div>
+                    <select
+                      value={leaveTypeFilter}
+                      onChange={(e) => setLeaveTypeFilter(e.target.value as LeaveType | 'ALL')}
+                      className="h-12 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-[12px] font-black text-slate-700 uppercase tracking-widest outline-none"
+                    >
+                      <option value="ALL">{t.all}</option>
+                      <option value="SICK">{t.sick}</option>
+                      <option value="PERSONAL">{t.personal}</option>
+                      <option value="BUSINESS">{t.business}</option>
+                      <option value="VACATION">{t.vacation}</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-6">
@@ -349,7 +388,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                   {!isLoading && !errorMessage && (
                     <>
-                      {requests.map((req) => (
+                      {filteredRequests.map((req) => (
                         <div key={req.id} className="p-8 bg-white border border-[#F1F5F9] rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl hover:border-blue-50 group">
                           <div className="flex items-center gap-6">
                             <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all flex-shrink-0 ${
@@ -418,7 +457,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                         </div>
                       ))}
 
-                      {requests.length === 0 && (
+                      {filteredRequests.length === 0 && (
                         <div className="py-24 text-center flex flex-col items-center">
                            <History size={48} className="text-slate-100 mb-6" />
                            <p className="text-slate-300 font-black uppercase tracking-[0.3em]">Clear Inbox. No requests found.</p>
@@ -430,21 +469,14 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
               </section>
             </div>
 
-            <div className="lg:col-span-4">
-              {isIntern ? (
-                <section className="bg-[#0B0F19] rounded-[3.5rem] p-10 md:p-12 text-white shadow-2xl relative overflow-hidden h-fit sticky top-10">
+            {showSidePanel && (
+              <div className="lg:col-span-4">
+                {isIntern ? (
+                  <section className="bg-[#0B0F19] rounded-[3.5rem] p-10 md:p-12 text-white shadow-2xl relative overflow-hidden h-fit sticky top-10">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
                   <div className="relative z-10">
                     <h3 className="text-3xl font-black mb-2 tracking-tight">{t.requestTitle}</h3>
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t.requestSub}</p>
-
-                    <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-2xl mb-12 flex items-start gap-4 animate-pulse">
-                       <AlertCircle size={24} className="text-rose-500 shrink-0" />
-                       <div>
-                          <h5 className="text-[11px] font-black text-rose-400 uppercase tracking-widest mb-1">{t.impactTitle}</h5>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-bold italic opacity-80">{t.impactDesc}</p>
-                       </div>
-                    </div>
 
                     {!!formError && (
                       <div className="mb-8 p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-200 text-xs font-bold">
@@ -508,26 +540,31 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       </button>
                     </div>
                   </div>
-                </section>
-              ) : (
-                <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm sticky top-10 flex flex-col items-center text-center">
-                  <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-inner border border-blue-50">
-                    <Info size={40} />
+                  </section>
+                ) : resolvedSidePanel === undefined ? (
+                  <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm sticky top-10 flex flex-col items-center text-center">
+                    <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-[2.5rem] flex items-center justify-center mb-8 shadow-inner border border-blue-50">
+                      <Info size={40} />
+                    </div>
+                    <h4 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">{resolvedProtocolTitle}</h4>
+                    <p className="text-sm text-slate-400 leading-relaxed font-bold italic mb-10 opacity-70" style={{ whiteSpace: 'pre-line' }}>
+                      {resolvedProtocolSubtitle}
+                    </p>
+                    <div className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-5 group hover:bg-blue-600 transition-all duration-500">
+                       <Clock className="text-blue-500 group-hover:text-white" size={24} />
+                       <div className="text-left">
+                          <p className="text-[10px] font-black text-slate-400 group-hover:text-blue-200 uppercase tracking-widest">Global Attendance</p>
+                          <p className="text-xl font-black text-slate-900 group-hover:text-white">96.8% AVG</p>
+                       </div>
+                    </div>
                   </div>
-                  <h4 className="text-2xl font-black text-slate-900 mb-4 tracking-tight">{resolvedProtocolTitle}</h4>
-                  <p className="text-sm text-slate-400 leading-relaxed font-bold italic mb-10 opacity-70" style={{ whiteSpace: 'pre-line' }}>
-                    {resolvedProtocolSubtitle}
-                  </p>
-                  <div className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-5 group hover:bg-blue-600 transition-all duration-500">
-                     <Clock className="text-blue-500 group-hover:text-white" size={24} />
-                     <div className="text-left">
-                        <p className="text-[10px] font-black text-slate-400 group-hover:text-blue-200 uppercase tracking-widest">Global Attendance</p>
-                        <p className="text-xl font-black text-slate-900 group-hover:text-white">96.8% AVG</p>
-                     </div>
+                ) : (
+                  <div className="sticky top-10 h-fit">
+                    {resolvedSidePanel}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

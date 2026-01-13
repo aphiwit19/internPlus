@@ -25,6 +25,7 @@ const LeaveRequestPage: React.FC<SupervisorLeaveRequestPageProps> = ({ lang, rol
           ? "Evaluate requests based on remaining quota and project deadlines. Approved leave is 'Without Pay' per policy."
           : 'พิจารณาคำขอตามโควตาคงเหลือและเส้นตายงาน การลาที่อนุมัติเป็นลาไม่รับค่าจ้างตามนโยบาย'
       }
+      sidePanel={null}
     />
   );
 };

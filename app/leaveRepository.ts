@@ -1,71 +1,28 @@
-import { LeaveRequest, LeaveStatus, LeaveType, UserProfile } from '@/types';
+import { LeaveRequest, LeaveStatus, LeaveType, UserProfile, UserRole } from '@/types';
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  type QueryConstraint,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 
-const STORAGE_KEY = 'internPlus.leave.requests';
-
-function safeParseJson<T>(value: string | null): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function getSeedRequests(): LeaveRequest[] {
-  return [
-    {
-      id: 'lr-1',
-      internName: 'Alex Rivera',
-      internAvatar:
-        'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop',
-      internPosition: 'Junior UI/UX Designer',
-      type: 'SICK',
-      startDate: '2024-11-10',
-      endDate: '2024-11-10',
-      reason: 'Flu',
-      status: 'APPROVED',
-      requestedAt: '2024-11-09',
-      approvedAt: '2024-11-09',
-      approvedBy: 'System',
-    },
-    {
-      id: 'lr-2',
-      internName: 'James Wilson',
-      internAvatar: 'https://picsum.photos/seed/james/100/100',
-      internPosition: 'Backend Developer Intern',
-      type: 'PERSONAL',
-      startDate: '2024-11-25',
-      endDate: '2024-11-26',
-      reason: 'Family business',
-      status: 'PENDING',
-      requestedAt: '2024-11-20',
-    },
-  ];
-}
-
-function readAll(): LeaveRequest[] {
-  if (typeof window === 'undefined') return getSeedRequests();
-  const parsed = safeParseJson<LeaveRequest[]>(window.localStorage.getItem(STORAGE_KEY));
-  if (!parsed || !Array.isArray(parsed) || parsed.length === 0) return getSeedRequests();
-  return parsed;
-}
-
-function writeAll(list: LeaveRequest[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-}
+import { firestoreDb } from '@/firebase';
 
 function todayIsoDate(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-function createId(): string {
-  return `lr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+type LeaveRequestDoc = Omit<LeaveRequest, 'id'> & {
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
 
 export interface CreateLeaveRequestInput {
   type: LeaveType;
@@ -74,26 +31,76 @@ export interface CreateLeaveRequestInput {
   reason: string;
 }
 
+export interface LeaveListParams {
+  role: UserRole;
+  user: UserProfile | null;
+}
+
 export interface LeaveRepository {
-  list: () => Promise<LeaveRequest[]>;
+  list: (params: LeaveListParams) => Promise<LeaveRequest[]>;
   createForUser: (user: UserProfile, input: CreateLeaveRequestInput) => Promise<LeaveRequest>;
   updateStatus: (id: string, status: LeaveStatus, approvedBy?: string) => Promise<LeaveRequest>;
 }
 
 export function createLeaveRepository(): LeaveRepository {
   return {
-    async list() {
-      await sleep(200);
-      const list = readAll();
-      writeAll(list);
-      return list;
+    async list(params: LeaveListParams) {
+      const ref = collection(firestoreDb, 'leaveRequests');
+
+      const constraints: QueryConstraint[] = [];
+
+      // Require login for role-specific filtering.
+      if (!params.user) {
+        return [];
+      }
+
+      if (params.role === 'INTERN') {
+        constraints.push(where('internId', '==', params.user.id));
+      } else if (params.role === 'SUPERVISOR') {
+        constraints.push(where('supervisorId', '==', params.user.id));
+      } else if (params.role === 'HR_ADMIN') {
+        // No filter; safe to use server-side ordering without composite index.
+        constraints.push(orderBy('requestedAt', 'desc'));
+      }
+
+      const q = query(ref, ...constraints);
+      const snap = await getDocs(q);
+      const items = snap.docs.map((d) => {
+        const data = d.data() as LeaveRequestDoc;
+        return {
+          id: d.id,
+          internId: data.internId,
+          supervisorId: data.supervisorId,
+          internName: data.internName,
+          internAvatar: data.internAvatar,
+          internPosition: data.internPosition,
+          type: data.type,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          reason: data.reason,
+          status: data.status,
+          requestedAt: data.requestedAt,
+          approvedAt: data.approvedAt,
+          approvedBy: data.approvedBy,
+        };
+      });
+
+      // Avoid composite index (where + orderBy). Sort client-side for filtered queries.
+      if (params.role === 'INTERN' || params.role === 'SUPERVISOR') {
+        items.sort((a, b) => {
+          const byDate = (b.requestedAt || '').localeCompare(a.requestedAt || '');
+          if (byDate !== 0) return byDate;
+          return b.id.localeCompare(a.id);
+        });
+      }
+
+      return items;
     },
 
     async createForUser(user: UserProfile, input: CreateLeaveRequestInput) {
-      await sleep(250);
-      const list = readAll();
-      const req: LeaveRequest = {
-        id: createId(),
+      const docData: LeaveRequestDoc = {
+        internId: user.id,
+        supervisorId: user.supervisorId,
         internName: user.name,
         internAvatar: user.avatar,
         internPosition: user.position || user.department,
@@ -103,32 +110,61 @@ export function createLeaveRepository(): LeaveRepository {
         reason: input.reason,
         status: 'PENDING',
         requestedAt: todayIsoDate(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
-      const next = [req, ...list];
-      writeAll(next);
-      return req;
+
+      const createdRef = await addDoc(collection(firestoreDb, 'leaveRequests'), docData);
+      return {
+        id: createdRef.id,
+        internId: docData.internId,
+        supervisorId: docData.supervisorId,
+        internName: docData.internName,
+        internAvatar: docData.internAvatar,
+        internPosition: docData.internPosition,
+        type: docData.type,
+        startDate: docData.startDate,
+        endDate: docData.endDate,
+        reason: docData.reason,
+        status: docData.status,
+        requestedAt: docData.requestedAt,
+      };
     },
 
     async updateStatus(id: string, status: LeaveStatus, approvedBy?: string) {
-      await sleep(200);
-      const list = readAll();
-      const idx = list.findIndex((r) => r.id === id);
-      if (idx < 0) {
+      const ref = doc(firestoreDb, 'leaveRequests', id);
+      const approvedAt = status === 'PENDING' ? undefined : todayIsoDate();
+      const nextApprovedBy = status === 'PENDING' ? undefined : approvedBy;
+
+      await updateDoc(ref, {
+        status,
+        approvedAt: approvedAt ?? null,
+        approvedBy: nextApprovedBy ?? null,
+        updatedAt: serverTimestamp(),
+      });
+
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
         throw new Error('Leave request not found.');
       }
 
-      const current = list[idx];
-      const updated: LeaveRequest = {
-        ...current,
-        status,
-        approvedAt: status === 'PENDING' ? undefined : todayIsoDate(),
-        approvedBy: status === 'PENDING' ? undefined : approvedBy,
+      const data = snap.data() as LeaveRequestDoc;
+      return {
+        id: snap.id,
+        internId: data.internId,
+        supervisorId: data.supervisorId,
+        internName: data.internName,
+        internAvatar: data.internAvatar,
+        internPosition: data.internPosition,
+        type: data.type,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        reason: data.reason,
+        status: data.status,
+        requestedAt: data.requestedAt,
+        approvedAt: data.approvedAt,
+        approvedBy: data.approvedBy,
       };
-
-      const next = [...list];
-      next[idx] = updated;
-      writeAll(next);
-      return updated;
     },
   };
 }

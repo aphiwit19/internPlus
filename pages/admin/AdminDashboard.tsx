@@ -316,7 +316,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
              <TabBtn active={activeTab === 'roster'} onClick={() => setActiveTab('roster')} icon={<Users size={16}/>} label="Roster" />
              <TabBtn active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} icon={<Clock size={16}/>} label="Attendance" />
-             <TabBtn active={activeTab === 'absences'} onClick={() => setActiveTab('absences')} icon={<UserX size={16}/>} label="Absences" />
+             <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16}/>} label="Absences" />
              <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16}/>} label="Certs" />
              <TabBtn active={activeTab === 'allowances'} onClick={() => setActiveTab('allowances')} icon={<CreditCard size={16}/>} label="Payouts" />
           </div>

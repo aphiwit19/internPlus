@@ -109,6 +109,8 @@ export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface LeaveRequest {
   id: string;
+  internId?: string;
+  supervisorId?: string;
   internName: string;
   internAvatar: string;
   internPosition: string;

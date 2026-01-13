@@ -1,6 +1,6 @@
 import React from 'react';
 import { NAV_ITEMS } from '@/constants';
-import { Briefcase, X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-react';
+import { X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-react';
 import { UserProfile, Language, UserRole, PostProgramAccessLevel } from '@/types';
 import { PageId } from '@/pageTypes';
 
@@ -96,9 +96,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Logo Section */}
         <div className="p-8 pb-6 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-blue-600 rounded-[1rem] flex items-center justify-center text-white shadow-xl shadow-blue-500/20 ring-1 ring-white/10">
-              <Briefcase size={22} strokeWidth={2.5} />
-            </div>
+            <img
+              src="/logovannesplus.png"
+              alt="VannesPlus"
+              className="h-14 w-auto object-contain"
+            />
             <div className="flex flex-col">
               <h1 className="text-slate-900 font-black text-xl leading-none tracking-tight">
                 intern<span className="text-blue-600">Plus</span>
