@@ -6,11 +6,13 @@ import { AllowanceClaim } from '../adminDashboardTypes';
 
 interface AllowancesTabProps {
   allowanceClaims: AllowanceClaim[];
+  isLoading?: boolean;
+  errorMessage?: string | null;
   onAuthorize: (id: string) => void;
   onProcessPayment: (id: string) => void;
 }
 
-const AllowancesTab: React.FC<AllowancesTabProps> = ({ allowanceClaims, onAuthorize, onProcessPayment }) => {
+const AllowancesTab: React.FC<AllowancesTabProps> = ({ allowanceClaims, isLoading = false, errorMessage = null, onAuthorize, onProcessPayment }) => {
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm overflow-hidden">
@@ -29,6 +31,32 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({ allowanceClaims, onAuthor
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
+              {!isLoading && Boolean(errorMessage) && (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center">
+                    <div className="text-sm font-black text-rose-600">โหลดข้อมูลไม่สำเร็จ</div>
+                    <div className="text-[11px] font-bold text-slate-400 mt-1 break-words">{errorMessage}</div>
+                  </td>
+                </tr>
+              )}
+
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center">
+                    <div className="text-sm font-black text-slate-700">กำลังดาวน์โหลดอยู่…</div>
+                    <div className="text-[11px] font-bold text-slate-400 mt-1">Loading payout data</div>
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !errorMessage && allowanceClaims.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center">
+                    <div className="text-sm font-black text-slate-700">ไม่พบข้อมูล</div>
+                  </td>
+                </tr>
+              )}
+
               {allowanceClaims.map(claim => (
                 <tr key={claim.id} className="group hover:bg-slate-50/50 transition-all">
                   <td className="py-6 pl-4">

@@ -139,6 +139,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   ]);
 
   const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([]);
+  const [isAllowanceLoading, setIsAllowanceLoading] = useState(false);
+  const [allowanceLoadError, setAllowanceLoadError] = useState<string | null>(null);
 
   const [allowanceRules, setAllowanceRules] = useState({
     payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
@@ -234,6 +236,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
     const load = async () => {
       try {
+        if (!cancelled) setIsAllowanceLoading(true);
+        if (!cancelled) setAllowanceLoadError(null);
         const existingSnap = await getDocs(
           query(collection(firestoreDb, 'allowanceClaims'), where('monthKey', '==', monthKey)),
         );
@@ -266,7 +270,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           if (cancelled) return;
 
           const attendanceRef = collection(firestoreDb, 'users', intern.id, 'attendance');
-          const [attSnap, leaveSnap] = await Promise.all([
+          const [attRes, leaveRes] = await Promise.allSettled([
             getDocs(
               query(
                 attendanceRef,
@@ -285,30 +289,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             ),
           ]);
 
+          const attSnap = attRes.status === 'fulfilled' ? attRes.value : null;
+          const leaveSnap = leaveRes.status === 'fulfilled' ? leaveRes.value : null;
+
           let wfo = 0;
           let wfh = 0;
-          attSnap.forEach((d) => {
-            const raw = d.data() as any;
-            const hasClockIn = Boolean(raw?.clockInAt);
-            if (!hasClockIn) return;
-            const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
-            if (mode === 'WFH') wfh += 1;
-            else wfo += 1;
-          });
+          if (attSnap) {
+            attSnap.forEach((d) => {
+              const raw = d.data() as any;
+              const hasClockIn = Boolean(raw?.clockInAt);
+              if (!hasClockIn) return;
+              const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
+              if (mode === 'WFH') wfh += 1;
+              else wfo += 1;
+            });
+          }
 
           const leaveDaysSet = new Set<string>();
-          leaveSnap.forEach((d) => {
-            const raw = d.data() as any;
-            const startDate = typeof raw?.startDate === 'string' ? raw.startDate : null;
-            const endDate = typeof raw?.endDate === 'string' ? raw.endDate : null;
-            if (!startDate || !endDate) return;
-            for (const day of daysInclusive(startDate, endDate)) {
-              const localDay = clampDay(new Date(day.getTime()));
-              if (localDay.getTime() < clampDay(monthStart).getTime()) continue;
-              if (localDay.getTime() > clampDay(monthEnd).getTime()) continue;
-              leaveDaysSet.add(toDateKey(localDay));
-            }
-          });
+          if (leaveSnap) {
+            leaveSnap.forEach((d) => {
+              const raw = d.data() as any;
+              const startDate = typeof raw?.startDate === 'string' ? raw.startDate : null;
+              const endDate = typeof raw?.endDate === 'string' ? raw.endDate : null;
+              if (!startDate || !endDate) return;
+              for (const day of daysInclusive(startDate, endDate)) {
+                const localDay = clampDay(new Date(day.getTime()));
+                if (localDay.getTime() < clampDay(monthStart).getTime()) continue;
+                if (localDay.getTime() > clampDay(monthEnd).getTime()) continue;
+                leaveDaysSet.add(toDateKey(localDay));
+              }
+            });
+          }
 
           const leaves = leaveDaysSet.size;
 
@@ -358,8 +369,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
         next.sort((a, b) => b.amount - a.amount);
         if (!cancelled) setAllowanceClaims(next);
-      } catch {
+      } catch (e) {
         if (!cancelled) setAllowanceClaims([]);
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : 'Failed to load payouts.';
+          setAllowanceLoadError(msg);
+        }
+      } finally {
+        if (!cancelled) setIsAllowanceLoading(false);
       }
     };
 
@@ -604,6 +621,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
          {activeTab === 'allowances' && (
            <AllowancesTab
              allowanceClaims={allowanceClaims}
+             isLoading={isAllowanceLoading}
+             errorMessage={allowanceLoadError}
              onAuthorize={handleAuthorizeAllowance}
              onProcessPayment={handleProcessPayment}
            />

@@ -36,12 +36,15 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
   const { user } = useAppContext();
 
   const [claims, setClaims] = useState<AllowanceClaimRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.id) {
       setClaims([]);
+      setIsLoading(false);
       return;
     }
+    setIsLoading(true);
     const q = query(collection(firestoreDb, 'allowanceClaims'), where('internId', '==', user.id));
     return onSnapshot(
       q,
@@ -64,9 +67,11 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
           })
           .sort((a, b) => String(b.monthKey ?? '').localeCompare(String(a.monthKey ?? '')));
         setClaims(next);
+        setIsLoading(false);
       },
       () => {
         setClaims([]);
+        setIsLoading(false);
       },
     );
   }, [user?.id]);
@@ -173,6 +178,23 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
                     <tr className="text-left"><th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">{t.dateCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.modeCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.payoutCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.statusCol}</th><th className="pb-6 text-right pr-4">{t.actionCol}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
+                    {isLoading && (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center">
+                          <div className="text-sm font-black text-slate-700">กำลังดาวน์โหลดอยู่…</div>
+                          <div className="text-[11px] font-bold text-slate-400 mt-1">Loading allowance history</div>
+                        </td>
+                      </tr>
+                    )}
+
+                    {!isLoading && claims.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center">
+                          <div className="text-sm font-black text-slate-700">ไม่พบข้อมูล</div>
+                        </td>
+                      </tr>
+                    )}
+
                     {claims.map((c) => (
                       <tr key={c.id} className="group hover:bg-slate-50/50 transition-colors">
                         <td className="py-6 pl-4 font-bold text-slate-700 text-sm">{c.paymentDate ?? c.period ?? c.monthKey ?? '-'}</td>
