@@ -377,9 +377,14 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       const mergedVideos = [...handoffExistingVideos, ...uploadedVideosNew];
       const mergedLinks = handoffLinks.filter((l) => l.trim());
 
+      const safeVideos = mergedVideos.map((v) => {
+        const base = { type: v.type, fileName: v.fileName, storagePath: v.storagePath };
+        return v.title ? { ...base, title: v.title } : base;
+      });
+
       await updateDoc(submissionDocRef, {
         files: mergedFiles,
-        videos: mergedVideos,
+        videos: safeVideos,
         links: mergedLinks,
       });
 
@@ -389,7 +394,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
           status: 'SUBMITTED',
           submittedAt: serverTimestamp(),
           files: mergedFiles,
-          videos: mergedVideos,
+          videos: safeVideos,
           links: mergedLinks,
         },
         updatedAt: serverTimestamp(),
@@ -447,10 +452,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       return {
         ...t,
         status: finalStatus,
+        reviewStatus: 'SUBMITTED',
         actualEnd: now.toISOString(),
         isSessionActive: false,
         attachments: mergedAttachments,
-        delayRemark: finalStatus === 'DELAYED' ? remarkFromDraft : t.delayRemark,
+        delayRemark: finalStatus === 'DELAYED' ? remarkFromDraft : (t.delayRemark ?? ''),
         timeLogs: t.isSessionActive
           ? t.timeLogs.map((l, i) => (i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l))
           : t.timeLogs,
@@ -505,6 +511,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       return {
         ...t,
         status: finalStatus,
+        reviewStatus: 'SUBMITTED',
         actualEnd: now.toISOString(),
         isSessionActive: false,
         timeLogs: t.isSessionActive

@@ -60,7 +60,7 @@ import {
   ChevronDown,
   Home
 } from 'lucide-react';
-import { arrayUnion, collection, doc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { UserProfile, PerformanceMetrics, Language, SubTask, TaskAttachment } from '@/types';
 import { PageId } from '@/pageTypes';
@@ -129,6 +129,10 @@ interface SupervisorDashboardProps {
 
 type ProjectKind = 'assigned' | 'personal';
 
+type PendingAssignmentNext =
+  | { kind: 'handoff'; colName: 'assignmentProjects' | 'personalProjects'; projectId: string }
+  | { kind: 'task'; colName: 'assignmentProjects' | 'personalProjects'; projectId: string; taskId: string };
+
 type HandoffAssetItem = {
   key: string;
   label: string;
@@ -144,6 +148,8 @@ type HandoffProjectGroup = {
   status?: string;
   items: HandoffAssetItem[];
 };
+
+const SUP_MANAGE_INTERNS_NAV_KEY = 'sup_manage_interns_nav';
 
 const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavigate, currentTab }) => {
   const [interns, setInterns] = useState<InternDetail[]>([]);
@@ -175,11 +181,32 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [assignSearch, setAssignSearch] = useState('');
 
   const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
-  const [punctualityPercent, setPunctualityPercent] = useState<number | null>(null);
   const [awayToday, setAwayToday] = useState<Array<{ id: string; internName: string; type?: string }>>([]);
+  const [pendingLeaveCount, setPendingLeaveCount] = useState<number>(0);
+  const [pendingCertificateCount, setPendingCertificateCount] = useState<number>(0);
+  const [pendingUniversityEvaluationCount, setPendingUniversityEvaluationCount] = useState<number>(0);
+
+  const [handoffPendingByIntern, setHandoffPendingByIntern] = useState<Record<
+    string,
+    { count: number; next: PendingAssignmentNext | null }
+  >>({});
 
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
+
+  useEffect(() => {
+    if (currentTab !== 'manage-interns') return;
+    try {
+      const raw = sessionStorage.getItem(SUP_MANAGE_INTERNS_NAV_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { internId?: string; activeTab?: SupervisorDeepDiveTab };
+      sessionStorage.removeItem(SUP_MANAGE_INTERNS_NAV_KEY);
+      if (parsed?.internId) setSelectedInternId(parsed.internId);
+      if (parsed?.activeTab) setActiveTab(parsed.activeTab);
+    } catch {
+      // ignore
+    }
+  }, [currentTab]);
 
   useEffect(() => {
     if (activeTab !== 'attendance') return;
@@ -210,47 +237,73 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return Math.max(0, Math.min(5, Math.round(avg5 * 100) / 100));
   }, [interns]);
 
-  const reviewedAssessmentsCount = useMemo(() => {
-    let n = 0;
-    for (const intern of interns) {
-      const items = feedbackByIntern[intern.id] ?? [];
-      for (const f of items) {
-        if (f.status === 'reviewed') n += 1;
-      }
-    }
-    return n;
-  }, [feedbackByIntern, interns]);
+  const pendingByIntern = useMemo(() => {
+    const list: Array<{
+      internId: string;
+      internName: string;
+      internAvatar: string;
+      count: number;
+      next: PendingAssignmentNext | null;
+    }> = [];
 
-  const pendingFeedbackReviews = useMemo(() => {
-    const list: Array<{ internId: string; internName: string; internAvatar: string; feedbackId: string }> = [];
     for (const intern of interns) {
-      const items = feedbackByIntern[intern.id] ?? [];
-      for (const f of items) {
-        if (f.status !== 'submitted') continue;
-        list.push({
-          internId: intern.id,
-          internName: intern.name,
-          internAvatar: intern.avatar,
-          feedbackId: f.id,
-        });
-      }
+      const meta = handoffPendingByIntern[intern.id];
+      const count = meta?.count ?? 0;
+      if (count <= 0) continue;
+      list.push({
+        internId: intern.id,
+        internName: intern.name,
+        internAvatar: intern.avatar,
+        count,
+        next: meta?.next ?? null,
+      });
     }
+
+    list.sort((a, b) => b.count - a.count);
     return list;
-  }, [feedbackByIntern, interns]);
+  }, [handoffPendingByIntern, interns]);
 
-  const sentimentPercent = useMemo(() => {
-    const ratings: number[] = [];
-    for (const intern of interns) {
-      const items = feedbackByIntern[intern.id] ?? [];
-      for (const f of items) {
-        if (!Number.isFinite(f.programRating) || f.programRating <= 0) continue;
-        ratings.push(f.programRating);
+  const totalPendingCount = useMemo(() => {
+    return pendingByIntern.reduce((acc, x) => acc + x.count, 0);
+  }, [pendingByIntern]);
+
+  const PENDING_ACTION_VISIBLE_COUNT = 5;
+
+  const handleOpenPendingAssetsForIntern = async (internId: string, next: PendingAssignmentNext | null) => {
+    if (next) {
+      try {
+        if (next.kind === 'handoff') {
+          await updateDoc(doc(firestoreDb, 'users', internId, next.colName, next.projectId), {
+            'handoffLatest.status': 'REVIEWED',
+            'handoffLatest.reviewedAt': serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          const ref = doc(firestoreDb, 'users', internId, next.colName, next.projectId);
+          const snap = await getDoc(ref);
+          const data = snap.exists() ? (snap.data() as any) : null;
+          const tasks = Array.isArray(data?.tasks) ? (data.tasks as SubTask[]) : [];
+          const nextTasks = tasks.map((t) =>
+            String((t as any)?.id ?? '') === next.taskId ? ({ ...t, reviewStatus: 'REVIEWED' } as SubTask) : t,
+          );
+          await updateDoc(ref, { tasks: nextTasks, updatedAt: serverTimestamp() });
+        }
+      } catch {
+        // If we can't mark reviewed, still allow navigation.
       }
     }
-    if (ratings.length === 0) return null;
-    const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
-    return Math.max(0, Math.min(100, Math.round((avg / 5) * 100)));
-  }, [feedbackByIntern, interns]);
+
+    try {
+      sessionStorage.setItem(
+        SUP_MANAGE_INTERNS_NAV_KEY,
+        JSON.stringify({ internId, activeTab: 'assignments' as SupervisorDeepDiveTab }),
+      );
+    } catch {
+      // ignore
+    }
+
+    onNavigate('manage-interns');
+  };
 
   const formatTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -658,67 +711,152 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     const internIds = feedbackInternIdsKey ? feedbackInternIdsKey.split('|').filter(Boolean) : [];
 
     if (internIds.length === 0) {
-      setPunctualityPercent(null);
+      setHandoffPendingByIntern({});
       return undefined;
     }
 
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    const toDateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-
-    const totalsByIntern = new Map<string, { total: number; late: number }>();
-
-    const recompute = () => {
-      let total = 0;
-      let late = 0;
-      for (const v of totalsByIntern.values()) {
-        total += v.total;
-        late += v.late;
-      }
-      if (total === 0) {
-        setPunctualityPercent(null);
-        return;
-      }
-      const pct = Math.round(((total - late) / total) * 100);
-      setPunctualityPercent(Math.max(0, Math.min(100, pct)));
-    };
-
     for (const internId of internIds) {
-      const attendanceRef = collection(firestoreDb, 'users', internId, 'attendance');
-      const q = query(
-        attendanceRef,
-        where('date', '>=', toDateKey(monthStart)),
-        where('date', '<=', toDateKey(monthEnd)),
-      );
-      const unsub = onSnapshot(
-        q,
+      const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
+      const personalRef = collection(firestoreDb, 'users', internId, 'personalProjects');
+
+      let assignedCount = 0;
+      let personalCount = 0;
+      let assignedNext: PendingAssignmentNext | null = null;
+      let personalNext: PendingAssignmentNext | null = null;
+
+      const recomputePending = () => {
+        const count = assignedCount + personalCount;
+        const next = assignedNext ?? personalNext;
+        setHandoffPendingByIntern((prev) => ({
+          ...prev,
+          [internId]: { count, next },
+        }));
+      };
+
+      const mapPending = (
+        snap: any,
+        colName: 'assignmentProjects' | 'personalProjects',
+      ): { count: number; next: PendingAssignmentNext | null } => {
+        const items: Array<{ kind: 'handoff' | 'task'; projectId: string; taskId?: string; ts: string }> = [];
+
+        for (const d of snap.docs) {
+          const data = d.data() as any;
+
+          const handoffStatus = String(data?.handoffLatest?.status ?? '');
+          if (handoffStatus === 'SUBMITTED') {
+            const iso = data?.handoffLatest?.submittedAt?.toDate
+              ? String(data.handoffLatest.submittedAt.toDate().toISOString())
+              : '';
+            items.push({ kind: 'handoff', projectId: d.id, ts: iso });
+          }
+
+          const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+          for (const t of tasks) {
+            if (String(t?.reviewStatus ?? '') !== 'SUBMITTED') continue;
+            const iso = typeof t?.actualEnd === 'string' ? t.actualEnd : '';
+            items.push({ kind: 'task', projectId: d.id, taskId: String(t?.id ?? ''), ts: iso });
+          }
+        }
+
+        const count = items.length;
+        items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+        const first = items[0];
+        if (!first) return { count: 0, next: null };
+
+        if (first.kind === 'handoff') {
+          return { count, next: { kind: 'handoff', colName, projectId: first.projectId } };
+        }
+
+        return {
+          count,
+          next: {
+            kind: 'task',
+            colName,
+            projectId: first.projectId,
+            taskId: first.taskId || '',
+          },
+        };
+      };
+
+      const unsubAssigned = onSnapshot(
+        assignedRef,
         (snap) => {
-          let total = 0;
-          let late = 0;
-          snap.forEach((d) => {
-            const raw = d.data() as any;
-            const clockInAt = raw?.clockInAt;
-            if (!clockInAt) return;
-            total += 1;
-            if (computeStatus(clockInAt) === 'LATE') late += 1;
-          });
-          totalsByIntern.set(internId, { total, late });
-          recompute();
+          const res = mapPending(snap, 'assignmentProjects');
+          assignedCount = res.count;
+          assignedNext = res.next;
+          recomputePending();
         },
         () => {
-          totalsByIntern.set(internId, { total: 0, late: 0 });
-          recompute();
+          assignedCount = 0;
+          assignedNext = null;
+          recomputePending();
         },
       );
-      unsubs.push(unsub);
+
+      const unsubPersonal = onSnapshot(
+        personalRef,
+        (snap) => {
+          const res = mapPending(snap, 'personalProjects');
+          personalCount = res.count;
+          personalNext = res.next;
+          recomputePending();
+        },
+        () => {
+          personalCount = 0;
+          personalNext = null;
+          recomputePending();
+        },
+      );
+
+      unsubs.push(unsubAssigned, unsubPersonal);
     }
 
     return () => {
       unsubs.forEach((u) => u());
     };
   }, [feedbackInternIdsKey]);
+
+  useEffect(() => {
+    const leaveRef = collection(firestoreDb, 'leaveRequests');
+    const q = query(leaveRef, where('supervisorId', '==', user.id), where('status', '==', 'PENDING'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setPendingLeaveCount(snap.size);
+      },
+      () => {
+        setPendingLeaveCount(0);
+      },
+    );
+  }, [user.id]);
+
+  useEffect(() => {
+    const ref = collection(firestoreDb, 'certificateRequests');
+    const q = query(ref, where('supervisorId', '==', user.id), where('status', '==', 'REQUESTED'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setPendingCertificateCount(snap.size);
+      },
+      () => {
+        setPendingCertificateCount(0);
+      },
+    );
+  }, [user.id]);
+
+  useEffect(() => {
+    const ref = collection(firestoreDb, 'universityEvaluations');
+    const q = query(ref, where('supervisorId', '==', user.id), where('submissionStatus', '==', 'SUBMITTED'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        setPendingUniversityEvaluationCount(snap.size);
+      },
+      () => {
+        setPendingUniversityEvaluationCount(0);
+      },
+    );
+  }, [user.id]);
 
   useEffect(() => {
     const leaveRef = collection(firestoreDb, 'leaveRequests');
@@ -803,7 +941,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   }, [activeTab, activeFeedbackId, selectedInternId, selectedIntern?.feedback]);
 
   useEffect(() => {
+    if (currentTab !== 'dashboard') return;
     setSelectedInternId(null);
+    setActiveTab('overview');
   }, [currentTab]);
 
   const filteredInterns = useMemo(() => {
@@ -1221,22 +1361,21 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-                    <StatBox icon={<Users className="text-blue-600" size={24} />} label="TOTAL INTERNS" value={interns.length.toString().padStart(2, '0')} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
                     <StatBox
-                      icon={<Star className="text-amber-500" fill="currentColor" size={24} />}
-                      label="AVG PERFORMANCE"
-                      value={avgPerformanceValue === null ? '--' : avgPerformanceValue.toFixed(2)}
+                      icon={<Clock className="text-amber-500" size={24} />}
+                      label="PENDING LEAVE"
+                      value={String(pendingLeaveCount)}
                     />
                     <StatBox
-                      icon={<Clock className="text-emerald-500" size={24} />}
-                      label="PUNCTUALITY SCORE"
-                      value={punctualityPercent === null ? '--' : `${punctualityPercent}%`}
+                      icon={<Award className="text-emerald-500" size={24} />}
+                      label="PENDING CERTIFICATES"
+                      value={String(pendingCertificateCount)}
                     />
                     <StatBox
-                      icon={<CheckCircle2 className="text-indigo-600" size={24} />}
-                      label="ASSESSMENTS REVIEWED"
-                      value={String(reviewedAssessmentsCount)}
+                      icon={<GraduationCap className="text-indigo-600" size={24} />}
+                      label="PENDING UNI EVAL"
+                      value={String(pendingUniversityEvaluationCount)}
                     />
                   </div>
 
@@ -1249,35 +1388,42 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                              </div>
                              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Pending Action Items</h3>
                           </div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pendingFeedbackReviews.length} ITEMS REQUIRING REVIEW</span>
+                          <div className="flex items-center gap-4">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                              {totalPendingCount > PENDING_ACTION_VISIBLE_COUNT ? `<${totalPendingCount}>` : `${totalPendingCount}`}
+                            </span>
+                          </div>
                        </div>
 
-                       <div className="space-y-4">
-                          {pendingFeedbackReviews.length === 0 ? (
+                       <div className="space-y-4 max-h-[560px] overflow-y-auto pr-2">
+                          {pendingByIntern.length === 0 ? (
                             <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
                               <CheckCircle2 size={32} className="text-slate-200 mb-3" />
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ITEMS REQUIRING REVIEW</p>
                             </div>
                           ) : (
-                            pendingFeedbackReviews.slice(0, 6).map((item) => (
-                              <div key={`${item.internId}:${item.feedbackId}`} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
-                                 <div className="flex items-center gap-5">
+                            pendingByIntern.map((item) => (
+                              <div key={item.internId} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
+                                 <div className="flex items-center gap-5 min-w-0">
                                     <img src={item.internAvatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
-                                    <div>
-                                      <h4 className="text-lg font-black text-slate-900 leading-tight">{item.internName}</h4>
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <h4 className="text-lg font-black text-slate-900 leading-tight truncate">{item.internName}</h4>
+                                        <div className="px-3 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
+                                          {item.count}
+                                        </div>
+                                      </div>
                                       <div className="flex items-center gap-2 mt-1">
                                          <FileText size={14} className="text-amber-50" />
-                                         <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">FEEDBACK SUBMITTED (PENDING REVIEW)</span>
+                                         <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
+                                           ASSIGNMENT SUBMISSIONS PENDING REVIEW
+                                         </span>
                                       </div>
                                     </div>
                                  </div>
                                  <div className="flex items-center gap-6">
                                     <button
-                                      onClick={() => {
-                                        setSelectedInternId(item.internId);
-                                        setActiveTab('feedback');
-                                        setActiveFeedbackId(item.feedbackId);
-                                      }}
+                                      onClick={() => void handleOpenPendingAssetsForIntern(item.internId, item.next)}
                                       className="flex items-center gap-2 px-8 py-3 bg-[#EBF3FF] text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                                     >
                                       <Eye size={16} strokeWidth={3}/> Review
@@ -1291,6 +1437,21 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     </div>
 
                     <div className="lg:col-span-4 space-y-8">
+                       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
+                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Total Interns</h3>
+                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">ASSIGNED TO YOU</p>
+
+                          <div className="flex items-center justify-between">
+                            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
+                              <Users size={28} />
+                            </div>
+                            <div className="text-right">
+                              <div className="text-5xl font-black text-slate-900 tracking-tighter leading-none">{interns.length}</div>
+                              <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">ACTIVE LIST</div>
+                            </div>
+                          </div>
+                       </div>
+
                        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
                           <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Presence</h3>
                           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">WHO IS AWAY TODAY</p>
@@ -1316,22 +1477,6 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                                 </div>
                               ))
                             )}
-                          </div>
-                       </div>
-
-                       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
-                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Sentiment</h3>
-                          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-12">Morale and feedback levels.</p>
-                          <div className="flex flex-col items-center">
-                             <div className="relative mb-12 flex items-center justify-center">
-                                <div className="w-44 h-44 rounded-full border-[18px] border-slate-50 flex items-center justify-center">
-                                   <span className="text-5xl font-black text-blue-600 tracking-tighter">{sentimentPercent === null ? '--' : `${sentimentPercent}%`}</span>
-                                </div>
-                                <div className="absolute inset-0 border-[18px] border-blue-600 rounded-full border-t-transparent border-l-transparent -rotate-45"></div>
-                             </div>
-                             <p className="text-sm text-slate-500 font-medium italic text-center max-w-[200px] leading-relaxed">
-                               {sentimentPercent === null ? '"No sentiment data yet."' : '"Based on average mentorship ratings."'}
-                             </p>
                           </div>
                        </div>
                     </div>
