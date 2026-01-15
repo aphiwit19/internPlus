@@ -7,7 +7,6 @@ import {
   Zap, 
   Star, 
   Award, 
-  TrendingUp, 
   ArrowRight,
   Briefcase,
   FileCheck,
@@ -15,7 +14,6 @@ import {
   ShieldCheck,
   MessageSquareMore,
   Copy,
-  ChevronRight as LucideChevronRight
 } from 'lucide-react';
 import { UserProfile, Language, PerformanceMetrics } from '@/types';
 import { PageId } from '@/pageTypes';
@@ -393,10 +391,6 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       collaboration: "Team Collaboration",
       punctuality: "Deadline Punctuality",
       solving: "Problem Solving",
-      growth: "Growth Projection",
-      history: "View Detailed History",
-      selfEval: "Self Evaluation",
-      viewSelfEval: "Open Self Evaluation",
       assignment: "Current Assignment",
       due: "Due in 5 days",
       planner: "Open Planner",
@@ -408,8 +402,6 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       mentor: "Your Primary Mentor",
       comm: "Mentor Communication",
       policy: "Request Policy Sync",
-      next: "Next Milestone",
-      roadmap: "View Roadmap"
     },
     TH: {
       welcome: "ยินดีต้อนรับกลับมา",
@@ -427,10 +419,6 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       collaboration: "การทำงานร่วมกัน",
       punctuality: "ความตรงต่อเวลา",
       solving: "การแก้ปัญหา",
-      growth: "การคาดการณ์การเติบโต",
-      history: "ดูประวัติโดยละเอียด",
-      selfEval: "ประเมินตนเอง",
-      viewSelfEval: "เปิดหน้าประเมินตนเอง",
       assignment: "งานที่ได้รับมอบหมาย",
       due: "ครบกำหนดใน 5 วัน",
       planner: "เปิดเครื่องมือวางแผน",
@@ -442,8 +430,6 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       mentor: "ที่ปรึกษาหลักของคุณ",
       comm: "การติดต่อที่ปรึกษา",
       policy: "ขอซิงค์นโยบาย",
-      next: "เป้าหมายถัดไป",
-      roadmap: "ดูแผนผังการทำงาน"
     }
   }[lang];
 
@@ -496,9 +482,9 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 space-y-8">
-            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+          <div className="lg:col-span-8">
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm h-full flex flex-col">
               <div className="flex items-center justify-between mb-12">
                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
                   <BarChart3 className="text-blue-600" size={24} /> {t.analysis}
@@ -522,80 +508,19 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                   <span className="px-4 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-blue-100">{t.updated}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
-                <PerformanceBar label={t.technical} score={performance.technical} color="blue" />
-                <PerformanceBar label={t.collaboration} score={performance.communication} color="indigo" />
-                <PerformanceBar label={t.punctuality} score={performance.punctuality} color="emerald" />
-                <PerformanceBar label={t.solving} score={performance.initiative} color="rose" />
-              </div>
-              <div className="mt-10 p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.selfEval}</div>
-                    <div className="text-sm font-black text-slate-900">{lang === 'TH' ? 'สรุปจากหน้า Self Evaluation' : 'Preview from Self Evaluation'}</div>
-                  </div>
-                  <button
-                    onClick={() => onNavigate('self-evaluation')}
-                    className="px-5 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-all"
-                  >
-                    {t.viewSelfEval}
-                  </button>
-                </div>
-                <div className="mt-4 text-xs text-slate-500 font-medium italic leading-relaxed">
-                  {selfSummary ? `"${selfSummary}"` : (lang === 'TH' ? 'ยังไม่มีข้อความสรุปจาก Self Evaluation' : 'No self-summary yet')}
+              <div className="flex-1 flex items-center">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 w-full">
+                  <PerformanceBar label={t.technical} score={performance.technical} color="blue" />
+                  <PerformanceBar label={t.collaboration} score={performance.communication} color="indigo" />
+                  <PerformanceBar label={t.punctuality} score={performance.punctuality} color="emerald" />
+                  <PerformanceBar label={t.solving} score={performance.initiative} color="rose" />
                 </div>
               </div>
-              <div className="mt-12 pt-10 border-t border-slate-50 flex flex-col md:flex-row items-center justify-between gap-6">
-                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500">
-                      <TrendingUp size={24} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{t.growth}</p>
-                      <p className="text-xs text-slate-400 font-medium italic">
-                        {lang === 'EN' ? `"On track for senior intern certification by next month."` : `"มีแนวโน้มได้รับใบรับรองระดับอาวุโสในเดือนหน้า"`}
-                      </p>
-                    </div>
-                 </div>
-                 <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95">
-                   {t.history} <LucideChevronRight size={14} />
-                 </button>
-              </div>
-            </div>
-            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden group">
-               <div className="absolute top-0 right-0 w-48 h-48 bg-blue-50 rounded-full blur-3xl -mr-24 -mt-24 opacity-0 group-hover:opacity-60 transition-opacity"></div>
-               <div className="flex items-center justify-between mb-8 relative z-10">
-                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                   <Briefcase className="text-indigo-600" size={24} /> {t.assignment}
-                 </h3>
-                 <span className="text-xs font-bold text-slate-400">{dueLabel}</span>
-               </div>
-               <div className="p-8 bg-slate-50/50 border border-slate-100 rounded-3xl relative z-10">
-                 <h4 className="text-lg font-black text-slate-900 mb-2">{nextTask?.taskTitle ?? '-'}</h4>
-                 <p className="text-sm text-slate-500 mb-8 leading-relaxed">
-                   {nextTask?.projectTitle ?? '-'}
-                 </p>
-                 <div className="flex items-center justify-between pt-6 border-t border-slate-200/50">
-                    <div className="flex -space-x-3">
-                       <img
-                         src={user.avatar}
-                         className="w-10 h-10 rounded-xl border-4 border-white object-cover"
-                         alt=""
-                       />
-                    </div>
-                    <button 
-                      onClick={() => onNavigate('assignment')}
-                      className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
-                    >
-                      {t.planner} <ArrowRight size={14} />
-                    </button>
-                 </div>
-               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-4 space-y-8">
-            <div className="bg-[#3B49DF] rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col">
+          <div className="lg:col-span-4">
+            <div className="bg-[#3B49DF] rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col h-full">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
               <h4 className="text-xl font-black mb-10 tracking-tight relative z-10">{t.summary}</h4>
               <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
@@ -629,60 +554,75 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                 </div>
               )}
             </div>
+          </div>
 
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-               <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6">{t.mentor}</h4>
-               <div className="flex items-center gap-4 mb-8">
-                  <img src={mentorProfile?.avatar ?? user.avatar} className="w-14 h-14 rounded-2xl object-cover ring-4 ring-slate-50 shadow-sm" alt="" />
-                  <div>
-                    <h5 className="text-sm font-black text-slate-900">{mentorProfile?.name ?? user.supervisorName ?? '-'}</h5>
-                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-0.5">{mentorProfile?.position ?? '-'}</p>
+          <div className="lg:col-span-8">
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-blue-50 rounded-full blur-3xl -mr-24 -mt-24 opacity-0 group-hover:opacity-60 transition-opacity"></div>
+              <div className="flex items-center justify-between mb-8 relative z-10">
+                <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                  <Briefcase className="text-indigo-600" size={24} /> {t.assignment}
+                </h3>
+                <span className="text-xs font-bold text-slate-400">{dueLabel}</span>
+              </div>
+              <div className="p-8 bg-slate-50/50 border border-slate-100 rounded-3xl relative z-10">
+                <h4 className="text-lg font-black text-slate-900 mb-2">{nextTask?.taskTitle ?? '-'}</h4>
+                <p className="text-sm text-slate-500 mb-8 leading-relaxed">{nextTask?.projectTitle ?? '-'}</p>
+                <div className="flex items-center justify-between pt-6 border-t border-slate-200/50">
+                  <div className="flex -space-x-3">
+                    <img
+                      src={user.avatar}
+                      className="w-10 h-10 rounded-xl border-4 border-white object-cover"
+                      alt=""
+                    />
                   </div>
-               </div>
-               <div className="space-y-4">
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 group hover:bg-slate-100 transition-all">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{t.comm}</p>
-                    <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-[#00B900] rounded-lg flex items-center justify-center text-white"><MessageSquareMore size={18} fill="currentColor"/></div>
-                          <span className="text-sm font-black text-slate-800 tracking-tight">{mentorProfile?.lineId ?? '-'}</span>
-                       </div>
-                       <button
-                         onClick={() => {
-                           const id = mentorProfile?.lineId;
-                           if (id) void navigator.clipboard.writeText(id);
-                         }}
-                         className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
-                         title="Copy LINE ID"
-                       >
-                         <Copy size={16} />
-                       </button>
-                    </div>
-                  </div>
-                  <button className="w-full py-4 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2">
-                    <ShieldCheck size={16} /> {t.policy}
+                  <button
+                    onClick={() => onNavigate('assignment')}
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+                  >
+                    {t.planner} <ArrowRight size={14} />
                   </button>
-               </div>
+                </div>
+              </div>
             </div>
+          </div>
 
-            <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-100 relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:rotate-12 transition-transform scale-150 -mr-10 -mt-10">
-                  <div className="w-32 h-32 rounded-full border-[12px] border-white/40 flex items-center justify-center">
-                    <div className="w-20 h-20 rounded-full border-[8px] border-white/30 flex items-center justify-center">
-                      <div className="w-8 h-8 rounded-full bg-white/20"></div>
+          <div className="lg:col-span-4 space-y-8">
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6">{t.mentor}</h4>
+              <div className="flex items-center gap-4 mb-8">
+                <img src={mentorProfile?.avatar ?? user.avatar} className="w-14 h-14 rounded-2xl object-cover ring-4 ring-slate-50 shadow-sm" alt="" />
+                <div>
+                  <h5 className="text-sm font-black text-slate-900">{mentorProfile?.name ?? user.supervisorName ?? '-'}</h5>
+                  <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-0.5">{mentorProfile?.position ?? '-'}</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 group hover:bg-slate-100 transition-all">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{t.comm}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-[#00B900] rounded-lg flex items-center justify-center text-white">
+                        <MessageSquareMore size={18} fill="currentColor" />
+                      </div>
+                      <span className="text-sm font-black text-slate-800 tracking-tight">{mentorProfile?.lineId ?? '-'}</span>
                     </div>
+                    <button
+                      onClick={() => {
+                        const id = mentorProfile?.lineId;
+                        if (id) void navigator.clipboard.writeText(id);
+                      }}
+                      className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
+                      title="Copy LINE ID"
+                    >
+                      <Copy size={16} />
+                    </button>
                   </div>
-               </div>
-               <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">{t.next}</p>
-               <h4 className="text-xl font-bold mb-8 pr-10 leading-tight">
-                {lang === 'EN' ? "Quarterly Program Review Phase" : "ช่วงการประเมินโปรแกรมรายไตรมาส"}
-               </h4>
-               <button 
-                onClick={() => onNavigate('onboarding')}
-                className="w-full py-4 bg-white text-indigo-600 rounded-2xl font-black text-[13px] uppercase tracking-widest hover:bg-indigo-50 transition-all active:scale-95 shadow-2xl"
-               >
-                 {t.roadmap}
-               </button>
+                </div>
+                <button className="w-full py-4 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2">
+                  <ShieldCheck size={16} /> {t.policy}
+                </button>
+              </div>
             </div>
           </div>
         </div>
