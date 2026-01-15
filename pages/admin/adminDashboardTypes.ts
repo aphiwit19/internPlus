@@ -9,6 +9,7 @@ export interface CertRequest {
 
 export interface AllowanceClaim {
   id: string;
+  internId: string;
   internName: string;
   avatar: string;
   amount: number;
@@ -16,6 +17,8 @@ export interface AllowanceClaim {
   breakdown: { wfo: number; wfh: number; leaves: number };
   status: 'PENDING' | 'APPROVED' | 'PAID';
   paymentDate?: string;
+  isPayoutLocked?: boolean;
+  lockReason?: string;
 }
 
 export interface InternRecord {
@@ -25,6 +28,7 @@ export interface InternRecord {
   position: string;
   dept: string;
   status: 'Active' | 'Onboarding' | 'Completed' | 'WITHDRAWAL_REQUESTED' | 'OFFBOARDING_REQUESTED' | 'WITHDRAWN' | 'COMPLETED_REPORTED';
+  lifecycleStatus?: string;
   supervisor: {
     name: string;
     avatar: string;

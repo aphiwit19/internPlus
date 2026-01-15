@@ -109,6 +109,7 @@ function toInternRecord(id: string, data: UserDoc): InternRecord {
     position: data.position || 'Intern',
     dept: data.department || 'Unknown',
     status,
+    lifecycleStatus: data.lifecycleStatus,
     supervisor: null,
   };
 }
@@ -333,8 +334,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               ? existing.status
               : 'PENDING';
 
+          const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
+          const isPayoutLocked = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
+          const lockReason = isPayoutLocked
+            ? 'END_PROGRAM: payouts are available after program completion.'
+            : undefined;
+
           next.push({
             id: claimDocId,
+            internId: intern.id,
             internName: intern.name,
             avatar: intern.avatar,
             amount: net,
@@ -342,6 +350,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             breakdown: { wfo, wfh, leaves },
             status,
             ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
+            ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
           });
 
           const claimRef = doc(firestoreDb, 'allowanceClaims', claimDocId);
@@ -356,6 +365,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               amount: net,
               breakdown: { wfo, wfh, leaves },
               status,
+              ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
               ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
               updatedAt: serverTimestamp(),
             },
@@ -491,6 +501,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   };
 
   const handleAuthorizeAllowance = async (id: string) => {
+    const claim = allowanceClaims.find((c) => c.id === id);
+    if (claim?.isPayoutLocked) {
+      alert(claim.lockReason || 'This payout is locked until program completion.');
+      return;
+    }
     try {
       await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
         status: 'APPROVED',
@@ -505,6 +520,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
   const handleProcessPayment = async (id: string) => {
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+    const claim = allowanceClaims.find((c) => c.id === id);
+    if (claim?.isPayoutLocked) {
+      alert(claim.lockReason || 'This payout is locked until program completion.');
+      return;
+    }
     try {
       await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
         status: 'PAID',
