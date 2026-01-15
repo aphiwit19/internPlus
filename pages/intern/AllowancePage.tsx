@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   CreditCard, 
   Info, 
@@ -15,19 +14,76 @@ import {
 } from 'lucide-react';
 import { Language } from '@/types';
 
-interface AllowanceRecord {
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { firestoreDb } from '@/firebase';
+import { useAppContext } from '@/app/AppContext';
+
+type AllowanceClaimRow = {
   id: string;
-  date: string;
-  mode: 'WFO' | 'WFH';
+  monthKey?: string;
+  period?: string;
   amount: number;
-  status: 'PENDING' | 'PAID' | 'VERIFIED';
-}
+  status: 'PENDING' | 'APPROVED' | 'PAID';
+  paymentDate?: string;
+  breakdown?: { wfo?: number; wfh?: number; leaves?: number };
+};
 
 interface AllowancePageProps {
   lang: Language;
 }
 
 const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
+  const { user } = useAppContext();
+
+  const [claims, setClaims] = useState<AllowanceClaimRow[]>([]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setClaims([]);
+      return;
+    }
+    const q = query(collection(firestoreDb, 'allowanceClaims'), where('internId', '==', user.id));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const next = snap.docs
+          .map((d) => {
+            const raw = d.data() as any;
+            const amount = typeof raw?.amount === 'number' ? raw.amount : 0;
+            const status: AllowanceClaimRow['status'] =
+              raw?.status === 'PAID' || raw?.status === 'APPROVED' || raw?.status === 'PENDING' ? raw.status : 'PENDING';
+            return {
+              id: d.id,
+              monthKey: typeof raw?.monthKey === 'string' ? raw.monthKey : undefined,
+              period: typeof raw?.period === 'string' ? raw.period : undefined,
+              amount,
+              status,
+              paymentDate: typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined,
+              breakdown: raw?.breakdown,
+            } satisfies AllowanceClaimRow;
+          })
+          .sort((a, b) => String(b.monthKey ?? '').localeCompare(String(a.monthKey ?? '')));
+        setClaims(next);
+      },
+      () => {
+        setClaims([]);
+      },
+    );
+  }, [user?.id]);
+
+  const totals = useMemo(() => {
+    let earned = 0;
+    let pending = 0;
+    let paid = 0;
+    for (const c of claims) {
+      earned += c.amount;
+      if (c.status === 'PAID') paid += c.amount;
+      if (c.status === 'PENDING' || c.status === 'APPROVED') pending += c.amount;
+    }
+    return { earned, pending, paid };
+  }, [claims]);
+
+  const formatNumber = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
   const t = {
     EN: {
       title: "Allowance & Stipends",
@@ -77,11 +133,6 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
     }
   }[lang];
 
-  const allowanceHistory: AllowanceRecord[] = [
-    { id: '1', date: '2024-11-04', mode: 'WFO', amount: 100, status: 'VERIFIED' },
-    { id: '2', date: '2024-11-03', mode: 'WFH', amount: 50, status: 'VERIFIED' },
-  ];
-
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
@@ -107,10 +158,10 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
             <div className="lg:col-span-4 space-y-6">
               <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-6">{t.wallet}</p>
-                <div className="flex items-end justify-between mb-8"><div><h2 className="text-5xl font-black text-slate-900 tracking-tighter">1,250</h2><p className="text-blue-600 font-bold text-xs uppercase mt-1">{t.earned}</p></div><div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><CreditCard size={28} /></div></div>
+                <div className="flex items-end justify-between mb-8"><div><h2 className="text-5xl font-black text-slate-900 tracking-tighter">{formatNumber(totals.earned)}</h2><p className="text-blue-600 font-bold text-xs uppercase mt-1">{t.earned}</p></div><div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><CreditCard size={28} /></div></div>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"><span className="text-[11px] font-bold text-slate-500 uppercase">{t.pending}</span><span className="text-sm font-black text-amber-600">250 THB</span></div>
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"><span className="text-[11px] font-bold text-slate-500 uppercase">{t.paid}</span><span className="text-sm font-black text-emerald-600">1,000 THB</span></div>
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"><span className="text-[11px] font-bold text-slate-500 uppercase">{t.pending}</span><span className="text-sm font-black text-amber-600">{formatNumber(totals.pending)} THB</span></div>
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100"><span className="text-[11px] font-bold text-slate-500 uppercase">{t.paid}</span><span className="text-sm font-black text-emerald-600">{formatNumber(totals.paid)} THB</span></div>
                 </div>
               </div>
             </div>
@@ -122,12 +173,23 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
                     <tr className="text-left"><th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">{t.dateCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.modeCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.payoutCol}</th><th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{t.statusCol}</th><th className="pb-6 text-right pr-4">{t.actionCol}</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {allowanceHistory.map(record => (
-                      <tr key={record.id} className="group hover:bg-slate-50/50 transition-colors">
-                        <td className="py-6 pl-4 font-bold text-slate-700 text-sm">{record.date}</td>
-                        <td className="py-6"><div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black ${record.mode === 'WFO' ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-500'}`}>{record.mode}</div></td>
-                        <td className="py-6"><span className="text-sm font-black text-slate-900">+{record.amount} THB</span></td>
-                        <td className="py-6"><span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border ${record.status === 'PAID' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{record.status}</span></td>
+                    {claims.map((c) => (
+                      <tr key={c.id} className="group hover:bg-slate-50/50 transition-colors">
+                        <td className="py-6 pl-4 font-bold text-slate-700 text-sm">{c.paymentDate ?? c.period ?? c.monthKey ?? '-'}</td>
+                        <td className="py-6">
+                          <div className="flex items-center gap-2">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-blue-50 text-blue-600" title="Office Days">
+                              <Building2 size={12} /> {c.breakdown?.wfo ?? 0}
+                            </div>
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-slate-50 text-slate-500" title="Remote Days">
+                              <Home size={12} /> {c.breakdown?.wfh ?? 0}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-6"><span className="text-sm font-black text-slate-900">+{formatNumber(c.amount)} THB</span></td>
+                        <td className="py-6">
+                          <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border ${c.status === 'PAID' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : c.status === 'APPROVED' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{c.status}</span>
+                        </td>
                         <td className="py-6 text-right pr-4"><button className="p-2.5 text-slate-300 hover:text-blue-600"><ArrowUpRight size={18} /></button></td>
                       </tr>
                     ))}

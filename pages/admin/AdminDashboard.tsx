@@ -33,7 +33,19 @@ import {
 
 import { useNavigate } from 'react-router-dom';
 
-import { arrayRemove, arrayUnion, collection, doc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 
 import { AdminTab } from './components/AdminDashboardTabs';
 import AllowancesTab from './components/AllowancesTab';
@@ -126,13 +138,236 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     { id: 'cr-2', internName: 'James Wilson', avatar: 'https://picsum.photos/seed/james/100/100', type: 'Recommendation', date: 'Nov 17, 2024', status: 'PENDING' },
   ]);
 
-  const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([
-    { id: 'ac-1', internName: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', amount: 1250, period: 'Oct 2024', breakdown: { wfo: 10, wfh: 5, leaves: 1 }, status: 'PENDING' },
-    { id: 'ac-3', internName: 'Sophia Chen', avatar: 'https://picsum.photos/seed/sophia/100/100', amount: 1500, period: 'Oct 2024', breakdown: { wfo: 15, wfh: 0, leaves: 0 }, status: 'PAID', paymentDate: 'Nov 01, 2024' },
-  ]);
+  const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([]);
+
+  const [allowanceRules, setAllowanceRules] = useState({
+    payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
+    wfoRate: 100,
+    wfhRate: 50,
+    applyTax: true,
+    taxPercent: 3,
+  });
 
   const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
   const [mentorOptions, setMentorOptions] = useState<MentorOption[]>([]);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as {
+          allowance?: {
+            payoutFreq?: 'MONTHLY' | 'END_PROGRAM';
+            wfoRate?: number;
+            wfhRate?: number;
+            applyTax?: boolean;
+            taxPercent?: number;
+          };
+        };
+        const a = data.allowance;
+        if (!a) return;
+        setAllowanceRules((prev) => ({
+          payoutFreq: a.payoutFreq === 'END_PROGRAM' ? 'END_PROGRAM' : 'MONTHLY',
+          wfoRate: typeof a.wfoRate === 'number' ? a.wfoRate : prev.wfoRate,
+          wfhRate: typeof a.wfhRate === 'number' ? a.wfhRate : prev.wfhRate,
+          applyTax: typeof a.applyTax === 'boolean' ? a.applyTax : prev.applyTax,
+          taxPercent: typeof a.taxPercent === 'number' ? a.taxPercent : prev.taxPercent,
+        }));
+      },
+      () => {
+        // ignore
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (activeTab !== 'allowances') return;
+    if (internRoster.length === 0) {
+      setAllowanceClaims([]);
+      return;
+    }
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const monthKey = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}`;
+    const periodLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+    const toDateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const clampDay = (d: Date) => {
+      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      return x;
+    };
+
+    const daysInclusive = (startIso: string, endIso: string) => {
+      const s = new Date(`${startIso}T00:00:00.000Z`);
+      const e = new Date(`${endIso}T00:00:00.000Z`);
+      if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [] as Date[];
+      const out: Date[] = [];
+      const cur = new Date(s.getTime());
+      while (cur.getTime() <= e.getTime()) {
+        out.push(new Date(cur.getTime()));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+      return out;
+    };
+
+    const runWithConcurrency = async <T,>(
+      items: T[],
+      limit: number,
+      worker: (item: T) => Promise<void>,
+    ) => {
+      let idx = 0;
+      const runners = Array.from({ length: Math.max(1, limit) }, async () => {
+        while (idx < items.length) {
+          const cur = items[idx];
+          idx += 1;
+          await worker(cur);
+        }
+      });
+      await Promise.all(runners);
+    };
+
+    const load = async () => {
+      try {
+        const existingSnap = await getDocs(
+          query(collection(firestoreDb, 'allowanceClaims'), where('monthKey', '==', monthKey)),
+        );
+        const existingByInternId = new Map<
+          string,
+          {
+            id: string;
+            status?: AllowanceClaim['status'];
+            paymentDate?: string;
+          }
+        >();
+        existingSnap.forEach((d) => {
+          const raw = d.data() as any;
+          const internId = typeof raw?.internId === 'string' ? raw.internId : null;
+          if (!internId) return;
+          existingByInternId.set(internId, {
+            id: d.id,
+            status: raw?.status,
+            paymentDate: typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined,
+          });
+        });
+
+        const next: AllowanceClaim[] = [];
+        const batch = writeBatch(firestoreDb);
+        const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const leaveFromKey = toDateKey(prevMonthStart);
+        const leaveToKey = toDateKey(monthEnd);
+
+        const appendClaimForIntern = async (intern: InternRecord) => {
+          if (cancelled) return;
+
+          const attendanceRef = collection(firestoreDb, 'users', intern.id, 'attendance');
+          const [attSnap, leaveSnap] = await Promise.all([
+            getDocs(
+              query(
+                attendanceRef,
+                where('date', '>=', toDateKey(monthStart)),
+                where('date', '<=', toDateKey(monthEnd)),
+              ),
+            ),
+            getDocs(
+              query(
+                collection(firestoreDb, 'leaveRequests'),
+                where('internId', '==', intern.id),
+                where('status', '==', 'APPROVED'),
+                where('startDate', '>=', leaveFromKey),
+                where('startDate', '<=', leaveToKey),
+              ),
+            ),
+          ]);
+
+          let wfo = 0;
+          let wfh = 0;
+          attSnap.forEach((d) => {
+            const raw = d.data() as any;
+            const hasClockIn = Boolean(raw?.clockInAt);
+            if (!hasClockIn) return;
+            const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
+            if (mode === 'WFH') wfh += 1;
+            else wfo += 1;
+          });
+
+          const leaveDaysSet = new Set<string>();
+          leaveSnap.forEach((d) => {
+            const raw = d.data() as any;
+            const startDate = typeof raw?.startDate === 'string' ? raw.startDate : null;
+            const endDate = typeof raw?.endDate === 'string' ? raw.endDate : null;
+            if (!startDate || !endDate) return;
+            for (const day of daysInclusive(startDate, endDate)) {
+              const localDay = clampDay(new Date(day.getTime()));
+              if (localDay.getTime() < clampDay(monthStart).getTime()) continue;
+              if (localDay.getTime() > clampDay(monthEnd).getTime()) continue;
+              leaveDaysSet.add(toDateKey(localDay));
+            }
+          });
+
+          const leaves = leaveDaysSet.size;
+
+          const gross = wfo * allowanceRules.wfoRate + wfh * allowanceRules.wfhRate;
+          const net = allowanceRules.applyTax ? Math.max(0, Math.round(gross * (1 - allowanceRules.taxPercent / 100))) : gross;
+
+          const existing = existingByInternId.get(intern.id);
+          const claimDocId = existing?.id ?? `${intern.id}_${monthKey}`;
+          const status: AllowanceClaim['status'] =
+            existing?.status === 'PAID' || existing?.status === 'APPROVED' || existing?.status === 'PENDING'
+              ? existing.status
+              : 'PENDING';
+
+          next.push({
+            id: claimDocId,
+            internName: intern.name,
+            avatar: intern.avatar,
+            amount: net,
+            period: periodLabel,
+            breakdown: { wfo, wfh, leaves },
+            status,
+            ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
+          });
+
+          const claimRef = doc(firestoreDb, 'allowanceClaims', claimDocId);
+          batch.set(
+            claimRef,
+            {
+              internId: intern.id,
+              internName: intern.name,
+              avatar: intern.avatar,
+              monthKey,
+              period: periodLabel,
+              amount: net,
+              breakdown: { wfo, wfh, leaves },
+              status,
+              ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        };
+
+        await runWithConcurrency(internRoster, 8, appendClaimForIntern);
+
+        await batch.commit();
+
+        next.sort((a, b) => b.amount - a.amount);
+        if (!cancelled) setAllowanceClaims(next);
+      } catch {
+        if (!cancelled) setAllowanceClaims([]);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, allowanceRules.applyTax, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, internRoster]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'));
@@ -238,13 +473,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     }
   };
 
-  const handleAuthorizeAllowance = (id: string) => {
-    setAllowanceClaims(prev => prev.map(a => a.id === id ? { ...a, status: 'APPROVED' } : a));
+  const handleAuthorizeAllowance = async (id: string) => {
+    try {
+      await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
+        status: 'APPROVED',
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setAllowanceClaims((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'APPROVED' } : a)));
+    } catch {
+      alert('Failed to authorize payout. Please check Firestore permissions and try again.');
+    }
   };
 
-  const handleProcessPayment = (id: string) => {
+  const handleProcessPayment = async (id: string) => {
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-    setAllowanceClaims(prev => prev.map(a => a.id === id ? { ...a, status: 'PAID', paymentDate: today } : a));
+    try {
+      await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
+        status: 'PAID',
+        paymentDate: today,
+        paidAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setAllowanceClaims((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'PAID', paymentDate: today } : a)));
+    } catch {
+      alert('Failed to process payout. Please check Firestore permissions and try again.');
+    }
   };
 
   // --- SIGNING LOGIC ---

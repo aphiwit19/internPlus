@@ -57,7 +57,7 @@ import { NAV_ITEMS } from '@/constants';
 import { Language, PostProgramAccessLevel, UserRole } from '@/types';
 import { PageId } from '@/pageTypes';
 import { firestoreDb } from '@/firebase';
-import { collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
 
@@ -196,24 +196,6 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [onboardingSteps, setOnboardingSteps] = useState<RoadmapStep[]>(DEFAULT_ONBOARDING_STEPS);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const ref = doc(firestoreDb, 'config', 'systemSettings');
-        const snap = await getDoc(ref);
-        if (!snap.exists()) return;
-        const data = snap.data() as { onboardingSteps?: RoadmapStep[] };
-        if (Array.isArray(data.onboardingSteps) && data.onboardingSteps.length > 0) {
-          const ordered = [...data.onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-          setOnboardingSteps(ordered);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    void load();
-  }, []);
-
   // Allowance States
   const [payoutFreq, setPayoutFreq] = useState<'MONTHLY' | 'END_PROGRAM'>('MONTHLY');
   const [wfoRate, setWfoRate] = useState(100);
@@ -224,6 +206,53 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as {
+          onboardingSteps?: RoadmapStep[];
+          allowance?: {
+            payoutFreq?: 'MONTHLY' | 'END_PROGRAM';
+            wfoRate?: number;
+            wfhRate?: number;
+            applyTax?: boolean;
+            taxPercent?: number;
+          };
+          access?: {
+            accessLevel?: 'REVOCATION' | 'LIMITED' | 'EXTENDED';
+            retentionPeriod?: string;
+          };
+        };
+
+        if (Array.isArray(data.onboardingSteps) && data.onboardingSteps.length > 0) {
+          const ordered = [...data.onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+          setOnboardingSteps(ordered);
+        }
+
+        if (data.allowance) {
+          if (data.allowance.payoutFreq === 'MONTHLY' || data.allowance.payoutFreq === 'END_PROGRAM') setPayoutFreq(data.allowance.payoutFreq);
+          if (typeof data.allowance.wfoRate === 'number') setWfoRate(data.allowance.wfoRate);
+          if (typeof data.allowance.wfhRate === 'number') setWfhRate(data.allowance.wfhRate);
+          if (typeof data.allowance.applyTax === 'boolean') setApplyTax(data.allowance.applyTax);
+          if (typeof data.allowance.taxPercent === 'number') setTaxPercent(data.allowance.taxPercent);
+        }
+
+        if (data.access) {
+          if (data.access.accessLevel === 'REVOCATION' || data.access.accessLevel === 'LIMITED' || data.access.accessLevel === 'EXTENDED') {
+            setAccessLevel(data.access.accessLevel);
+          }
+          if (typeof data.access.retentionPeriod === 'string' && data.access.retentionPeriod.trim()) setRetentionPeriod(data.access.retentionPeriod);
+        }
+      },
+      () => {
+        // ignore
+      },
+    );
+  }, []);
   const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnUsers, setWithdrawnUsers] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnAccessOverrides, setWithdrawnAccessOverrides] = useState<Record<string, PostProgramAccessLevel>>({});
@@ -518,6 +547,17 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         ref,
         {
           onboardingSteps: orderedSteps,
+          allowance: {
+            payoutFreq,
+            wfoRate,
+            wfhRate,
+            applyTax,
+            taxPercent,
+          },
+          access: {
+            accessLevel,
+            retentionPeriod,
+          },
           updatedAt: serverTimestamp(),
         },
         { merge: true },
