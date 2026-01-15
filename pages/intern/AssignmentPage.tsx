@@ -85,6 +85,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     time: '18:00'
   });
 
+  const [extensionTitle, setExtensionTitle] = useState('');
+
   const [newProject, setNewProject] = useState({ title: '', description: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,6 +101,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const [handoffExistingVideos, setHandoffExistingVideos] = useState<HandoffVideo[]>([]);
   const [handoffDocFiles, setHandoffDocFiles] = useState<File[]>([]);
   const [handoffVideoFiles, setHandoffVideoFiles] = useState<File[]>([]);
+
+  const [delayRemarkDrafts, setDelayRemarkDrafts] = useState<Record<string, string>>({});
 
   const openProjectAttachment = async (a: { fileName: string; storagePath: string }) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
@@ -207,6 +211,10 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       videos: 'Videos',
       submit: 'Submit',
       submitting: 'Submitting...',
+      delayRemark: 'Delay remark',
+      delayRemarkPlaceholder: 'Why is this task delayed?',
+      saveRemark: 'Save remark',
+      remarkRequired: 'Please provide a delay remark before submitting this delayed task.',
     },
     TH: {
       title: "งานที่ได้รับมอบหมาย",
@@ -249,8 +257,27 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       videos: 'วิดีโอ',
       submit: 'ส่งมอบ',
       submitting: 'กำลังส่งมอบ...',
+      delayRemark: 'หมายเหตุงานล่าช้า',
+      delayRemarkPlaceholder: 'งานล่าช้าเพราะอะไร',
+      saveRemark: 'บันทึกหมายเหตุ',
+      remarkRequired: 'กรุณากรอกหมายเหตุงานล่าช้าก่อนส่งงาน',
     }
   }[lang];
+
+  useEffect(() => {
+    setDelayRemarkDrafts({});
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (!uploadTaskId || !selectedProject) return;
+    const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+    if (!task) return;
+    setDelayRemarkDrafts((prev) => {
+      if (prev[uploadTaskId] !== undefined) return prev;
+      if (task.delayRemark) return { ...prev, [uploadTaskId]: task.delayRemark };
+      return prev;
+    });
+  }, [uploadTaskId, selectedProject]);
 
   const resetHandoffState = () => {
     setHandoffLinks([]);
@@ -389,6 +416,16 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     const now = new Date();
     const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
 
+    const targetTask = selectedProject.tasks.find((t) => t.id === taskId);
+    if (targetTask) {
+      const overdueNow = !targetTask.actualEnd && now > new Date(targetTask.plannedEnd);
+      const remarkFromDraft = (delayRemarkDrafts[taskId] ?? targetTask.delayRemark ?? '').trim();
+      if (overdueNow && !remarkFromDraft) {
+        window.alert(t.remarkRequired);
+        return;
+      }
+    }
+
     const uploaded = [] as Array<{ fileName: string; storagePath: string }>;
     for (const f of selectedProofFiles) {
       const safeName = f.name;
@@ -405,12 +442,15 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
       const mergedAttachments = [...(t.attachments ?? []), ...uploaded];
 
+      const remarkFromDraft = (delayRemarkDrafts[taskId] ?? t.delayRemark ?? '').trim();
+
       return {
         ...t,
         status: finalStatus,
         actualEnd: now.toISOString(),
         isSessionActive: false,
         attachments: mergedAttachments,
+        delayRemark: finalStatus === 'DELAYED' ? remarkFromDraft : t.delayRemark,
         timeLogs: t.isSessionActive
           ? t.timeLogs.map((l, i) => (i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l))
           : t.timeLogs,
@@ -489,7 +529,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       if (taskIndex === -1) return;
 
       // Update the targeted task
-      updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], plannedEnd: newDeadlineISO };
+      updatedTasks[taskIndex] = {
+        ...updatedTasks[taskIndex],
+        title: extensionTitle.trim() || updatedTasks[taskIndex].title,
+        plannedEnd: newDeadlineISO,
+      };
 
       // Propagation logic: shift subsequent tasks if they conflict
       let currentReferenceEnd = newDeadlineDate;
@@ -526,6 +570,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       void updateSelectedProjectTasks(updatedTasks);
     
     setIsExtendingDeadline(null);
+    setExtensionTitle('');
   };
 
   const handleAddTask = () => {
@@ -824,11 +869,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                                     </button>
                                     <button 
                                       onClick={() => {
+                                        if (isOverdue) return;
                                         const end = new Date(task.plannedEnd);
                                         setExtensionDate({ date: end.toISOString().split('T')[0], time: end.toTimeString().slice(0,5) });
+                                        setExtensionTitle(task.title);
                                         setIsExtendingDeadline(task.id);
                                       }}
-                                      className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-blue-50 hover:text-blue-600 transition-all shadow-sm"
+                                      disabled={isOverdue}
+                                      className={`p-3 bg-slate-50 text-slate-400 rounded-xl transition-all shadow-sm ${
+                                        isOverdue
+                                          ? 'opacity-40 cursor-not-allowed'
+                                          : 'hover:bg-blue-50 hover:text-blue-600'
+                                      }`}
                                       title={t.extend}
                                     >
                                       <Edit2 size={16} />
@@ -1079,6 +1131,15 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
               </div>
 
               <div className="grid grid-cols-2 gap-6">
+                 <div className="col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block">{t.taskTitle}</label>
+                    <input
+                      type="text"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 focus:bg-white transition-all"
+                      value={extensionTitle}
+                      onChange={(e) => setExtensionTitle(e.target.value)}
+                    />
+                 </div>
                  <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block">New Target Date</label>
                     <div className="relative">
@@ -1096,7 +1157,10 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
               </div>
 
               <div className="flex gap-4">
-                 <button onClick={() => setIsExtendingDeadline(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest">{t.cancel}</button>
+                 <button onClick={() => {
+                   setIsExtendingDeadline(null);
+                   setExtensionTitle('');
+                 }} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest">{t.cancel}</button>
                  <button onClick={handleExtendDeadline} className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-blue-500/20 active:scale-95 transition-all">
                     {t.applyExt}
                  </button>
@@ -1176,8 +1240,45 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                 ref={fileInputRef}
                 className="hidden"
                 multiple
-                onChange={(e) => setSelectedProofFiles(Array.from(e.target.files ?? []))}
+                onChange={(e) => {
+                  const incoming = Array.from(e.target.files ?? []);
+                  if (incoming.length === 0) return;
+                  setSelectedProofFiles((prev) => {
+                    const merged = [...prev, ...incoming];
+                    const unique = new Map<string, File>();
+                    merged.forEach((f) => unique.set(`${f.name}:${f.size}:${f.lastModified}`, f));
+                    return Array.from(unique.values());
+                  });
+                }}
               />
+
+              {(() => {
+                if (!selectedProject) return null;
+                const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+                if (!task) return null;
+                const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
+                if (!isOverdue) return null;
+
+                const value = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+                const isRemarkValid = Boolean(value.trim());
+
+                return (
+                  <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
+                    <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">{t.delayRemark}</div>
+                    <textarea
+                      value={value}
+                      onChange={(e) => setDelayRemarkDrafts((prev) => ({ ...prev, [uploadTaskId]: e.target.value }))}
+                      placeholder={t.delayRemarkPlaceholder}
+                      className={`w-full bg-white border rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 transition-all ${
+                        isRemarkValid
+                          ? 'border-slate-200 focus:ring-blue-500/5'
+                          : 'border-rose-300 focus:ring-rose-500/10'
+                      }`}
+                      rows={3}
+                    />
+                  </div>
+                );
+              })()}
 
               {selectedProofFiles.length > 0 && (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem]">
@@ -1186,7 +1287,19 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                   </div>
                   <div className="space-y-2">
                     {selectedProofFiles.map((f) => (
-                      <div key={f.name} className="text-sm font-bold text-slate-700 truncate">{f.name}</div>
+                      <div key={`${f.name}:${f.size}:${f.lastModified}`} className="flex items-center justify-between gap-4">
+                        <div className="text-sm font-bold text-slate-700 truncate min-w-0">{f.name}</div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedProofFiles((prev) => prev.filter((x) => `${x.name}:${x.size}:${x.lastModified}` !== `${f.name}:${f.size}:${f.lastModified}`))
+                          }
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                          title={lang === 'TH' ? 'ลบไฟล์' : 'Remove file'}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1196,7 +1309,26 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                  <button onClick={() => setUploadTaskId(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest">{t.cancel}</button>
                  <button 
                   onClick={() => void handleSubmitWithProof(uploadTaskId)}
-                  className="flex-[2] py-5 bg-emerald-500 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-emerald-100 hover:bg-emerald-600"
+                  disabled={(() => {
+                    if (!selectedProject) return false;
+                    const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+                    if (!task) return false;
+                    const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
+                    if (!isOverdue) return false;
+                    const value = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+                    return !value.trim();
+                  })()}
+                  className={`flex-[2] py-5 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-emerald-100 transition-all ${
+                    (() => {
+                      if (!selectedProject) return 'bg-emerald-500 hover:bg-emerald-600';
+                      const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+                      if (!task) return 'bg-emerald-500 hover:bg-emerald-600';
+                      const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
+                      if (!isOverdue) return 'bg-emerald-500 hover:bg-emerald-600';
+                      const value = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+                      return value.trim() ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-emerald-200 cursor-not-allowed';
+                    })()
+                  }`}
                  >
                    {t.finishBtn}
                  </button>

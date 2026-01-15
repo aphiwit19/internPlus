@@ -223,6 +223,17 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
                 </div>
               </div>
 
+              {typeof task.delayRemark === 'string' && task.delayRemark.trim() ? (
+                <div className="mt-6 pt-6 border-t border-slate-100">
+                  <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2">
+                    {lang === 'TH' ? 'หมายเหตุงานล่าช้า' : 'Delay remark'}
+                  </div>
+                  <div className="text-sm font-bold text-slate-700 bg-rose-50/60 border border-rose-100 rounded-2xl p-4 whitespace-pre-wrap">
+                    {task.delayRemark}
+                  </div>
+                </div>
+              ) : null}
+
               {Array.isArray(task.attachments) && task.attachments.length > 0 && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
                   <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">{lang === 'TH' ? 'หลักฐาน/ไฟล์แนบ' : 'Attachments'}</div>
