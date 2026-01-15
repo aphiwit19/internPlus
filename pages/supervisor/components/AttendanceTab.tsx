@@ -14,20 +14,22 @@ export interface AttendanceLogItem {
 }
 
 const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
-  const currentDate = new Date(2024, 10, 1); // November 2024
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
 
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const padding = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
-  const monthName = currentDate.toLocaleString('default', { month: 'long' }).toUpperCase();
-  const year = currentDate.getFullYear();
+  const monthName = currentDate.toLocaleString(undefined, { month: 'long' }).toUpperCase();
 
   const getLogForDay = (day: number) => {
-    const formattedDate = `${year}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${day
-      .toString()
-      .padStart(2, '0')}`;
+    const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return logs.find((l) => l.date === formattedDate);
   };
 
@@ -39,10 +41,20 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
             {monthName} <span className="text-slate-200">{year}</span>
           </h4>
           <div className="flex gap-2">
-            <button className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all">
+            <button
+              type="button"
+              onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+              className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"
+              title="Previous month"
+            >
               <ChevronLeft size={20} />
             </button>
-            <button className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all">
+            <button
+              type="button"
+              onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+              className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"
+              title="Next month"
+            >
               <ChevronRight size={20} />
             </button>
           </div>
@@ -78,17 +90,19 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
         {days.map((day) => {
           const log = getLogForDay(day);
           const isWeekend = (firstDayOfMonth + day - 1) % 7 === 0 || (firstDayOfMonth + day - 1) % 7 === 6;
+          const now = new Date();
+          const isToday = day === now.getDate() && month === now.getMonth() && year === now.getFullYear();
 
           return (
             <div
               key={day}
               className={`aspect-square p-4 border-r border-b border-slate-50 group transition-all relative ${
-                isWeekend ? 'bg-slate-50/30' : 'bg-white hover:bg-blue-50/30'
+                isToday ? 'bg-blue-600/10' : isWeekend ? 'bg-slate-50/30' : 'bg-white hover:bg-blue-50/30'
               }`}
             >
               <span
                 className={`text-sm font-black ${
-                  log ? 'text-slate-900' : isWeekend ? 'text-slate-200' : 'text-slate-300'
+                  isToday ? 'text-blue-700' : log ? 'text-slate-900' : isWeekend ? 'text-slate-200' : 'text-slate-300'
                 }`}
               >
                 {day}

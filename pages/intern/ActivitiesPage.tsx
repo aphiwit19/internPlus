@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -12,6 +12,12 @@ import {
   UserX
 } from 'lucide-react';
 import { Language } from '@/types';
+
+import { useAppContext } from '@/app/AppContext';
+import { createLeaveRepository } from '@/app/leaveRepository';
+
+import { collection, onSnapshot } from 'firebase/firestore';
+import { firestoreDb } from '@/firebase';
 
 interface ActivityEvent {
   id: string;
@@ -28,43 +34,280 @@ interface ActivitiesPageProps {
 }
 
 const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
+  const { user } = useAppContext();
+  const leaveRepo = useMemo(() => createLeaveRepository(), []);
+
   const t = {
     EN: {
       title: "Activities & Timeline",
-      subtitle: "Upcoming events, workshops, tasks, and approved leaves.",
+      subtitle: "Your planned tasks and approved leaves.",
+      viewAll: 'All',
+      viewLeave: 'Leave',
+      viewTasks: 'Activities',
       calendar: "Calendar Overview",
-      nov: "November 2024",
       syncTitle: "Live Ecosystem Sync",
       syncDesc: "Tasks and approved leaves are automatically mirrored here from your workspace and leave manager.",
       days: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
-      absence: "ABSENCE LOG"
+      absence: "ABSENCE LOG",
+      empty: "No activities yet. Planned tasks and approved leaves will appear here automatically.",
     },
     TH: {
       title: "กิจกรรมและลำดับเวลา",
-      subtitle: "กิจกรรม, เวิร์กช็อป, งานที่ได้รับมอบหมาย และการลางานที่อนุมัติแล้ว",
+      subtitle: "งานที่วางแผน และการลาที่อนุมัติแล้ว",
+      viewAll: 'ทั้งหมด',
+      viewLeave: 'วันที่ลา',
+      viewTasks: 'กิจกรรมที่ทำ',
       calendar: "ภาพรวมปฏิทิน",
-      nov: "พฤศจิกายน 2024",
       syncTitle: "ซิงค์ข้อมูลระบบแล้ว",
       syncDesc: "งานและการลางานที่ได้รับอนุมัติจะถูกแสดงที่นี่โดยอัตโนมัติ",
       days: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'],
-      absence: "บันทึกการลา"
+      absence: "บันทึกการลา",
+      empty: "ยังไม่มีกิจกรรม ระบบจะแสดงงานที่วางแผนและการลาที่อนุมัติแล้วที่นี่โดยอัตโนมัติ",
     }
   }[lang];
 
-  const UPCOMING_ACTIVITIES: ActivityEvent[] = [
-    { id: 'leave-1', day: '10', month: { EN: 'NOV', TH: 'พ.ย.' }, title: { EN: 'Sick Leave (Unpaid)', TH: 'ลาป่วย (ไม่ได้รับเบี้ยเลี้ยง)' }, time: 'Full Day', type: 'LEAVE' },
-    { id: '1', day: '20', month: { EN: 'NOV', TH: 'พ.ย.' }, title: { EN: 'Internal Workshop: Intro to Figma', TH: 'เวิร์กช็อปภายใน: การใช้งาน Figma เบื้องต้น' }, time: '14:00', type: 'LEARNING' },
-    { id: '2', day: '22', month: { EN: 'NOV', TH: 'พ.ย.' }, title: { EN: 'Weekly Intern Sync', TH: 'ประชุมติดตามงานประจำสัปดาห์' }, time: '10:00', type: 'MEETING' },
-    { id: 'task-1', day: '23', month: { EN: 'NOV', TH: 'พ.ย.' }, title: { EN: 'Task: User Flow Mapping', TH: 'งาน: การจัดทำแผนผังขั้นตอนการใช้งาน' }, time: '09:00 - 12:30', type: 'TASK' },
-    { id: 'leave-2', day: '25', month: { EN: 'NOV', TH: 'พ.ย.' }, title: { EN: 'Personal Leave (Away)', TH: 'ลากิจ (ลางาน)' }, time: '09:00 - 18:00', type: 'LEAVE' },
-    { id: '4', day: '01', month: { EN: 'DEC', TH: 'ธ.ค.' }, title: { EN: 'Project Review Phase 1', TH: 'การตรวจสอบโครงการระยะที่ 1' }, time: '17:00', type: 'DEADLINE' },
-  ];
+  const [viewMode, setViewMode] = useState<'ALL' | 'LEAVE' | 'TASK'>('ALL');
 
-  const [currentDate] = useState(new Date(2024, 10, 20));
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const [leaveActivities, setLeaveActivities] = useState<ActivityEvent[]>([]);
+  const [taskActivities, setTaskActivities] = useState<ActivityEvent[]>([]);
+
+  const monthLabel = (d: Date) => {
+    const m = d.getUTCMonth();
+    const en = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][m] ?? '';
+    const th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][m] ?? '';
+    return { EN: en, TH: th };
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setLeaveActivities([]);
+      return;
+    }
+
+    leaveRepo
+      .list({ role: 'INTERN', user })
+      .then((list) => {
+        if (cancelled) return;
+
+        const approved = list.filter((r) => r.status === 'APPROVED');
+        const toDate = (iso: string) => {
+          const d = new Date(`${iso}T00:00:00.000Z`);
+          return Number.isNaN(d.getTime()) ? null : d;
+        };
+
+        const daysInclusive = (startIso: string, endIso: string) => {
+          const s = toDate(startIso);
+          const e = toDate(endIso);
+          if (!s || !e) return [] as Date[];
+          const dates: Date[] = [];
+          const cur = new Date(s.getTime());
+          while (cur.getTime() <= e.getTime()) {
+            dates.push(new Date(cur.getTime()));
+            cur.setUTCDate(cur.getUTCDate() + 1);
+          }
+          return dates;
+        };
+
+        const typeTitle = (type: string) => {
+          if (type === 'SICK') return { EN: 'Sick Leave (Unpaid)', TH: 'ลาป่วย (ไม่ได้รับเบี้ยเลี้ยง)' };
+          if (type === 'PERSONAL') return { EN: 'Personal Leave (Unpaid)', TH: 'ลากิจ (ไม่ได้รับเบี้ยเลี้ยง)' };
+          if (type === 'BUSINESS') return { EN: 'Business Leave (Unpaid)', TH: 'ลาเพื่อธุรกิจ (ไม่ได้รับเบี้ยเลี้ยง)' };
+          if (type === 'VACATION') return { EN: 'Vacation Leave (Unpaid)', TH: 'ลาพักร้อน (ไม่ได้รับเบี้ยเลี้ยง)' };
+          return { EN: 'Leave (Unpaid)', TH: 'ลา (ไม่ได้รับเบี้ยเลี้ยง)' };
+        };
+
+        const events: ActivityEvent[] = [];
+        approved.forEach((r) => {
+          const dates = daysInclusive(r.startDate, r.endDate);
+          dates.forEach((d) => {
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            events.push({
+              id: `leave:${r.id}:${d.toISOString().slice(0, 10)}`,
+              day,
+              month: monthLabel(d),
+              title: typeTitle(r.type),
+              time: 'Full Day',
+              type: 'LEAVE',
+            });
+          });
+        });
+
+        events.sort((a, b) => a.id.localeCompare(b.id));
+        setLeaveActivities(events);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLeaveActivities([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leaveRepo, user]);
+
+  useEffect(() => {
+    if (!user) {
+      setTaskActivities([]);
+      return;
+    }
+
+    const toDateKey = (d: Date) => {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const buildTaskEvents = (projects: any[], kind: 'assigned' | 'personal') => {
+      const out: ActivityEvent[] = [];
+      projects.forEach((p: any) => {
+        const pid = String(p?.id ?? '');
+        const pTitle = typeof p?.title === 'string' ? p.title : '';
+        const tasks = Array.isArray(p?.tasks) ? p.tasks : [];
+        tasks.forEach((t: any) => {
+          const tid = String(t?.id ?? '');
+          const title = typeof t?.title === 'string' ? t.title : '';
+          const ps = typeof t?.plannedStart === 'string' ? t.plannedStart : '';
+          const pe = typeof t?.plannedEnd === 'string' ? t.plannedEnd : '';
+          const start = ps ? new Date(ps) : null;
+          if (!start || Number.isNaN(start.getTime())) return;
+
+          const day = String(start.getUTCDate()).padStart(2, '0');
+          const month = monthLabel(start);
+          const end = pe ? new Date(pe) : null;
+          const time = end && !Number.isNaN(end.getTime())
+            ? `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          const dateKey = toDateKey(start);
+          const projectPrefix = pTitle ? ` (${pTitle})` : '';
+          out.push({
+            id: `task:${kind}:${pid}:${tid}:${dateKey}`,
+            day,
+            month,
+            title: {
+              EN: `Task: ${title}${projectPrefix}`,
+              TH: `งาน: ${title}${projectPrefix}`,
+            },
+            time,
+            type: 'TASK',
+          });
+        });
+      });
+      return out;
+    };
+
+    let assignedProjects: any[] = [];
+    let personalProjects: any[] = [];
+
+    const assignedRef = collection(firestoreDb, 'users', user.id, 'assignmentProjects');
+    const personalRef = collection(firestoreDb, 'users', user.id, 'personalProjects');
+
+    const rebuild = () => {
+      const events = [...buildTaskEvents(assignedProjects, 'assigned'), ...buildTaskEvents(personalProjects, 'personal')];
+      events.sort((a, b) => a.id.localeCompare(b.id));
+      setTaskActivities(events);
+    };
+
+    const unsubAssigned = onSnapshot(assignedRef, (snap) => {
+      assignedProjects = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      rebuild();
+    });
+
+    const unsubPersonal = onSnapshot(personalRef, (snap) => {
+      personalProjects = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      rebuild();
+    });
+
+    return () => {
+      unsubAssigned();
+      unsubPersonal();
+    };
+  }, [user]);
+
+  const groupedActivities = useMemo(() => {
+    const groups: Array<{ dateLabel: string; items: ActivityEvent[] }> = [];
+    const monthName = (m: string) => m;
+    const labelFor = (ev: ActivityEvent) => {
+      const month = monthName(ev.month[lang]);
+      return `${ev.day} ${month}`;
+    };
+
+    const toSortKey = (ev: ActivityEvent) => {
+      const parts = ev.id.split(':');
+      const dateKey = parts[parts.length - 1] ?? '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+        const d = new Date(`${dateKey}T00:00:00.000Z`);
+        if (!Number.isNaN(d.getTime())) return d.getTime();
+      }
+      const idx = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].indexOf(ev.month.EN);
+      const year = new Date().getFullYear();
+      const month = idx >= 0 ? idx : new Date().getMonth();
+      const day = Number(ev.day);
+      const fallback = new Date(Date.UTC(year, month, day));
+      return fallback.getTime();
+    };
+
+    const merged = [...leaveActivities, ...taskActivities]
+      .map((ev) => ({ ev, key: toSortKey(ev) }))
+      .sort((a, b) => a.key - b.key)
+      .map((x) => x.ev);
+
+    const filtered = merged.filter((ev) => {
+      if (viewMode === 'ALL') return true;
+      if (viewMode === 'LEAVE') return ev.type === 'LEAVE';
+      if (viewMode === 'TASK') return ev.type === 'TASK';
+      return true;
+    });
+
+    filtered.forEach((ev) => {
+      const label = labelFor(ev);
+      const last = groups[groups.length - 1];
+      if (!last || last.dateLabel !== label) {
+        groups.push({ dateLabel: label, items: [ev] });
+      } else {
+        last.items.push(ev);
+      }
+    });
+    return groups;
+  }, [lang, leaveActivities, taskActivities, viewMode]);
+
+  const calendarYear = calendarDate.getFullYear();
+  const calendarMonth = calendarDate.getMonth();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
   const calendarDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
+
+  const calendarTitle = useMemo(() => {
+    const locale = lang === 'TH' ? 'th-TH' : 'en-US';
+    return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(calendarDate);
+  }, [calendarDate, lang]);
+
+  const markerMap = useMemo(() => {
+    const setFor = (events: ActivityEvent[]) => {
+      const s = new Set<string>();
+      events.forEach((ev) => {
+        const parts = ev.id.split(':');
+        const dateKey = parts[parts.length - 1] ?? '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) s.add(dateKey);
+      });
+      return s;
+    };
+
+    const showLeaves = viewMode === 'ALL' || viewMode === 'LEAVE';
+    const showTasks = viewMode === 'ALL' || viewMode === 'TASK';
+    return {
+      leave: showLeaves ? setFor(leaveActivities) : new Set<string>(),
+      task: showTasks ? setFor(taskActivities) : new Set<string>(),
+    };
+  }, [leaveActivities, taskActivities, viewMode]);
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
@@ -74,34 +317,85 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
           <p className="text-slate-400 text-sm font-medium mt-1">{t.subtitle}</p>
         </div>
 
+        <div className="mb-10">
+          <div className="inline-flex bg-white border border-slate-100/60 rounded-[1.5rem] p-1.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode('ALL')}
+              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {t.viewAll}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('LEAVE')}
+              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'LEAVE' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {t.viewLeave}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('TASK')}
+              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'TASK' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {t.viewTasks}
+            </button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-8 space-y-4">
-            {UPCOMING_ACTIVITIES.map((item) => (
-              <div key={item.id} className={`bg-white rounded-[1.5rem] p-6 border shadow-sm flex items-center group hover:shadow-md transition-all cursor-pointer ${item.type === 'LEAVE' ? 'border-rose-100 bg-rose-50/10' : 'border-slate-100/60'}`}>
-                <div className={`flex flex-col items-center justify-center min-w-[80px] border-r pr-8 mr-8 ${item.type === 'LEAVE' ? 'border-rose-100' : 'border-slate-100'}`}>
-                  <span className={`text-2xl font-black leading-none ${item.type === 'LEAVE' ? 'text-rose-500' : 'text-slate-800'}`}>{item.day}</span>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[lang]}</span>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    {item.type === 'LEAVE' && <UserX size={14} className="text-rose-400" />}
-                    <h3 className={`text-[15px] font-bold leading-tight group-hover:text-blue-600 transition-colors ${item.type === 'LEAVE' ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {item.title[lang]}
-                    </h3>
-                  </div>
-                  <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-wider">{item.time}</p>
-                </div>
+            {groupedActivities.length === 0 ? (
+              <div className="bg-white rounded-[1.5rem] p-10 border border-slate-100/60 shadow-sm">
                 <div className="flex items-center gap-4">
-                  <span className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${
-                    item.type === 'LEARNING' ? 'bg-blue-50 text-blue-600 border-blue-100' : 
-                    item.type === 'MEETING' ? 'bg-amber-50 text-amber-600 border-amber-100' : 
-                    item.type === 'TASK' ? 'bg-slate-50 text-slate-600 border-slate-100' : 
-                    item.type === 'LEAVE' ? 'bg-rose-50 text-rose-600 border-rose-200' :
-                    'bg-red-50 text-red-500 border-red-100'
-                  }`}>{item.type === 'LEAVE' ? t.absence : item.type}</span>
+                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300">
+                    <CalendarIcon size={20} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-slate-800">{lang === 'TH' ? 'ยังไม่มีกิจกรรม' : 'No activities yet'}</div>
+                    <div className="text-xs font-bold text-slate-400 mt-1">{t.empty}</div>
+                  </div>
                 </div>
               </div>
-            ))}
+            ) : (
+              groupedActivities.map((group) => (
+                <div key={group.dateLabel} className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] px-2">
+                    {group.dateLabel}
+                  </div>
+                  {group.items.map((item) => (
+                    <div key={item.id} className={`bg-white rounded-[1.5rem] p-6 border shadow-sm flex items-center group hover:shadow-md transition-all cursor-pointer ${item.type === 'LEAVE' ? 'border-rose-100 bg-rose-50/10' : 'border-slate-100/60'}`}>
+                      <div className={`flex flex-col items-center justify-center min-w-[80px] border-r pr-8 mr-8 ${item.type === 'LEAVE' ? 'border-rose-100' : 'border-slate-100'}`}>
+                        <span className={`text-2xl font-black leading-none ${item.type === 'LEAVE' ? 'text-rose-500' : 'text-slate-800'}`}>{item.day}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[lang]}</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          {item.type === 'LEAVE' && <UserX size={14} className="text-rose-400" />}
+                          <h3 className={`text-[15px] font-bold leading-tight group-hover:text-blue-600 transition-colors ${item.type === 'LEAVE' ? 'text-rose-600' : 'text-slate-800'}`}>
+                            {item.title[lang]}
+                          </h3>
+                        </div>
+                        <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-wider">{item.time}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${
+                          item.type === 'TASK' ? 'bg-slate-50 text-slate-600 border-slate-100' :
+                          item.type === 'LEAVE' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                          'bg-red-50 text-red-500 border-red-100'
+                        }`}>{item.type === 'LEAVE' ? t.absence : item.type}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
           </div>
 
           <div className="lg:col-span-4">
@@ -109,24 +403,48 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
               <h3 className="text-lg font-black text-slate-800 mb-8">{t.calendar}</h3>
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{t.nov}</h4>
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{calendarTitle}</h4>
                   <div className="flex gap-1">
-                    <button className="p-1 text-slate-400 hover:text-slate-900"><ChevronLeft size={16} /></button>
-                    <button className="p-1 text-slate-400 hover:text-slate-900"><ChevronRight size={16} /></button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                      className="p-1 text-slate-400 hover:text-slate-900"
+                      title={lang === 'TH' ? 'เดือนก่อนหน้า' : 'Previous month'}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                      className="p-1 text-slate-400 hover:text-slate-900"
+                      title={lang === 'TH' ? 'เดือนถัดไป' : 'Next month'}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-2 text-center">
                   {t.days.map(d => (<div key={d} className="text-[10px] font-black text-slate-300 py-2">{d}</div>))}
                   {blanks.map(i => <div key={`b-${i}`} />)}
                   {calendarDays.map(day => {
-                    const isToday = day === 20;
-                    const hasLeave = [10, 25].includes(day);
-                    const hasActivity = [20, 22, 23].includes(day);
+                    const today = new Date();
+                    const isToday =
+                      day === today.getDate() &&
+                      calendarMonth === today.getMonth() &&
+                      calendarYear === today.getFullYear();
+
+                    const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const hasLeave = markerMap.leave.has(dateKey);
+                    const hasTask = markerMap.task.has(dateKey);
                     return (
                       <div key={day} className={`relative aspect-square flex items-center justify-center text-xs font-black rounded-xl cursor-pointer transition-all ${isToday ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-600 hover:bg-slate-50'}`}>
                         {day}
-                        {hasActivity && !isToday && (<div className="absolute bottom-1.5 w-1 h-1 bg-blue-400 rounded-full"></div>)}
-                        {hasLeave && !isToday && (<div className="absolute bottom-1.5 w-1 h-1 bg-rose-400 rounded-full"></div>)}
+                        {!isToday && (hasTask || hasLeave) && (
+                          <div className="absolute bottom-1.5 flex items-center gap-1">
+                            {hasTask && <div className="w-1 h-1 bg-blue-400 rounded-full"></div>}
+                            {hasLeave && <div className="w-1 h-1 bg-rose-400 rounded-full"></div>}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
