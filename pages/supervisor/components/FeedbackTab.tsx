@@ -22,11 +22,6 @@ interface FeedbackTabProps {
   activeFeedbackId: string;
   onSelectFeedback: (id: string) => void;
   activeFeedback?: FeedbackItem;
-  tempScore?: number;
-  onTempScoreChange?: (score: number) => void;
-  tempComment?: string;
-  onTempCommentChange?: (comment: string) => void;
-  onSave?: () => void;
   onOpenStoragePath?: (path: string) => void;
 }
 
@@ -35,21 +30,8 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
   activeFeedbackId,
   onSelectFeedback,
   activeFeedback,
-  tempScore,
-  onTempScoreChange,
-  tempComment,
-  onTempCommentChange,
-  onSave,
   onOpenStoragePath,
 }) => {
-  const safeTempScore = Number.isFinite(tempScore) ? (tempScore as number) : 0;
-  const canMentorEvaluate =
-    typeof tempScore === 'number' &&
-    typeof onTempScoreChange === 'function' &&
-    typeof tempComment === 'string' &&
-    typeof onTempCommentChange === 'function' &&
-    typeof onSave === 'function';
-
   const handleOpen = (path?: string) => {
     if (!path) return;
     if (!onOpenStoragePath) return;
@@ -77,7 +59,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
 
       {activeFeedback ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          <div className="lg:col-span-8 space-y-10">
+          <div className="lg:col-span-12 space-y-10">
             <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
               <div className="flex items-center justify-between mb-12">
                 <div className="flex items-center gap-5">
@@ -165,7 +147,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                       </div>
                     ))}
                   </div>
-                  <p className="p-6 bg-slate-50 rounded-2xl border border-slate-100 italic text-slate-500 text-sm leading-relaxed font-medium">
+                  <p className="p-6 bg-slate-50 rounded-2xl border border-slate-100 italic text-slate-500 text-sm leading-relaxed font-medium whitespace-pre-wrap break-words">
                     "{activeFeedback.internProgramFeedback || 'No feedback provided'}"
                   </p>
                 </div>
@@ -177,75 +159,6 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                   "{activeFeedback.internReflection || 'Submission pending'}"
                 </p>
               </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-4 h-fit">
-            <div className="bg-[#0B0F19] rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-blue-600/10 rounded-full blur-[80px] -mr-20 -mt-20"></div>
-              <h3 className="text-xl font-black mb-10 tracking-tight relative z-10">Mentor Evaluation</h3>
-              {canMentorEvaluate ? (
-                <div className="space-y-10 relative z-10">
-                  <div>
-                    <div className="flex justify-between items-end mb-4">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">TECHNICAL SCORE</label>
-                      <span className="text-4xl font-black tracking-tighter text-blue-400">
-                        {safeTempScore}
-                        <span className="text-base text-slate-700 ml-1">/100</span>
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      value={safeTempScore}
-                      onChange={(e) => onTempScoreChange(Number(e.target.value))}
-                      onInput={(e) => onTempScoreChange(Number((e.target as HTMLInputElement).value))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 block">EVALUATION FEEDBACK</label>
-                    <textarea
-                      className="w-full bg-white/5 border border-white/10 rounded-[1.5rem] p-6 text-sm text-indigo-50 leading-relaxed outline-none focus:ring-4 focus:ring-blue-500/20 h-40 resize-none"
-                      placeholder="Provide constructive feedback..."
-                      value={tempComment}
-                      onChange={(e) => onTempCommentChange(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    onClick={onSave}
-                    className="w-full py-5 bg-blue-600 text-white rounded-full font-black text-sm uppercase tracking-[0.15em] shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
-                  >
-                    DEPLOY ASSESSMENT
-                  </button>
-                </div>
-              ) : (
-                <div className="relative z-10">
-                  {typeof activeFeedback.supervisorScore === 'number' || (activeFeedback.supervisorComments ?? '').trim() ? (
-                    <div className="space-y-8">
-                      <div className="flex justify-between items-end">
-                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">TECHNICAL SCORE</div>
-                        <span className="text-4xl font-black tracking-tighter text-blue-400">
-                          {Number.isFinite(activeFeedback.supervisorScore) ? activeFeedback.supervisorScore : 0}
-                          <span className="text-base text-slate-700 ml-1">/100</span>
-                        </span>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">EVALUATION FEEDBACK</div>
-                        <div className="w-full bg-white/5 border border-white/10 rounded-[1.5rem] p-6 text-sm text-indigo-50 leading-relaxed font-medium italic">
-                          "{(activeFeedback.supervisorComments ?? '').trim() || 'No comment provided'}"
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/10 text-indigo-100 text-sm leading-relaxed font-medium italic">
-                      "Mentor evaluation pending."
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>

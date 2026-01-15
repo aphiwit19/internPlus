@@ -152,9 +152,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
-  const [activeFeedbackId, setActiveFeedbackId] = useState('1m');
-  const [tempScore, setTempScore] = useState(0);
-  const [tempComment, setTempComment] = useState('');
+  const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<'LOG' | 'CALENDAR'>('LOG');
 
   const [selectedInternAttendanceLog, setSelectedInternAttendanceLog] = useState<InternDetail['attendanceLog']>([]);
@@ -177,6 +175,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [assignSearch, setAssignSearch] = useState('');
 
   const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
+  const [punctualityPercent, setPunctualityPercent] = useState<number | null>(null);
+  const [awayToday, setAwayToday] = useState<Array<{ id: string; internName: string; type?: string }>>([]);
 
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
@@ -199,6 +199,58 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       return true;
     });
   }, [filterDate, filterStatus, filterWorkMode, selectedInternAttendanceLog]);
+
+  const avgPerformanceValue = useMemo(() => {
+    const scores = interns
+      .map((i) => (typeof i.supervisorPerformance?.overallRating === 'number' ? i.supervisorPerformance.overallRating : 0))
+      .filter((x) => Number.isFinite(x) && x > 0);
+    if (scores.length === 0) return null;
+    const avg100 = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const avg5 = avg100 / 20;
+    return Math.max(0, Math.min(5, Math.round(avg5 * 100) / 100));
+  }, [interns]);
+
+  const reviewedAssessmentsCount = useMemo(() => {
+    let n = 0;
+    for (const intern of interns) {
+      const items = feedbackByIntern[intern.id] ?? [];
+      for (const f of items) {
+        if (f.status === 'reviewed') n += 1;
+      }
+    }
+    return n;
+  }, [feedbackByIntern, interns]);
+
+  const pendingFeedbackReviews = useMemo(() => {
+    const list: Array<{ internId: string; internName: string; internAvatar: string; feedbackId: string }> = [];
+    for (const intern of interns) {
+      const items = feedbackByIntern[intern.id] ?? [];
+      for (const f of items) {
+        if (f.status !== 'submitted') continue;
+        list.push({
+          internId: intern.id,
+          internName: intern.name,
+          internAvatar: intern.avatar,
+          feedbackId: f.id,
+        });
+      }
+    }
+    return list;
+  }, [feedbackByIntern, interns]);
+
+  const sentimentPercent = useMemo(() => {
+    const ratings: number[] = [];
+    for (const intern of interns) {
+      const items = feedbackByIntern[intern.id] ?? [];
+      for (const f of items) {
+        if (!Number.isFinite(f.programRating) || f.programRating <= 0) continue;
+        ratings.push(f.programRating);
+      }
+    }
+    if (ratings.length === 0) return null;
+    const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+    return Math.max(0, Math.min(100, Math.round((avg / 5) * 100)));
+  }, [feedbackByIntern, interns]);
 
   const formatTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -603,6 +655,105 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
+    const internIds = feedbackInternIdsKey ? feedbackInternIdsKey.split('|').filter(Boolean) : [];
+
+    if (internIds.length === 0) {
+      setPunctualityPercent(null);
+      return undefined;
+    }
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const toDateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+    const totalsByIntern = new Map<string, { total: number; late: number }>();
+
+    const recompute = () => {
+      let total = 0;
+      let late = 0;
+      for (const v of totalsByIntern.values()) {
+        total += v.total;
+        late += v.late;
+      }
+      if (total === 0) {
+        setPunctualityPercent(null);
+        return;
+      }
+      const pct = Math.round(((total - late) / total) * 100);
+      setPunctualityPercent(Math.max(0, Math.min(100, pct)));
+    };
+
+    for (const internId of internIds) {
+      const attendanceRef = collection(firestoreDb, 'users', internId, 'attendance');
+      const q = query(
+        attendanceRef,
+        where('date', '>=', toDateKey(monthStart)),
+        where('date', '<=', toDateKey(monthEnd)),
+      );
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          let total = 0;
+          let late = 0;
+          snap.forEach((d) => {
+            const raw = d.data() as any;
+            const clockInAt = raw?.clockInAt;
+            if (!clockInAt) return;
+            total += 1;
+            if (computeStatus(clockInAt) === 'LATE') late += 1;
+          });
+          totalsByIntern.set(internId, { total, late });
+          recompute();
+        },
+        () => {
+          totalsByIntern.set(internId, { total: 0, late: 0 });
+          recompute();
+        },
+      );
+      unsubs.push(unsub);
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [feedbackInternIdsKey]);
+
+  useEffect(() => {
+    const leaveRef = collection(firestoreDb, 'leaveRequests');
+    const q = query(leaveRef, where('supervisorId', '==', user.id));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const todayIso = new Date().toISOString().split('T')[0];
+        const list = snap.docs
+          .map((d) => {
+            const raw = d.data() as any;
+            return {
+              id: d.id,
+              internName: String(raw?.internName ?? ''),
+              startDate: String(raw?.startDate ?? ''),
+              endDate: String(raw?.endDate ?? ''),
+              status: String(raw?.status ?? ''),
+              type: String(raw?.type ?? ''),
+            };
+          })
+          .filter((x) => x.internName && x.startDate && x.endDate)
+          .filter((x) => x.status === 'APPROVED')
+          .filter((x) => x.startDate <= todayIso && todayIso <= x.endDate)
+          .slice(0, 5)
+          .map((x) => ({ id: x.id, internName: x.internName, type: x.type }));
+        setAwayToday(list);
+      },
+      () => {
+        setAwayToday([]);
+      },
+    );
+  }, [user.id]);
+
+  useEffect(() => {
+    const unsubs: Array<() => void> = [];
 
     const internIds = feedbackInternIdsKey ? feedbackInternIdsKey.split('|').filter(Boolean) : [];
 
@@ -640,19 +791,12 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   }, [feedbackInternIdsKey]);
 
   useEffect(() => {
-    if (activeFeedback) {
-      setTempScore(activeFeedback.supervisorScore || 0);
-      setTempComment(activeFeedback.supervisorComments || '');
-    }
-  }, [activeFeedbackId, selectedInternId]);
-
-  useEffect(() => {
     if (!selectedInternId) return;
     if (activeTab !== 'feedback') return;
     if (!selectedIntern?.feedback || selectedIntern.feedback.length === 0) return;
 
     const exists = selectedIntern.feedback.some((f) => f.id === activeFeedbackId);
-    if (exists && activeFeedbackId !== '1m') return;
+    if (exists && activeFeedbackId !== 'week-1') return;
 
     const preferred = selectedIntern.feedback.find(feedbackHasData) ?? selectedIntern.feedback[0];
     if (preferred && preferred.id !== activeFeedbackId) setActiveFeedbackId(preferred.id);
@@ -685,51 +829,6 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         tasks: intern.tasks.map(t => t.id === taskId ? { ...t, status } : t)
       };
     }));
-  };
-
-  const handleSaveFeedback = async () => {
-    if (!selectedInternId || !activeFeedbackId) return;
-
-    const nextScore = Number.isFinite(tempScore) ? tempScore : 0;
-    const nextComment = typeof tempComment === 'string' ? tempComment : '';
-
-    setInterns((prev) =>
-      prev.map((intern) => {
-        if (intern.id !== selectedInternId) return intern;
-
-        return {
-          ...intern,
-          feedback: intern.feedback.map((f) => {
-            if (f.id !== activeFeedbackId) return f;
-            return {
-              ...f,
-              status: 'reviewed',
-              supervisorScore: nextScore,
-              supervisorComments: nextComment,
-            };
-          }),
-        };
-      }),
-    );
-
-    try {
-      await setDoc(
-        doc(firestoreDb, 'users', selectedInternId, 'feedbackMilestones', activeFeedbackId),
-        {
-          status: 'reviewed',
-          supervisorScore: nextScore,
-          supervisorComments: nextComment,
-          supervisorReviewedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      alert('Feedback assessment deployed successfully.');
-    } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
-      console.error('Failed to save mentor evaluation', e);
-      alert(`Failed to save mentor evaluation: ${e?.code ?? 'unknown'} ${e?.message ?? ''}`);
-    }
   };
 
   const assignableInterns = useMemo(() => {
@@ -1093,11 +1192,6 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 activeFeedbackId={activeFeedbackId}
                 onSelectFeedback={setActiveFeedbackId}
                 activeFeedback={activeFeedback}
-                tempScore={tempScore}
-                onTempScoreChange={setTempScore}
-                tempComment={tempComment}
-                onTempCommentChange={setTempComment}
-                onSave={handleSaveFeedback}
                 onOpenStoragePath={handleOpenStoragePath}
               />
             )}
@@ -1129,9 +1223,21 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
                     <StatBox icon={<Users className="text-blue-600" size={24} />} label="TOTAL INTERNS" value={interns.length.toString().padStart(2, '0')} />
-                    <StatBox icon={<Star className="text-amber-500" fill="currentColor" size={24} />} label="AVG PERFORMANCE" value="4.52" />
-                    <StatBox icon={<Clock className="text-emerald-500" size={24} />} label="PUNCTUALITY SCORE" value="98%" />
-                    <StatBox icon={<CheckCircle2 className="text-indigo-600" size={24} />} label="TASKS APPROVED" value="12" />
+                    <StatBox
+                      icon={<Star className="text-amber-500" fill="currentColor" size={24} />}
+                      label="AVG PERFORMANCE"
+                      value={avgPerformanceValue === null ? '--' : avgPerformanceValue.toFixed(2)}
+                    />
+                    <StatBox
+                      icon={<Clock className="text-emerald-500" size={24} />}
+                      label="PUNCTUALITY SCORE"
+                      value={punctualityPercent === null ? '--' : `${punctualityPercent}%`}
+                    />
+                    <StatBox
+                      icon={<CheckCircle2 className="text-indigo-600" size={24} />}
+                      label="ASSESSMENTS REVIEWED"
+                      value={String(reviewedAssessmentsCount)}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -1143,30 +1249,44 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                              </div>
                              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Pending Action Items</h3>
                           </div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">3 ITEMS REQUIRING REVIEW</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pendingFeedbackReviews.length} ITEMS REQUIRING REVIEW</span>
                        </div>
 
                        <div className="space-y-4">
-                          {interns.filter(i => i.status === 'Review Needed').map(intern => (
-                            <div key={intern.id} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
-                               <div className="flex items-center gap-5">
-                                  <img src={intern.avatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
-                                  <div>
-                                    <h4 className="text-lg font-black text-slate-900 leading-tight">{intern.name}</h4>
-                                    <div className="flex items-center gap-2 mt-1">
-                                       <FileText size={14} className="text-amber-50" />
-                                       <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">TASK SUBMISSION PENDING REVIEW</span>
-                                    </div>
-                                  </div>
-                               </div>
-                               <div className="flex items-center gap-6">
-                                  <button onClick={() => { setSelectedInternId(intern.id); setIsAssigningTask(true); }} className="flex items-center gap-2 px-8 py-3 bg-[#EBF3FF] text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm">
-                                     <Plus size={16} strokeWidth={3}/> Assign Task
-                                  </button>
-                                  <ChevronRight size={24} className="text-slate-200 group-hover:text-blue-500 transition-colors" />
-                               </div>
+                          {pendingFeedbackReviews.length === 0 ? (
+                            <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
+                              <CheckCircle2 size={32} className="text-slate-200 mb-3" />
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ITEMS REQUIRING REVIEW</p>
                             </div>
-                          ))}
+                          ) : (
+                            pendingFeedbackReviews.slice(0, 6).map((item) => (
+                              <div key={`${item.internId}:${item.feedbackId}`} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
+                                 <div className="flex items-center gap-5">
+                                    <img src={item.internAvatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
+                                    <div>
+                                      <h4 className="text-lg font-black text-slate-900 leading-tight">{item.internName}</h4>
+                                      <div className="flex items-center gap-2 mt-1">
+                                         <FileText size={14} className="text-amber-50" />
+                                         <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">FEEDBACK SUBMITTED (PENDING REVIEW)</span>
+                                      </div>
+                                    </div>
+                                 </div>
+                                 <div className="flex items-center gap-6">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedInternId(item.internId);
+                                        setActiveTab('feedback');
+                                        setActiveFeedbackId(item.feedbackId);
+                                      }}
+                                      className="flex items-center gap-2 px-8 py-3 bg-[#EBF3FF] text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                                    >
+                                      <Eye size={16} strokeWidth={3}/> Review
+                                    </button>
+                                    <ChevronRight size={24} className="text-slate-200 group-hover:text-blue-500 transition-colors" />
+                                 </div>
+                              </div>
+                            ))
+                          )}
                        </div>
                     </div>
 
@@ -1176,21 +1296,26 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">WHO IS AWAY TODAY</p>
                           
                           <div className="space-y-6">
-                             <div className="flex items-center justify-between p-4 bg-rose-50/50 rounded-2xl border border-rose-100">
-                                <div className="flex items-center gap-4">
-                                   <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-rose-500 shadow-sm border border-rose-100">
+                            {awayToday.length === 0 ? (
+                              <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
+                                 <PlaneTakeoff size={32} className="text-slate-200 mb-3" />
+                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ONE IS AWAY TODAY</p>
+                              </div>
+                            ) : (
+                              awayToday.map((x) => (
+                                <div key={x.id} className="flex items-center justify-between p-4 bg-rose-50/50 rounded-2xl border border-rose-100">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-rose-500 shadow-sm border border-rose-100">
                                       <UserX size={20} />
-                                   </div>
-                                   <div>
-                                      <p className="text-sm font-black text-slate-900 leading-none">James Wilson</p>
-                                      <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">SICK LEAVE (UNPAID)</p>
-                                   </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-black text-slate-900 leading-none">{x.internName}</p>
+                                      <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">{x.type || 'LEAVE'}</p>
+                                    </div>
+                                  </div>
                                 </div>
-                             </div>
-                             <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed flex flex-col items-center justify-center text-center">
-                                <PlaneTakeoff size={32} className="text-slate-200 mb-3" />
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO UPCOMING LEAVES <br /> SCHEDULED FOR THIS WEEK</p>
-                             </div>
+                              ))
+                            )}
                           </div>
                        </div>
 
@@ -1200,12 +1325,12 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                           <div className="flex flex-col items-center">
                              <div className="relative mb-12 flex items-center justify-center">
                                 <div className="w-44 h-44 rounded-full border-[18px] border-slate-50 flex items-center justify-center">
-                                   <span className="text-5xl font-black text-blue-600 tracking-tighter">88%</span>
+                                   <span className="text-5xl font-black text-blue-600 tracking-tighter">{sentimentPercent === null ? '--' : `${sentimentPercent}%`}</span>
                                 </div>
                                 <div className="absolute inset-0 border-[18px] border-blue-600 rounded-full border-t-transparent border-l-transparent -rotate-45"></div>
                              </div>
                              <p className="text-sm text-slate-500 font-medium italic text-center max-w-[200px] leading-relaxed">
-                               "The team currently shows high engagement."
+                               {sentimentPercent === null ? '"No sentiment data yet."' : '"Based on average mentorship ratings."'}
                              </p>
                           </div>
                        </div>

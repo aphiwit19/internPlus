@@ -394,6 +394,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       punctuality: "Deadline Punctuality",
       solving: "Problem Solving",
       growth: "Growth Projection",
+      history: "View Detailed History",
       selfEval: "Self Evaluation",
       viewSelfEval: "Open Self Evaluation",
       assignment: "Current Assignment",
@@ -427,6 +428,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       punctuality: "ความตรงต่อเวลา",
       solving: "การแก้ปัญหา",
       growth: "การคาดการณ์การเติบโต",
+      history: "ดูประวัติโดยละเอียด",
       selfEval: "ประเมินตนเอง",
       viewSelfEval: "เปิดหน้าประเมินตนเอง",
       assignment: "งานที่ได้รับมอบหมาย",
@@ -555,6 +557,9 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                       </p>
                     </div>
                  </div>
+                 <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95">
+                   {t.history} <LucideChevronRight size={14} />
+                 </button>
               </div>
             </div>
             <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden group">

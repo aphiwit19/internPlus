@@ -91,7 +91,7 @@ const InternManagementPage: React.FC = () => {
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFeedbackId, setActiveFeedbackId] = useState('1m');
+  const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<AttendanceViewMode>('LOG');
   const [selectedInternAttendanceLog, setSelectedInternAttendanceLog] = useState<AdminInternDetail['attendanceLog']>([]);
 
@@ -535,7 +535,7 @@ const InternManagementPage: React.FC = () => {
     if (!selectedIntern?.feedback || selectedIntern.feedback.length === 0) return;
 
     const exists = selectedIntern.feedback.some((f) => f.id === activeFeedbackId);
-    if (exists && activeFeedbackId !== '1m') return;
+    if (exists && activeFeedbackId !== 'week-1') return;
 
     const preferred = selectedIntern.feedback.find(feedbackHasData) ?? selectedIntern.feedback[0];
     if (preferred && preferred.id !== activeFeedbackId) setActiveFeedbackId(preferred.id);

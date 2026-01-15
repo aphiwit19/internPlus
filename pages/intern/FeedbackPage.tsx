@@ -15,7 +15,7 @@ import {
   Zap
 } from 'lucide-react';
 import { Language, UserProfile } from '@/types';
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -66,7 +66,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       lockedTitle: "Access Restricted",
       lockedDesc: "Submit your reflection to unlock mentor feedback.",
       programRatingLabel: "Rate Mentorship Quality",
-      milestoneHeader: "Milestone Details"
+      milestoneHeader: "Milestone Details",
+      week: "Week",
+      month: "Month",
+      submittedTag: "SUBMITTED",
+      pendingTag: "NOT SUBMITTED"
     },
     TH: {
       title: "ศูนย์ข้อมูลคำติชม",
@@ -88,66 +92,31 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       lockedTitle: "การเข้าถึงถูกจำกัด",
       lockedDesc: "ส่งสรุปผลงานของคุณก่อนเพื่อดูคำติชม",
       programRatingLabel: "ให้คะแนนคุณภาพการดูแลงาน",
-      milestoneHeader: "รายละเอียดช่วงการประเมิน"
+      milestoneHeader: "รายละเอียดช่วงการประเมิน",
+      week: "สัปดาห์",
+      month: "เดือน",
+      submittedTag: "ส่งแล้ว",
+      pendingTag: "ยังไม่ส่ง"
     }
   }[lang];
 
-  const BASE_MILESTONES: FeedbackMilestone[] = useMemo(
-    () => [
-      {
-        id: '1w',
-        label: { EN: 'Week 1', TH: 'สัปดาห์ที่ 1' },
-        period: { EN: 'Onboarding & Foundations', TH: 'การรับเข้าทำงานและพื้นฐาน' },
+  const isFinalized = (status?: FeedbackMilestone['status']) => status === 'submitted' || status === 'reviewed';
+  const buildWeekMilestones = () => {
+    const arr: FeedbackMilestone[] = [];
+    for (let i = 1; i <= 4; i += 1) {
+      arr.push({
+        id: `week-${i}`,
+        label: { EN: `Week ${i}`, TH: `สัปดาห์ที่ ${i}` },
+        period: { EN: `Week ${i}`, TH: `สัปดาห์ที่ ${i}` },
         status: 'pending',
-      },
-      {
-        id: '1m',
-        label: { EN: 'Month 1', TH: 'เดือนที่ 1' },
-        period: { EN: 'Skill Deep-Dive', TH: 'การเจาะลึกทักษะ' },
-        status: 'pending',
-      },
-      {
-        id: '2m',
-        label: { EN: 'Month 2', TH: 'เดือนที่ 2' },
-        period: { EN: 'System Integration', TH: 'การรวมระบบ' },
-        status: 'pending',
-      },
-      {
-        id: '3m',
-        label: { EN: 'Month 3', TH: 'เดือนที่ 3' },
-        period: { EN: 'Advanced Prototyping', TH: 'การทำต้นแบบขั้นสูง' },
-        status: 'pending',
-      },
-      {
-        id: '4m',
-        label: { EN: 'Month 4', TH: 'เดือนที่ 4' },
-        period: { EN: 'User Research', TH: 'การวิจัยผู้ใช้' },
-        status: 'pending',
-      },
-      {
-        id: '5m',
-        label: { EN: 'Month 5', TH: 'เดือนที่ 5' },
-        period: { EN: 'Design Handoff', TH: 'การส่งมอบงานดีไซน์' },
-        status: 'pending',
-      },
-      {
-        id: '6m',
-        label: { EN: 'Month 6', TH: 'เดือนที่ 6' },
-        period: { EN: 'Final Capstone', TH: 'โปรเจกต์จบการศึกษา' },
-        status: 'pending',
-      },
-      {
-        id: 'exit',
-        label: { EN: 'Exit Interview', TH: 'สัมภาษณ์แจ้งออก' },
-        period: { EN: 'Final Wrap-up', TH: 'บทสรุปส่งท้าย' },
-        status: 'pending',
-      },
-    ],
-    [],
-  );
+      });
+    }
+    return arr;
+  };
 
-  const [milestones, setMilestones] = useState<FeedbackMilestone[]>(BASE_MILESTONES);
-  const [activeId, setActiveId] = useState('1m');
+  const [activeTrack, setActiveTrack] = useState<'week' | 'month'>('week');
+  const [activeId, setActiveId] = useState('week-1');
+  const [milestones, setMilestones] = useState<FeedbackMilestone[]>(buildWeekMilestones());
   const [tempProgramRating, setTempProgramRating] = useState(0);
   const [tempReflection, setTempReflection] = useState('');
   const [tempProgramFeedback, setTempProgramFeedback] = useState('');
@@ -166,38 +135,70 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   useEffect(() => {
     if (!effectiveUser) return;
 
-    const unsubs = BASE_MILESTONES.map((m) => {
-      const ref = doc(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones', m.id);
-      return onSnapshot(ref, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data() as Partial<FeedbackMilestone>;
-        setMilestones((prev) =>
-          prev.map((x) =>
-            x.id !== m.id
-              ? x
-              : {
-                  ...x,
-                  status: (data.status as FeedbackMilestone['status']) ?? x.status,
-                  internReflection: typeof data.internReflection === 'string' ? data.internReflection : x.internReflection,
-                  internProgramFeedback:
-                    typeof data.internProgramFeedback === 'string' ? data.internProgramFeedback : x.internProgramFeedback,
-                  programRating: typeof data.programRating === 'number' ? data.programRating : x.programRating,
-                  supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : x.supervisorScore,
-                  supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : x.supervisorComments,
-                  submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
-                  videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
-                  videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
-                  attachments: Array.isArray(data.attachments) ? (data.attachments as any) : x.attachments,
-                },
-          ),
-        );
+    const colRef = collection(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones');
+    return onSnapshot(colRef, (snap) => {
+      const savedById = new Map<string, Partial<FeedbackMilestone>>();
+      snap.docs.forEach((d) => {
+        savedById.set(d.id, d.data() as Partial<FeedbackMilestone>);
+      });
+
+      const weekBase = buildWeekMilestones();
+      let maxMonth = 1;
+
+      for (const id of savedById.keys()) {
+        const m = /^month-(\d+)$/.exec(id);
+        if (!m) continue;
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > maxMonth) maxMonth = n;
+      }
+      const monthCount = Math.max(1, maxMonth + 1);
+      const monthBase: FeedbackMilestone[] = [];
+      for (let i = 1; i <= monthCount; i += 1) {
+        monthBase.push({
+          id: `month-${i}`,
+          label: { EN: `Month ${i}`, TH: `เดือนที่ ${i}` },
+          period: { EN: `Month ${i}`, TH: `เดือนที่ ${i}` },
+          status: 'pending',
+        });
+      }
+
+      const nextAll = [...weekBase, ...monthBase].map((x) => {
+        const data = savedById.get(x.id) ?? null;
+        if (!data) return x;
+        return {
+          ...x,
+          status: (data.status as FeedbackMilestone['status']) ?? x.status,
+          internReflection: typeof data.internReflection === 'string' ? data.internReflection : x.internReflection,
+          internProgramFeedback:
+            typeof data.internProgramFeedback === 'string' ? data.internProgramFeedback : x.internProgramFeedback,
+          programRating: typeof data.programRating === 'number' ? data.programRating : x.programRating,
+          supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : x.supervisorScore,
+          supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : x.supervisorComments,
+          submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
+          videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
+          videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
+          attachments: Array.isArray(data.attachments) ? (data.attachments as any) : x.attachments,
+        };
+      });
+
+      setMilestones(nextAll);
+
+      setActiveId((prev) => {
+        const exists = nextAll.some((x) => x.id === prev);
+        if (exists) return prev;
+
+        const weekList = nextAll.filter((x) => x.id.startsWith('week-'));
+        const monthList = nextAll.filter((x) => x.id.startsWith('month-'));
+        const pickNext = (list: FeedbackMilestone[]) => {
+          const next = list.find((x) => !isFinalized(x.status));
+          return next?.id ?? list[list.length - 1]?.id;
+        };
+
+        if (activeTrack === 'month') return pickNext(monthList);
+        return pickNext(weekList);
       });
     });
-
-    return () => {
-      unsubs.forEach((u) => u());
-    };
-  }, [BASE_MILESTONES, effectiveUser]);
+  }, [activeTrack, effectiveUser]);
 
   useEffect(() => {
     if (!active) return;
@@ -208,6 +209,13 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     setPendingAttachments([]);
     setSubmitError(null);
   }, [activeId]);
+
+  useEffect(() => {
+    const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
+    if (list.length === 0) return;
+    const next = list.find((m) => !isFinalized(m.status)) ?? list[list.length - 1];
+    if (next && next.id !== activeId) setActiveId(next.id);
+  }, [activeId, activeTrack, milestones]);
 
   const openStoragePath = async (path: string) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, path));
@@ -263,6 +271,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
         { merge: true },
       );
 
+      setActiveId((prev) => {
+        const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
+        const idx = list.findIndex((m) => m.id === prev);
+        if (idx < 0) return prev;
+        const next = list[idx + 1];
+        return next?.id ?? prev;
+      });
+
       if (videoInputRef.current) videoInputRef.current.value = '';
       if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
       setPendingVideo(null);
@@ -284,20 +300,51 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
               <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{t.title}</h1>
               <p className="text-slate-500 text-base font-medium">{t.subtitle}</p>
             </div>
-            <div className="flex flex-col gap-3">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-2">{t.milestone_label}</span>
-              <div className="flex bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-x-auto scrollbar-hide max-w-full">
-                {milestones.map((m) => (
-                  <button 
-                    key={m.id} 
-                    onClick={() => setActiveId(m.id)} 
-                    className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
-                      activeId === m.id ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
-                    }`}
-                  >
-                    {m.label[lang]}
-                  </button>
-                ))}
+            <div className="flex flex-col gap-3 items-end">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pr-2 text-right">{t.milestone_label}</span>
+              <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
+                <button
+                  onClick={() => setActiveTrack('week')}
+                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
+                    activeTrack === 'week' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {t.week}
+                </button>
+                <button
+                  onClick={() => setActiveTrack('month')}
+                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
+                    activeTrack === 'month' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {t.month}
+                </button>
+              </div>
+              <div className="flex bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-x-auto scrollbar-hide max-w-full ml-auto">
+                {milestones
+                  .filter((m) => m.id.startsWith(`${activeTrack}-`))
+                  .map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setActiveId(m.id)}
+                      className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
+                        activeId === m.id ? 'bg-blue-600 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {m.label[lang]}
+                        <span
+                          className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                            isFinalized(m.status)
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                              : 'bg-slate-50 text-slate-500 border border-slate-100'
+                          }`}
+                        >
+                          {isFinalized(m.status) ? t.submittedTag : t.pendingTag}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
               </div>
             </div>
           </div>
