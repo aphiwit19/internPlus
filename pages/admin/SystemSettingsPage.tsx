@@ -51,7 +51,8 @@ import {
   Fingerprint,
   Eye,
   EyeOff,
-  Circle
+  Circle,
+  ClipboardList
 } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
 import { Language, PostProgramAccessLevel, UserRole } from '@/types';
@@ -61,9 +62,18 @@ import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, setDo
 
 import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
 
-type SettingsTab = 'onboarding' | 'policy' | 'allowance' | 'access';
+type SettingsTab = 'onboarding' | 'policy' | 'allowance' | 'access' | 'evaluation';
 
 type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
+
+type EvaluationLabels = {
+  technical: string;
+  communication: string;
+  punctuality: string;
+  initiative: string;
+  overallComments: string;
+  workPerformance: string;
+};
 
 type WithdrawalUserRow = {
   id: string;
@@ -154,6 +164,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       tabPolicy: "Policy & Training",
       tabAllowance: "Allowance",
       tabAccess: "Access Control",
+      tabEvaluation: "Evaluation Management",
       saveBtn: "Deploy Config",
       saving: "Saving...",
       reset: "Reset Default",
@@ -176,6 +187,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       tabPolicy: "นโยบายและการฝึกอบรม",
       tabAllowance: "เบี้ยเลี้ยง",
       tabAccess: "การเข้าถึง",
+      tabEvaluation: "จัดการแบบประเมิน",
       saveBtn: "ปรับใช้การตั้งค่า",
       saving: "กำลังบันทึก...",
       reset: "คืนค่าเริ่มต้น",
@@ -207,6 +219,25 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
 
+  const [evaluationLabelsByLang, setEvaluationLabelsByLang] = useState<{ EN: EvaluationLabels; TH: EvaluationLabels }>({
+    EN: {
+      technical: 'TECHNICAL PROFICIENCY',
+      communication: 'TEAM COMMUNICATION',
+      punctuality: 'PUNCTUALITY & RELIABILITY',
+      initiative: 'SELF-INITIATIVE',
+      overallComments: 'OVERALL EVALUATION & COMMENTS',
+      workPerformance: 'WORK PERFORMANCE',
+    },
+    TH: {
+      technical: 'ทักษะด้านเทคนิค',
+      communication: 'การสื่อสารและการทำงานร่วมกัน',
+      punctuality: 'ความตรงต่อเวลาและความรับผิดชอบ',
+      initiative: 'ความริเริ่มและการแก้ปัญหา',
+      overallComments: 'ภาพรวมและความคิดเห็น',
+      workPerformance: 'ผลงานการทำงาน',
+    },
+  });
+
   useEffect(() => {
     const ref = doc(firestoreDb, 'config', 'systemSettings');
     return onSnapshot(
@@ -225,6 +256,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           access?: {
             accessLevel?: 'REVOCATION' | 'LIMITED' | 'EXTENDED';
             retentionPeriod?: string;
+          };
+          evaluationLabels?: {
+            EN?: Partial<EvaluationLabels>;
+            TH?: Partial<EvaluationLabels>;
           };
         };
 
@@ -246,6 +281,13 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             setAccessLevel(data.access.accessLevel);
           }
           if (typeof data.access.retentionPeriod === 'string' && data.access.retentionPeriod.trim()) setRetentionPeriod(data.access.retentionPeriod);
+        }
+
+        if (data.evaluationLabels) {
+          setEvaluationLabelsByLang((prev) => ({
+            EN: { ...prev.EN, ...(data.evaluationLabels?.EN ?? {}) },
+            TH: { ...prev.TH, ...(data.evaluationLabels?.TH ?? {}) },
+          }));
         }
       },
       () => {
@@ -558,6 +600,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             accessLevel,
             retentionPeriod,
           },
+          evaluationLabels: evaluationLabelsByLang,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -727,6 +770,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
              <TabBtn active={activeTab === 'policy'} onClick={() => setActiveTab('policy')} icon={<ShieldCheck size={16}/>} label={t.tabPolicy} />
              <TabBtn active={activeTab === 'allowance'} onClick={() => setActiveTab('allowance')} icon={<CreditCard size={16}/>} label={t.tabAllowance} />
              <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={16}/>} label={t.tabAccess} />
+             <TabBtn active={activeTab === 'evaluation'} onClick={() => setActiveTab('evaluation')} icon={<ClipboardList size={16}/>} label={t.tabEvaluation} />
           </div>
         </div>
 
@@ -1553,6 +1597,176 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                      </button>
                   </div>
                </div>
+            </div>
+          )}
+
+          {/* TAB: EVALUATION */}
+          {activeTab === 'evaluation' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-500">
+              <div className="lg:col-span-8">
+                <section className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div className="mb-12">
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">{t.tabEvaluation}</h2>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.25em] mt-2">
+                      {lang === 'TH' ? 'จัดการหัวข้อการประเมินที่ใช้ทั้งระบบ' : 'Manage global evaluation headings used across the app'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem]">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'ตัวอย่าง (Dashboard)' : 'PREVIEW (DASHBOARD)'} </div>
+                      <div className="mt-6 space-y-6">
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].technical}</div>
+                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
+                            <div className="h-full bg-blue-600" style={{ width: '78%' }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].communication}</div>
+                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
+                            <div className="h-full bg-indigo-600" style={{ width: '72%' }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].punctuality}</div>
+                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
+                            <div className="h-full bg-emerald-500" style={{ width: '85%' }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].initiative}</div>
+                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
+                            <div className="h-full bg-rose-500" style={{ width: '66%' }} />
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{evaluationLabelsByLang[lang].overallComments}</div>
+                          <div className="text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-2xl p-4">
+                            {lang === 'TH' ? 'ตัวอย่างข้อความความคิดเห็น' : 'Sample evaluation comments'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{evaluationLabelsByLang[lang].workPerformance}</div>
+                          <div className="text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-2xl p-4">
+                            {lang === 'TH' ? 'ตัวอย่างข้อความผลงานการทำงาน' : 'Sample work performance comments'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem]">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (TH/EN)' : 'EDIT HEADINGS (TH/EN)'} </div>
+
+                      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">TH</div>
+                          <input
+                            value={evaluationLabelsByLang.TH.technical}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, technical: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.TH.communication}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, communication: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.TH.punctuality}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, punctuality: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.TH.initiative}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, initiative: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.TH.overallComments}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, overallComments: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.TH.workPerformance}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, workPerformance: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">EN</div>
+                          <input
+                            value={evaluationLabelsByLang.EN.technical}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, technical: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.EN.communication}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, communication: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.EN.punctuality}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, punctuality: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.EN.initiative}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, initiative: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.EN.overallComments}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, overallComments: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                          <input
+                            value={evaluationLabelsByLang.EN.workPerformance}
+                            onChange={(e) =>
+                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, workPerformance: e.target.value } }))
+                            }
+                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div className="lg:col-span-4">
+                <section className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
+                    {lang === 'TH' ? 'สถานะ' : 'STATUS'}
+                  </div>
+                  <div className="mt-3 text-sm font-black text-slate-900">
+                    {lang === 'TH' ? 'ยังไม่พร้อมใช้งาน' : 'Not available yet'}
+                  </div>
+                </section>
+              </div>
             </div>
           )}
 

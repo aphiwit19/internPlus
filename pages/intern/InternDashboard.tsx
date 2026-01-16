@@ -46,6 +46,17 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
   const [supervisorPerformance, setSupervisorPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
   const [supervisorSummary, setSupervisorSummary] = useState('');
   const [supervisorScore, setSupervisorScore] = useState<number | null>(null);
+  const [milestoneSupervisorPerformance, setMilestoneSupervisorPerformance] = useState<PerformanceMetrics | null>(null);
+  const [milestoneSupervisorSummary, setMilestoneSupervisorSummary] = useState<string>('');
+  const [milestoneSupervisorMeta, setMilestoneSupervisorMeta] = useState<{
+    id: string;
+    status?: string;
+    submissionDate?: string;
+    reviewedDate?: string;
+  } | null>(null);
+  const [supervisorEvaluationHistory, setSupervisorEvaluationHistory] = useState<
+    Array<{ id: string; submissionDate?: string; reviewedDate?: string; score?: number }>
+  >([]);
 
   useEffect(() => {
     const assignedRef = collection(firestoreDb, 'users', user.id, 'assignmentProjects');
@@ -124,24 +135,74 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
     return onSnapshot(
       colRef,
       (snap) => {
-        const candidates = snap.docs
-          .map((d) => {
-            const raw = d.data() as any;
-            const score = typeof raw?.supervisorScore === 'number' ? raw.supervisorScore : null;
-            const reviewedAtMs = typeof raw?.supervisorReviewedAt?.toDate === 'function' ? raw.supervisorReviewedAt.toDate().getTime() : 0;
-            return { score, reviewedAtMs, id: d.id };
-          })
-          .filter((x) => typeof x.score === 'number');
+        const items = snap.docs.map((d) => {
+          const raw = d.data() as any;
+          const status = typeof raw?.status === 'string' ? raw.status : undefined;
+          const score = typeof raw?.supervisorScore === 'number' ? raw.supervisorScore : undefined;
+          const submissionDate = typeof raw?.submissionDate === 'string' ? raw.submissionDate : undefined;
+          const reviewedDate =
+            typeof raw?.supervisorReviewedAt?.toDate === 'function'
+              ? String(raw.supervisorReviewedAt.toDate().toISOString().split('T')[0])
+              : undefined;
 
-        if (candidates.length === 0) {
-          setSupervisorScore(null);
-          return;
-        }
-        candidates.sort((a, b) => (b.reviewedAtMs || 0) - (a.reviewedAtMs || 0) || String(b.id).localeCompare(String(a.id)));
-        setSupervisorScore(candidates[0]?.score ?? null);
+          const rawSup = raw?.supervisorPerformance ?? null;
+          const normalizedSup: PerformanceMetrics | null = rawSup
+            ? {
+                technical: typeof rawSup?.technical === 'number' ? rawSup.technical : DEFAULT_PERFORMANCE.technical,
+                communication: typeof rawSup?.communication === 'number' ? rawSup.communication : DEFAULT_PERFORMANCE.communication,
+                punctuality: typeof rawSup?.punctuality === 'number' ? rawSup.punctuality : DEFAULT_PERFORMANCE.punctuality,
+                initiative: typeof rawSup?.initiative === 'number' ? rawSup.initiative : DEFAULT_PERFORMANCE.initiative,
+                overallRating: typeof rawSup?.overallRating === 'number' ? rawSup.overallRating : DEFAULT_PERFORMANCE.overallRating,
+              }
+            : null;
+
+          const summary = typeof raw?.supervisorSummary === 'string' ? raw.supervisorSummary : undefined;
+          const reviewedAtMs = typeof raw?.supervisorReviewedAt?.toDate === 'function' ? raw.supervisorReviewedAt.toDate().getTime() : 0;
+
+          return {
+            id: d.id,
+            status,
+            score,
+            submissionDate,
+            reviewedDate,
+            reviewedAtMs,
+            performance: normalizedSup,
+            summary,
+          };
+        });
+
+        const history = items
+          .filter((x) => typeof x.score === 'number' || x.performance)
+          .sort((a, b) => (b.reviewedAtMs || 0) - (a.reviewedAtMs || 0) || String(b.id).localeCompare(String(a.id)));
+
+        setSupervisorEvaluationHistory(history.map((h) => ({
+          id: h.id,
+          submissionDate: h.submissionDate,
+          reviewedDate: h.reviewedDate,
+          score: h.score,
+        })));
+
+        const latest = history[0] ?? null;
+        setSupervisorScore(typeof latest?.score === 'number' ? latest.score : null);
+        setMilestoneSupervisorPerformance(latest?.performance ?? null);
+        setMilestoneSupervisorSummary(latest?.summary ?? '');
+        setMilestoneSupervisorMeta(
+          latest
+            ? {
+                id: latest.id,
+                status: latest.status,
+                submissionDate: latest.submissionDate,
+                reviewedDate: latest.reviewedDate,
+              }
+            : null,
+        );
       },
       () => {
         setSupervisorScore(null);
+        setSupervisorEvaluationHistory([]);
+        setMilestoneSupervisorPerformance(null);
+        setMilestoneSupervisorSummary('');
+        setMilestoneSupervisorMeta(null);
       },
     );
   }, [user.id]);
@@ -323,9 +384,17 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
     return `Due in ${safe} days`;
   }, [lang, nextTask?.plannedEndMs]);
 
+  const effectiveSupervisorPerformance = useMemo(() => {
+    return milestoneSupervisorPerformance ?? DEFAULT_PERFORMANCE;
+  }, [milestoneSupervisorPerformance]);
+
+  const effectiveSupervisorSummary = useMemo(() => {
+    return milestoneSupervisorSummary || supervisorSummary;
+  }, [milestoneSupervisorSummary, supervisorSummary]);
+
   const overallRating = useMemo(() => {
-    if (typeof supervisorPerformance.overallRating === 'number' && supervisorPerformance.overallRating > 0) {
-      const scaled = supervisorPerformance.overallRating / 20;
+    if (typeof effectiveSupervisorPerformance.overallRating === 'number' && effectiveSupervisorPerformance.overallRating > 0) {
+      const scaled = effectiveSupervisorPerformance.overallRating / 20;
       return Math.max(0, Math.min(5, Math.round(scaled * 100) / 100));
     }
     if (typeof supervisorScore === 'number') {
@@ -333,22 +402,22 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       return Math.max(0, Math.min(5, Math.round(scaled * 100) / 100));
     }
     return null;
-  }, [supervisorPerformance.overallRating, supervisorScore]);
+  }, [effectiveSupervisorPerformance.overallRating, supervisorScore]);
 
   const performance = useMemo(() => {
     return {
-      technical: supervisorPerformance.technical,
-      communication: supervisorPerformance.communication,
-      punctuality: supervisorPerformance.punctuality,
-      initiative: supervisorPerformance.initiative,
-      overallRating: supervisorPerformance.overallRating,
+      technical: effectiveSupervisorPerformance.technical,
+      communication: effectiveSupervisorPerformance.communication,
+      punctuality: effectiveSupervisorPerformance.punctuality,
+      initiative: effectiveSupervisorPerformance.initiative,
+      overallRating: effectiveSupervisorPerformance.overallRating,
     };
   }, [
-    supervisorPerformance.communication,
-    supervisorPerformance.initiative,
-    supervisorPerformance.overallRating,
-    supervisorPerformance.punctuality,
-    supervisorPerformance.technical,
+    effectiveSupervisorPerformance.communication,
+    effectiveSupervisorPerformance.initiative,
+    effectiveSupervisorPerformance.overallRating,
+    effectiveSupervisorPerformance.punctuality,
+    effectiveSupervisorPerformance.technical,
   ]);
 
   const summaryMessage = useMemo(() => {
@@ -508,6 +577,29 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                   <span className="px-4 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-blue-100">{t.updated}</span>
                 </div>
               </div>
+
+              <div className="-mt-6 mb-10">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
+                  {lang === 'TH' ? 'แบบประเมินล่าสุดจาก Supervisor' : 'Latest Supervisor Evaluation'}
+                </div>
+                <div className="mt-2 text-sm font-black text-slate-900">
+                  {milestoneSupervisorMeta
+                    ? (() => {
+                        const track = String(milestoneSupervisorMeta.id).startsWith('month-') ? 'MONTH' : 'WEEK';
+                        const status = String(milestoneSupervisorMeta.status ?? '').toLowerCase();
+                        const statusLabel = status === 'reviewed' ? (lang === 'TH' ? 'REVIEWED' : 'REVIEWED') : status === 'submitted' ? (lang === 'TH' ? 'SUBMITTED' : 'SUBMITTED') : (lang === 'TH' ? 'UNKNOWN' : 'UNKNOWN');
+                        return (
+                          <>
+                            {milestoneSupervisorMeta.id}  •  {track}  •  {statusLabel}
+                            {milestoneSupervisorMeta.submissionDate ? `  •  ${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${milestoneSupervisorMeta.submissionDate}` : ''}
+                            {milestoneSupervisorMeta.reviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${milestoneSupervisorMeta.reviewedDate}` : ''}
+                          </>
+                        );
+                      })()
+                    : (lang === 'TH' ? 'ยังไม่มีแบบประเมินจาก Supervisor' : 'No supervisor evaluations yet')}
+                </div>
+              </div>
+
               <div className="flex-1 flex items-center">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 w-full">
                   <PerformanceBar label={t.technical} score={performance.technical} color="blue" />
@@ -525,14 +617,14 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
               <h4 className="text-xl font-black mb-10 tracking-tight relative z-10">{t.summary}</h4>
               <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
                 <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
-                  <span className="text-6xl font-black tracking-tighter leading-none">{supervisorPerformance.overallRating}</span>
+                  <span className="text-6xl font-black tracking-tighter leading-none">{effectiveSupervisorPerformance.overallRating}</span>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">
                     {lang === 'TH' ? 'คะแนนเฉลี่ย' : 'AVG SCORE'}
                   </span>
                 </div>
                 <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
-                  {(supervisorSummary || selfSummary)
-                    ? `\"${supervisorSummary || selfSummary}\"`
+                  {(effectiveSupervisorSummary || selfSummary)
+                    ? `\"${effectiveSupervisorSummary || selfSummary}\"`
                     : `\"${lang === 'TH' ? 'ยังไม่มีข้อความสรุปจาก Supervisor' : 'No supervisor summary yet'}\"`}
                 </p>
               </div>

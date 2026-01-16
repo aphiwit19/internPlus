@@ -109,8 +109,13 @@ type FeedbackMilestoneDoc = {
   attachments?: Array<{ fileName: string; storagePath: string }>;
   supervisorScore?: number;
   supervisorComments?: string;
+  supervisorPerformance?: Partial<PerformanceMetrics>;
+  supervisorSummary?: string;
+  supervisorReviewedAt?: any;
   programRating?: number;
   submissionDate?: string;
+  selfPerformance?: Partial<PerformanceMetrics>;
+  selfSummary?: string;
 };
 
  const DEFAULT_PERFORMANCE: PerformanceMetrics = {
@@ -157,7 +162,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>(() => (currentTab === 'manage-interns' ? 'assets' : 'overview'));
   const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<'LOG' | 'CALENDAR'>('LOG');
 
@@ -172,6 +177,10 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const [editPerformance, setEditPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
   const [editSummary, setEditSummary] = useState('');
+  const [editOverallComments, setEditOverallComments] = useState('');
+  const [editWorkPerformanceComments, setEditWorkPerformanceComments] = useState('');
+  const [editMentorshipQualityRating, setEditMentorshipQualityRating] = useState<number>(0);
+  const [editSupervisorProgramSatisfaction, setEditSupervisorProgramSatisfaction] = useState<number>(0);
   const [isSavingEvaluation, setIsSavingEvaluation] = useState(false);
   const [saveEvaluationError, setSaveEvaluationError] = useState<string | null>(null);
   
@@ -191,6 +200,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     { count: number; next: PendingAssignmentNext | null }
   >>({});
 
+  const feedbackInternIdsKey = useMemo(() => interns.map((i) => i.id).filter(Boolean).join('|'), [interns]);
+
   const selectedIntern = interns.find(i => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find(f => f.id === activeFeedbackId);
 
@@ -202,7 +213,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       const parsed = JSON.parse(raw) as { internId?: string; activeTab?: SupervisorDeepDiveTab };
       sessionStorage.removeItem(SUP_MANAGE_INTERNS_NAV_KEY);
       if (parsed?.internId) setSelectedInternId(parsed.internId);
-      if (parsed?.activeTab) setActiveTab(parsed.activeTab);
+      if (parsed?.activeTab) setActiveTab(parsed.activeTab === 'overview' ? 'assets' : parsed.activeTab);
     } catch {
       // ignore
     }
@@ -613,10 +624,41 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   useEffect(() => {
     if (!selectedIntern) return;
-    setEditPerformance(selectedIntern.supervisorPerformance);
-    setEditSummary(selectedIntern.supervisorSummary ?? '');
+    const active = selectedIntern.feedback?.find((f) => f.id === activeFeedbackId) ?? null;
+    const rawSupPerf = (active as any)?.supervisorPerformance ?? null;
+    const normalized: PerformanceMetrics = rawSupPerf
+      ? {
+          technical: typeof rawSupPerf?.technical === 'number' ? rawSupPerf.technical : DEFAULT_PERFORMANCE.technical,
+          communication: typeof rawSupPerf?.communication === 'number' ? rawSupPerf.communication : DEFAULT_PERFORMANCE.communication,
+          punctuality: typeof rawSupPerf?.punctuality === 'number' ? rawSupPerf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+          initiative: typeof rawSupPerf?.initiative === 'number' ? rawSupPerf.initiative : DEFAULT_PERFORMANCE.initiative,
+          overallRating: typeof rawSupPerf?.overallRating === 'number' ? rawSupPerf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+        }
+      : DEFAULT_PERFORMANCE;
+    setEditPerformance(normalized);
+    const overall =
+      typeof (active as any)?.supervisorOverallComments === 'string'
+        ? (active as any).supervisorOverallComments
+        : typeof (active as any)?.supervisorSummary === 'string'
+          ? (active as any).supervisorSummary
+          : '';
+    const workPerf = typeof (active as any)?.supervisorWorkPerformanceComments === 'string' ? (active as any).supervisorWorkPerformanceComments : '';
+
+    const mentorshipRatingRaw = (active as any)?.supervisorMentorshipQualityRating;
+    const mentorshipRating = typeof mentorshipRatingRaw === 'number' ? mentorshipRatingRaw : 0;
+
+    const supProgRaw = (active as any)?.supervisorProgramSatisfactionRating;
+    const supProg = typeof supProgRaw === 'number' ? supProgRaw : 0;
+
+    setEditOverallComments(overall);
+    setEditWorkPerformanceComments(workPerf);
+    setEditMentorshipQualityRating(mentorshipRating);
+    setEditSupervisorProgramSatisfaction(supProg);
+
+    // Legacy field still used in some UI; keep it in sync with Overall comments.
+    setEditSummary(overall);
     setSaveEvaluationError(null);
-  }, [selectedInternId, selectedIntern]);
+  }, [activeFeedbackId, selectedInternId, selectedIntern]);
 
   const clampScore = (v: number) => {
     if (Number.isNaN(v)) return 0;
@@ -630,34 +672,30 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const handleSaveEvaluation = async () => {
     if (!selectedInternId) return;
+    if (!activeFeedbackId) return;
     setIsSavingEvaluation(true);
     setSaveEvaluationError(null);
     try {
       const nextPerf: PerformanceMetrics = {
-        technical: clampScore(editPerformance.technical),
-        communication: clampScore(editPerformance.communication),
-        punctuality: clampScore(editPerformance.punctuality),
-        initiative: clampScore(editPerformance.initiative),
+        ...editPerformance,
         overallRating: computeOverall(editPerformance),
       };
 
-      await updateDoc(doc(firestoreDb, 'users', selectedInternId), {
+      // Store evaluation per milestone (week/month) and mark as reviewed
+      await updateDoc(doc(firestoreDb, 'users', selectedInternId, 'feedbackMilestones', activeFeedbackId), {
+        status: 'reviewed',
         supervisorPerformance: nextPerf,
-        supervisorSummary: editSummary,
-        supervisorEvaluatedAt: serverTimestamp(),
+        supervisorOverallComments: editOverallComments,
+        supervisorWorkPerformanceComments: editWorkPerformanceComments,
+        supervisorMentorshipQualityRating: Math.max(0, Math.min(5, Number(editMentorshipQualityRating) || 0)),
+        supervisorProgramSatisfactionRating: Math.max(0, Math.min(5, Number(editSupervisorProgramSatisfaction) || 0)),
+        // Backward compat
+        supervisorSummary: editOverallComments,
+        supervisorReviewedAt: serverTimestamp(),
+        // Keep backwards-compat fields for existing intern UI
+        supervisorScore: nextPerf.overallRating,
+        supervisorComments: editOverallComments,
       });
-
-      setInterns((prev) =>
-        prev.map((intern) =>
-          intern.id === selectedInternId
-            ? {
-                ...intern,
-                supervisorPerformance: nextPerf,
-                supervisorSummary: editSummary,
-              }
-            : intern,
-        ),
-      );
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       setSaveEvaluationError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to save evaluation'}`);
@@ -697,23 +735,17 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     const unsubAssigned = onSnapshot(assignedQ, (snap) => {
       setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
     });
-
     return () => {
       unsubAll();
       unsubAssigned();
     };
   }, [mapUserToInternDetail, user.id]);
 
-  const feedbackInternIdsKey = useMemo(() => interns.map((i) => i.id).join('|'), [interns]);
-
   useEffect(() => {
-    const unsubs: Array<() => void> = [];
-    const internIds = feedbackInternIdsKey ? feedbackInternIdsKey.split('|').filter(Boolean) : [];
+    const internIds = interns.map((i) => i.id).filter(Boolean);
+    if (internIds.length === 0) return;
 
-    if (internIds.length === 0) {
-      setHandoffPendingByIntern({});
-      return undefined;
-    }
+    const unsubs: Array<() => void> = [];
 
     for (const internId of internIds) {
       const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
@@ -814,7 +846,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [feedbackInternIdsKey]);
+  }, [interns]);
 
   useEffect(() => {
     const leaveRef = collection(firestoreDb, 'leaveRequests');
@@ -898,22 +930,97 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     for (const internId of internIds) {
       const colRef = collection(firestoreDb, 'users', internId, 'feedbackMilestones');
       const unsub = onSnapshot(colRef, (snap) => {
-        const items: FeedbackItem[] = snap.docs.map((d) => {
-          const data = d.data() as FeedbackMilestoneDoc;
-          const label = d.id;
+        const savedById = new Map<string, FeedbackMilestoneDoc>();
+        snap.docs.forEach((d) => {
+          savedById.set(d.id, d.data() as FeedbackMilestoneDoc);
+        });
+
+        let maxMonth = 1;
+        for (const id of savedById.keys()) {
+          const m = /^month-(\d+)$/.exec(id);
+          if (!m) continue;
+          const n = Number(m[1]);
+          if (Number.isFinite(n) && n > maxMonth) maxMonth = n;
+        }
+        const monthCount = Math.max(1, maxMonth + 1);
+
+        const base: FeedbackItem[] = [];
+        for (let i = 1; i <= 4; i += 1) {
+          const id = `week-${i}`;
+          base.push({ id, label: `Week ${i}`, period: `Week ${i}`, status: 'pending', programRating: 0 });
+        }
+        for (let i = 1; i <= monthCount; i += 1) {
+          const id = `month-${i}`;
+          base.push({ id, label: `Month ${i}`, period: `Month ${i}`, status: 'pending', programRating: 0 });
+        }
+
+        const items: FeedbackItem[] = base.map((b) => {
+          const data = savedById.get(b.id) ?? null;
+          if (!data) return b;
+
+          const rawSelf = (data as any)?.selfPerformance ?? null;
+          const normalizedSelfPerformance: PerformanceMetrics | undefined = rawSelf
+            ? {
+                technical: typeof rawSelf?.technical === 'number' ? rawSelf.technical : DEFAULT_PERFORMANCE.technical,
+                communication: typeof rawSelf?.communication === 'number' ? rawSelf.communication : DEFAULT_PERFORMANCE.communication,
+                punctuality: typeof rawSelf?.punctuality === 'number' ? rawSelf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+                initiative: typeof rawSelf?.initiative === 'number' ? rawSelf.initiative : DEFAULT_PERFORMANCE.initiative,
+                overallRating: typeof rawSelf?.overallRating === 'number' ? rawSelf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+              }
+            : undefined;
+
+          const rawSup = (data as any)?.supervisorPerformance ?? null;
+          const normalizedSupPerformance: PerformanceMetrics | undefined = rawSup
+            ? {
+                technical: typeof rawSup?.technical === 'number' ? rawSup.technical : DEFAULT_PERFORMANCE.technical,
+                communication: typeof rawSup?.communication === 'number' ? rawSup.communication : DEFAULT_PERFORMANCE.communication,
+                punctuality: typeof rawSup?.punctuality === 'number' ? rawSup.punctuality : DEFAULT_PERFORMANCE.punctuality,
+                initiative: typeof rawSup?.initiative === 'number' ? rawSup.initiative : DEFAULT_PERFORMANCE.initiative,
+                overallRating: typeof rawSup?.overallRating === 'number' ? rawSup.overallRating : DEFAULT_PERFORMANCE.overallRating,
+              }
+            : undefined;
+
+          const supervisorReviewedAt = (data as any)?.supervisorReviewedAt;
+          const supervisorReviewedDate =
+            typeof supervisorReviewedAt?.toDate === 'function'
+              ? String(supervisorReviewedAt.toDate().toISOString().split('T')[0])
+              : undefined;
+
           return {
-            id: d.id,
-            label,
-            period: label,
-            status: data.status ?? 'pending',
-            internReflection: data.internReflection,
-            internProgramFeedback: data.internProgramFeedback,
-            videoStoragePath: data.videoStoragePath,
-            videoFileName: data.videoFileName,
+            ...b,
+            status: typeof data.status === 'string' ? data.status : b.status,
+            internReflection: typeof data.internReflection === 'string' ? data.internReflection : b.internReflection,
+            internProgramFeedback: typeof data.internProgramFeedback === 'string' ? data.internProgramFeedback : b.internProgramFeedback,
+            videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : b.videoStoragePath,
+            videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : b.videoFileName,
             attachments: Array.isArray(data.attachments) ? data.attachments : [],
-            supervisorScore: data.supervisorScore,
-            supervisorComments: data.supervisorComments,
-            programRating: typeof data.programRating === 'number' ? data.programRating : 0,
+            supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : b.supervisorScore,
+            supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : b.supervisorComments,
+            supervisorPerformance: normalizedSupPerformance,
+            supervisorOverallComments:
+              typeof (data as any)?.supervisorOverallComments === 'string'
+                ? (data as any).supervisorOverallComments
+                : typeof (data as any)?.supervisorSummary === 'string'
+                  ? (data as any).supervisorSummary
+                  : (b as any).supervisorOverallComments,
+            supervisorWorkPerformanceComments:
+              typeof (data as any)?.supervisorWorkPerformanceComments === 'string'
+                ? (data as any).supervisorWorkPerformanceComments
+                : (b as any).supervisorWorkPerformanceComments,
+            supervisorMentorshipQualityRating:
+              typeof (data as any)?.supervisorMentorshipQualityRating === 'number'
+                ? (data as any).supervisorMentorshipQualityRating
+                : (b as any).supervisorMentorshipQualityRating,
+            supervisorProgramSatisfactionRating:
+              typeof (data as any)?.supervisorProgramSatisfactionRating === 'number'
+                ? (data as any).supervisorProgramSatisfactionRating
+                : (b as any).supervisorProgramSatisfactionRating,
+            supervisorSummary: typeof (data as any)?.supervisorSummary === 'string' ? (data as any).supervisorSummary : b.supervisorSummary,
+            supervisorReviewedDate,
+            programRating: typeof data.programRating === 'number' ? data.programRating : b.programRating,
+            selfPerformance: normalizedSelfPerformance,
+            selfSummary: typeof (data as any).selfSummary === 'string' ? (data as any).selfSummary : b.selfSummary,
+            submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : b.submissionDate,
           };
         });
 
@@ -936,7 +1043,14 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     const exists = selectedIntern.feedback.some((f) => f.id === activeFeedbackId);
     if (exists && activeFeedbackId !== 'week-1') return;
 
-    const preferred = selectedIntern.feedback.find(feedbackHasData) ?? selectedIntern.feedback[0];
+    const list = selectedIntern.feedback;
+
+    const submittedCandidates = list
+      .filter((f) => String((f as any)?.status ?? '') === 'submitted')
+      .map((f) => ({ f, ts: typeof (f as any)?.submissionDate === 'string' ? String((f as any).submissionDate) : '' }))
+      .sort((a, b) => String(b.ts).localeCompare(String(a.ts)) || String(b.f.id).localeCompare(String(a.f.id)));
+
+    const preferred = submittedCandidates[0]?.f ?? list.find(feedbackHasData) ?? list[0];
     if (preferred && preferred.id !== activeFeedbackId) setActiveFeedbackId(preferred.id);
   }, [activeTab, activeFeedbackId, selectedInternId, selectedIntern?.feedback]);
 
@@ -959,6 +1073,42 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       i.position.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [interns, searchQuery, user]);
+
+  const manageInternListItems = useMemo(() => {
+    return filteredInterns.map((intern) => {
+      const list = Array.isArray(intern.feedback) ? intern.feedback : [];
+
+      const candidates = list
+        .filter((x) => (typeof x?.selfPerformance?.overallRating === 'number' && x.selfPerformance.overallRating > 0) || x?.selfSummary)
+        .map((x) => {
+          const ts = typeof x.submissionDate === 'string' ? x.submissionDate : '';
+          return { x, ts };
+        });
+
+      candidates.sort((a, b) => String(b.ts).localeCompare(String(a.ts)) || String(b.x.id).localeCompare(String(a.x.id)));
+      const latest = candidates[0]?.x ?? null;
+
+      return {
+        id: intern.id,
+        name: intern.name,
+        avatar: intern.avatar,
+        position: intern.position,
+        progress: intern.progress,
+        attendance: intern.attendance,
+        status: intern.status,
+        performance: { overallRating: intern.supervisorPerformance?.overallRating ?? 0 },
+        selfEvaluation:
+          latest && typeof latest.selfPerformance?.overallRating === 'number'
+            ? {
+                overallRating: latest.selfPerformance.overallRating,
+                period: latest.label,
+                summary: latest.selfSummary,
+                submissionDate: latest.submissionDate,
+              }
+            : undefined,
+      };
+    });
+  }, [filteredInterns]);
 
   const handleUpdateTaskStatus = (taskId: string, status: 'DONE' | 'REVISION') => {
     if (!selectedInternId) return;
@@ -992,7 +1142,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     setIsAssigningIntern(false);
     setAssignSearch('');
     setSelectedInternId(internId);
-    setActiveTab('overview');
+    setActiveTab(currentTab === 'manage-interns' ? 'assets' : 'overview');
   };
 
   const renderDeepDive = () => {
@@ -1009,9 +1159,10 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showAssignmentsTab
+        showDashboardTab={currentTab !== 'manage-interns'}
         onBack={() => {
           setSelectedInternId(null);
-          setActiveTab('overview');
+          setActiveTab(currentTab === 'manage-interns' ? 'assets' : 'overview');
         }}
       >
             {activeTab === 'overview' && (
@@ -1333,6 +1484,29 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 onSelectFeedback={setActiveFeedbackId}
                 activeFeedback={activeFeedback}
                 onOpenStoragePath={handleOpenStoragePath}
+                editPerformance={editPerformance}
+                onEditPerformanceChange={setEditPerformance}
+                editOverallComments={editOverallComments}
+                onEditOverallCommentsChange={setEditOverallComments}
+                editWorkPerformanceComments={editWorkPerformanceComments}
+                onEditWorkPerformanceCommentsChange={setEditWorkPerformanceComments}
+                editMentorshipQualityRating={editMentorshipQualityRating}
+                onEditMentorshipQualityRatingChange={setEditMentorshipQualityRating}
+                editSupervisorProgramSatisfaction={editSupervisorProgramSatisfaction}
+                onEditSupervisorProgramSatisfactionChange={setEditSupervisorProgramSatisfaction}
+                onResetPerformance={() => {
+                  if (!selectedIntern) return;
+                  setEditPerformance(selectedIntern.supervisorPerformance);
+                  setEditOverallComments(selectedIntern.supervisorSummary ?? '');
+                  setEditWorkPerformanceComments('');
+                  setEditMentorshipQualityRating(0);
+                  setEditSupervisorProgramSatisfaction(0);
+                  setEditSummary(selectedIntern.supervisorSummary ?? '');
+                  setSaveEvaluationError(null);
+                }}
+                onSavePerformance={() => void handleSaveEvaluation()}
+                isSavingPerformance={isSavingEvaluation}
+                savePerformanceError={saveEvaluationError}
               />
             )}
 
@@ -1492,7 +1666,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     </div>
                   </div>
                   <InternListSection
-                    interns={filteredInterns}
+                    interns={manageInternListItems}
                     searchQuery={searchQuery}
                     statusFilter={statusFilter}
                     onSearchQueryChange={setSearchQuery}

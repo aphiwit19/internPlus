@@ -17,7 +17,7 @@ import {
   StickyNote
 } from 'lucide-react';
 import { Language, PerformanceMetrics, UserProfile } from '@/types';
-import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -29,6 +29,29 @@ const DEFAULT_PERFORMANCE: PerformanceMetrics = {
   punctuality: 0,
   initiative: 0,
   overallRating: 0,
+};
+
+const MiniBar = ({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) => {
+  const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{label}</div>
+        <div className="text-xs font-black text-white">{safeValue}/100</div>
+      </div>
+      <div className="h-2.5 w-full bg-white/10 rounded-full overflow-hidden border border-white/10 p-0.5">
+        <div className={`h-full ${color} rounded-full transition-all duration-700`} style={{ width: `${safeValue}%` }} />
+      </div>
+    </div>
+  );
 };
 
 const clampScore = (v: number) => {
@@ -56,6 +79,13 @@ interface FeedbackMilestone {
   attachments?: Array<{ fileName: string; storagePath: string }>;
   supervisorScore?: number;
   supervisorComments?: string;
+  supervisorPerformance?: Partial<PerformanceMetrics>;
+  supervisorSummary?: string;
+  supervisorOverallComments?: string;
+  supervisorWorkPerformanceComments?: string;
+  supervisorReviewedDate?: string;
+  supervisorMentorshipQualityRating?: number;
+  supervisorProgramSatisfactionRating?: number;
   programRating?: number;
   submissionDate?: string;
 }
@@ -149,6 +179,49 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const [activeTrack, setActiveTrack] = useState<'week' | 'month'>('week');
   const [activeId, setActiveId] = useState('week-1');
   const [milestones, setMilestones] = useState<FeedbackMilestone[]>(buildWeekMilestones());
+  const [viewMode, setViewMode] = useState<'FORM' | 'HISTORY'>('FORM');
+  const [historyTrack, setHistoryTrack] = useState<'all' | 'week' | 'month'>('all');
+
+  const [evaluationLabels, setEvaluationLabels] = useState<{
+    technical: string;
+    communication: string;
+    punctuality: string;
+    initiative: string;
+    overallComments: string;
+    workPerformance: string;
+  }>(() => ({
+    technical: lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY',
+    communication: lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION',
+    punctuality: lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY',
+    initiative: lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE',
+    overallComments: lang === 'TH' ? 'ภาพรวมและความคิดเห็น' : 'OVERALL EVALUATION & COMMENTS',
+    workPerformance: lang === 'TH' ? 'ผลงานการทำงาน' : 'WORK PERFORMANCE',
+  }));
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as any;
+        const next = data?.evaluationLabels?.[lang];
+        if (!next) return;
+        setEvaluationLabels((prev) => ({
+          technical: typeof next?.technical === 'string' ? next.technical : prev.technical,
+          communication: typeof next?.communication === 'string' ? next.communication : prev.communication,
+          punctuality: typeof next?.punctuality === 'string' ? next.punctuality : prev.punctuality,
+          initiative: typeof next?.initiative === 'string' ? next.initiative : prev.initiative,
+          overallComments: typeof next?.overallComments === 'string' ? next.overallComments : prev.overallComments,
+          workPerformance: typeof next?.workPerformance === 'string' ? next.workPerformance : prev.workPerformance,
+        }));
+      },
+      () => {
+        // ignore
+      },
+    );
+  }, [lang]);
+
   const [tempProgramRating, setTempProgramRating] = useState(0);
   const [tempReflection, setTempReflection] = useState('');
   const [tempProgramFeedback, setTempProgramFeedback] = useState('');
@@ -163,6 +236,44 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
 
   const active = milestones.find((m) => m.id === activeId) || milestones[0];
+  const activeSupervisorScore =
+    typeof (active?.supervisorPerformance as any)?.overallRating === 'number'
+      ? (active?.supervisorPerformance as any).overallRating
+      : typeof active?.supervisorScore === 'number'
+        ? active.supervisorScore
+        : 0;
+
+  const historyItems = useMemo(() => {
+    const list = milestones
+      .filter((m) => {
+        const hasSelf = m.status === 'submitted' || m.status === 'reviewed' || !!m.submissionDate || !!m.selfPerformance;
+        const hasSup = m.status === 'reviewed' || !!m.supervisorReviewedDate || typeof m.supervisorScore === 'number' || !!m.supervisorPerformance;
+        return hasSelf || hasSup;
+      })
+      .map((m) => {
+        const submittedDate = typeof m.submissionDate === 'string' ? m.submissionDate : '';
+        const reviewedDate = typeof m.supervisorReviewedDate === 'string' ? m.supervisorReviewedDate : '';
+
+        const selfScore = typeof (m.selfPerformance as any)?.overallRating === 'number' ? (m.selfPerformance as any).overallRating : undefined;
+        const supScore = typeof (m.supervisorPerformance as any)?.overallRating === 'number' ? (m.supervisorPerformance as any).overallRating : m.supervisorScore;
+
+        return { m, submittedDate, reviewedDate, selfScore, supScore };
+      });
+
+    list.sort(
+      (a, b) =>
+        String(b.reviewedDate).localeCompare(String(a.reviewedDate)) ||
+        String(b.submittedDate).localeCompare(String(a.submittedDate)) ||
+        String(b.m.id).localeCompare(String(a.m.id)),
+    );
+    return list;
+  }, [milestones]);
+
+  const handleSelectFromHistory = (id: string) => {
+    setActiveTrack(id.startsWith('month-') ? 'month' : 'week');
+    setActiveId(id);
+    setViewMode('FORM');
+  };
 
   const effectiveUser = authedUser ?? user ?? null;
 
@@ -222,6 +333,30 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
           programRating: typeof data.programRating === 'number' ? data.programRating : x.programRating,
           supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : x.supervisorScore,
           supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : x.supervisorComments,
+          supervisorPerformance: (data as any)?.supervisorPerformance ?? x.supervisorPerformance,
+          supervisorSummary: typeof (data as any)?.supervisorSummary === 'string' ? (data as any).supervisorSummary : x.supervisorSummary,
+          supervisorOverallComments:
+            typeof (data as any)?.supervisorOverallComments === 'string'
+              ? (data as any).supervisorOverallComments
+              : typeof (data as any)?.supervisorSummary === 'string'
+                ? (data as any).supervisorSummary
+                : x.supervisorOverallComments,
+          supervisorWorkPerformanceComments:
+            typeof (data as any)?.supervisorWorkPerformanceComments === 'string'
+              ? (data as any).supervisorWorkPerformanceComments
+              : x.supervisorWorkPerformanceComments,
+          supervisorReviewedDate:
+            typeof (data as any)?.supervisorReviewedAt?.toDate === 'function'
+              ? String((data as any).supervisorReviewedAt.toDate().toISOString().split('T')[0])
+              : x.supervisorReviewedDate,
+          supervisorMentorshipQualityRating:
+            typeof (data as any)?.supervisorMentorshipQualityRating === 'number'
+              ? (data as any).supervisorMentorshipQualityRating
+              : x.supervisorMentorshipQualityRating,
+          supervisorProgramSatisfactionRating:
+            typeof (data as any)?.supervisorProgramSatisfactionRating === 'number'
+              ? (data as any).supervisorProgramSatisfactionRating
+              : x.supervisorProgramSatisfactionRating,
           submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
           videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
           videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
@@ -282,6 +417,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   useEffect(() => {
     const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
     if (list.length === 0) return;
+
+    // Allow user to freely select any week/month. Only auto-pick when current activeId
+    // is not part of the current track (e.g., switching week <-> month).
+    if (activeId.startsWith(`${activeTrack}-`) && list.some((m) => m.id === activeId)) return;
+
     const next = list.find((m) => !isFinalized(m.status)) ?? list[list.length - 1];
     if (next && next.id !== activeId) setActiveId(next.id);
   }, [activeId, activeTrack, milestones]);
@@ -380,7 +520,30 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
               <p className="text-slate-500 text-base font-medium">{t.subtitle}</p>
             </div>
             <div className="flex flex-col gap-3 items-end">
+              <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
+                <button
+                  onClick={() => setViewMode('FORM')}
+                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
+                    viewMode === 'FORM' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  Feedback & Self Evaluation
+                </button>
+                <button
+                  onClick={() => setViewMode('HISTORY')}
+                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
+                    viewMode === 'HISTORY' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  History
+                </button>
+              </div>
+
+              {viewMode === 'FORM' && (
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pr-2 text-right">{t.milestone_label}</span>
+              )}
+
+              {viewMode === 'FORM' && (
               <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
                 <button
                   onClick={() => setActiveTrack('week')}
@@ -399,6 +562,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                   {t.month}
                 </button>
               </div>
+              )}
+
+              {viewMode === 'FORM' && (
               <div className="flex bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-x-auto scrollbar-hide max-w-full ml-auto">
                 {milestones
                   .filter((m) => m.id.startsWith(`${activeTrack}-`))
@@ -425,8 +591,97 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     </button>
                   ))}
               </div>
+              )}
             </div>
           </div>
+
+          {viewMode === 'HISTORY' && (
+            <div className="bg-white rounded-[3.5rem] p-10 border border-slate-100 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{lang === 'TH' ? 'ประวัติการประเมิน' : 'Evaluation History'}</div>
+                  <div className="mt-2 text-3xl font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ผลประเมินย้อนหลัง (Week/Month)' : 'Results by Week/Month'}</div>
+                  <div className="mt-3 text-sm font-bold text-slate-500">
+                    {lang === 'TH'
+                      ? 'กดที่รายการเพื่อไปยังสัปดาห์/เดือนนั้น'
+                      : 'Click an item to jump to that week/month'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex bg-slate-50 p-1.5 rounded-[1.75rem] border border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTrack('week')}
+                      className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                        historyTrack === 'week' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
+                      }`}
+                    >
+                      {lang === 'TH' ? 'สัปดาห์' : 'WEEK'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTrack('month')}
+                      className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                        historyTrack === 'month' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
+                      }`}
+                    >
+                      {lang === 'TH' ? 'เดือน' : 'MONTH'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTrack('all')}
+                      className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                        historyTrack === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
+                      }`}
+                    >
+                      {lang === 'TH' ? 'ทั้งหมด' : 'ALL'}
+                    </button>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{historyItems.length}</div>
+                </div>
+              </div>
+
+              {historyItems.length === 0 ? (
+                <div className="py-16 text-center">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{lang === 'TH' ? 'ยังไม่มีการประเมิน' : 'NO EVALUATIONS YET'}</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historyItems
+                    .filter(({ m }) => {
+                      if (historyTrack === 'all') return true;
+                      return m.id.startsWith(`${historyTrack}-`);
+                    })
+                    .map(({ m, submittedDate, reviewedDate }) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleSelectFromHistory(m.id)}
+                      className="w-full text-left p-6 rounded-[2rem] border bg-slate-50/60 border-slate-100 hover:bg-white hover:border-blue-200 hover:shadow-sm transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-6">
+                        <div className="min-w-0">
+                          <div className="text-lg font-black text-slate-900 truncate">{m.label[lang]}</div>
+                          <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {submittedDate ? `${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${submittedDate}` : (lang === 'TH' ? 'ยังไม่ส่ง' : 'Not submitted')}
+                            {reviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${reviewedDate}` : ''}
+                          </div>
+                          <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {lang === 'TH' ? 'Program Satisfaction (Supervisor)' : 'Program Satisfaction (Supervisor)'}
+                            {`  •  ${Math.max(0, Math.min(5, Number(m.supervisorProgramSatisfactionRating) || 0))}/5`}
+                          </div>
+                        </div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex-shrink-0">
+                          {m.id.startsWith('month-') ? (lang === 'TH' ? 'MONTH' : 'MONTH') : (lang === 'TH' ? 'WEEK' : 'WEEK')}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {viewMode === 'HISTORY' ? null : (
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
             <div className="lg:col-span-8 space-y-10">
@@ -594,14 +849,66 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     </div>
                   </div>
 
+                  <div className="mb-8">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.milestone_label}</div>
+                    <div className="mt-2 text-sm font-black text-white">
+                      {active.label[lang]}
+                      {active.submissionDate ? `  •  ${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${active.submissionDate}` : ''}
+                      {active.supervisorReviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${active.supervisorReviewedDate}` : ''}
+                    </div>
+                  </div>
+
                   {active.status === 'reviewed' ? (
                     <div className="space-y-10 animate-in fade-in duration-700">
                       <div className="flex items-end gap-3">
-                        <span className="text-6xl font-black tracking-tighter">{active.supervisorScore}</span>
+                        <span className="text-6xl font-black tracking-tighter">{activeSupervisorScore}</span>
                         <span className="text-blue-400 font-black text-[9px] uppercase tracking-[0.2em] mb-1.5">{t.points}</span>
                       </div>
-                      <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/10 italic text-indigo-100 text-base leading-relaxed font-medium">
-                        "{active.supervisorComments}"
+
+                      <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/10">
+                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">
+                          {lang === 'TH' ? 'Program Satisfaction (Supervisor)' : 'PROGRAM SATISFACTION (SUPERVISOR)'}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <div
+                              key={s}
+                              className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${
+                                (active.supervisorProgramSatisfactionRating ?? 0) >= s
+                                  ? 'bg-amber-500 text-white border-amber-400'
+                                  : 'bg-white/5 text-white/30 border-white/10'
+                              }`}
+                            >
+                              <Star size={18} fill={(active.supervisorProgramSatisfactionRating ?? 0) >= s ? 'currentColor' : 'none'} />
+                            </div>
+                          ))}
+                          <div className="ml-1 text-[10px] font-black text-white/60 uppercase tracking-widest">
+                            {Math.max(0, Math.min(5, Number(active.supervisorProgramSatisfactionRating) || 0))}/5
+                          </div>
+                        </div>
+                      </div>
+
+                      {active.supervisorPerformance ? (
+                        <div className="space-y-6">
+                          <MiniBar label={evaluationLabels.technical} value={(active.supervisorPerformance as any)?.technical} color="bg-blue-500" />
+                          <MiniBar label={evaluationLabels.communication} value={(active.supervisorPerformance as any)?.communication} color="bg-indigo-500" />
+                          <MiniBar label={evaluationLabels.punctuality} value={(active.supervisorPerformance as any)?.punctuality} color="bg-emerald-500" />
+                          <MiniBar label={evaluationLabels.initiative} value={(active.supervisorPerformance as any)?.initiative} color="bg-rose-500" />
+                        </div>
+                      ) : null}
+
+                      <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/10">
+                        <div className="text-[10px] font-black text-white/60 uppercase tracking-[0.3em] mb-4">{evaluationLabels.overallComments}</div>
+                        <div className="text-indigo-100 text-base leading-relaxed font-medium whitespace-pre-wrap break-words">
+                          {active.supervisorOverallComments || active.supervisorSummary || active.supervisorComments || '-'}
+                        </div>
+                      </div>
+
+                      <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/10">
+                        <div className="text-[10px] font-black text-white/60 uppercase tracking-[0.3em] mb-4">{evaluationLabels.workPerformance}</div>
+                        <div className="text-indigo-100 text-base leading-relaxed font-medium whitespace-pre-wrap break-words">
+                          {active.supervisorWorkPerformanceComments || '-'}
+                        </div>
                       </div>
                     </div>
                   ) : active.status === 'submitted' ? (
@@ -639,22 +946,22 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     <div className="space-y-7">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
                         <ScoreInput
-                          label={lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY'}
+                          label={evaluationLabels.technical}
                           value={tempSelfPerformance.technical}
                           onChange={(v) => setTempSelfPerformance((p) => ({ ...p, technical: v }))}
                         />
                         <ScoreInput
-                          label={lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION'}
+                          label={evaluationLabels.communication}
                           value={tempSelfPerformance.communication}
                           onChange={(v) => setTempSelfPerformance((p) => ({ ...p, communication: v }))}
                         />
                         <ScoreInput
-                          label={lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY'}
+                          label={evaluationLabels.punctuality}
                           value={tempSelfPerformance.punctuality}
                           onChange={(v) => setTempSelfPerformance((p) => ({ ...p, punctuality: v }))}
                         />
                         <ScoreInput
-                          label={lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE'}
+                          label={evaluationLabels.initiative}
                           value={tempSelfPerformance.initiative}
                           onChange={(v) => setTempSelfPerformance((p) => ({ ...p, initiative: v }))}
                         />
@@ -704,6 +1011,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
               </div>
             </div>
           </div>
+
+          )}
         </div>
       </div>
     </div>

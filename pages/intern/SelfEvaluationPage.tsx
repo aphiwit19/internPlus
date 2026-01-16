@@ -67,6 +67,34 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [evaluationLabels, setEvaluationLabels] = useState<{
+    technical: string;
+    communication: string;
+    punctuality: string;
+    initiative: string;
+  }>(() => ({
+    technical: lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY',
+    communication: lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION',
+    punctuality: lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY',
+    initiative: lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE',
+  }));
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+      const raw = snap.data() as any;
+      const next = raw?.evaluationLabels?.[lang];
+      if (!next) return;
+      setEvaluationLabels((prev) => ({
+        technical: typeof next?.technical === 'string' ? next.technical : prev.technical,
+        communication: typeof next?.communication === 'string' ? next.communication : prev.communication,
+        punctuality: typeof next?.punctuality === 'string' ? next.punctuality : prev.punctuality,
+        initiative: typeof next?.initiative === 'string' ? next.initiative : prev.initiative,
+      }));
+    });
+  }, [lang]);
+
   useEffect(() => {
     if (!user) return;
     const ref = doc(firestoreDb, 'users', user.id);
@@ -192,22 +220,22 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
 
               <div className="space-y-8">
                 <ScoreInput
-                  label={lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY'}
+                  label={evaluationLabels.technical}
                   value={editPerformance.technical}
                   onChange={(v) => setEditPerformance((p) => ({ ...p, technical: v }))}
                 />
                 <ScoreInput
-                  label={lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION'}
+                  label={evaluationLabels.communication}
                   value={editPerformance.communication}
                   onChange={(v) => setEditPerformance((p) => ({ ...p, communication: v }))}
                 />
                 <ScoreInput
-                  label={lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY'}
+                  label={evaluationLabels.punctuality}
                   value={editPerformance.punctuality}
                   onChange={(v) => setEditPerformance((p) => ({ ...p, punctuality: v }))}
                 />
                 <ScoreInput
-                  label={lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE'}
+                  label={evaluationLabels.initiative}
                   value={editPerformance.initiative}
                   onChange={(v) => setEditPerformance((p) => ({ ...p, initiative: v }))}
                 />

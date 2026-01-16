@@ -16,6 +16,7 @@ interface InternDeepDiveLayoutProps {
   onTabChange: (tab: SupervisorDeepDiveTab) => void;
   onBack: () => void;
   showAssignmentsTab?: boolean;
+  showDashboardTab?: boolean;
   children: React.ReactNode;
 }
 
@@ -47,6 +48,7 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
   onTabChange,
   onBack,
   showAssignmentsTab = false,
+  showDashboardTab = true,
   children,
 }) => {
   return (
@@ -76,7 +78,9 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
         </div>
 
         <div className="flex items-center gap-1 justify-end whitespace-nowrap flex-shrink-0">
-          <NavText active={activeTab === 'overview'} onClick={() => onTabChange('overview')} label="DASHBOARD" icon={<LayoutGrid size={14} />} />
+          {showDashboardTab && (
+            <NavText active={activeTab === 'overview'} onClick={() => onTabChange('overview')} label="DASHBOARD" icon={<LayoutGrid size={14} />} />
+          )}
           <NavText active={activeTab === 'assets'} onClick={() => onTabChange('assets')} label="ASSETS" icon={<FolderOpen size={14} />} />
             {showAssignmentsTab && (
               <NavText
@@ -87,7 +91,12 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
               />
             )}
           <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label="ATTENDANCE" icon={<Clock size={14} />} />
-          <NavText active={activeTab === 'feedback'} onClick={() => onTabChange('feedback')} label="FEEDBACK" icon={<MessageCircle size={14} />} />
+          <NavText
+            active={activeTab === 'feedback'}
+            onClick={() => onTabChange('feedback')}
+            label="FEEDBACK & Self Evaluation"
+            icon={<MessageCircle size={14} />}
+          />
           <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label="DOCUMENT" icon={<ShieldCheck size={14} />} />
         </div>
       </div>

@@ -75,6 +75,16 @@ type FeedbackMilestoneDoc = {
   supervisorComments?: string;
   programRating?: number;
   submissionDate?: string;
+
+  selfPerformance?: Partial<PerformanceMetrics>;
+  selfSummary?: string;
+  supervisorPerformance?: Partial<PerformanceMetrics>;
+  supervisorSummary?: string;
+  supervisorOverallComments?: string;
+  supervisorWorkPerformanceComments?: string;
+  supervisorMentorshipQualityRating?: number;
+  supervisorProgramSatisfactionRating?: number;
+  supervisorReviewedDate?: string;
 };
 
 const DEFAULT_PERFORMANCE: PerformanceMetrics = {
@@ -316,6 +326,29 @@ const InternManagementPage: React.FC = () => {
         const items: FeedbackItem[] = snap.docs.map((d) => {
           const data = d.data() as FeedbackMilestoneDoc;
           const label = d.id;
+
+          const rawSelf = data.selfPerformance ?? null;
+          const normalizedSelf: PerformanceMetrics | undefined = rawSelf
+            ? {
+                technical: typeof rawSelf?.technical === 'number' ? rawSelf.technical : DEFAULT_PERFORMANCE.technical,
+                communication: typeof rawSelf?.communication === 'number' ? rawSelf.communication : DEFAULT_PERFORMANCE.communication,
+                punctuality: typeof rawSelf?.punctuality === 'number' ? rawSelf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+                initiative: typeof rawSelf?.initiative === 'number' ? rawSelf.initiative : DEFAULT_PERFORMANCE.initiative,
+                overallRating: typeof rawSelf?.overallRating === 'number' ? rawSelf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+              }
+            : undefined;
+
+          const rawSup = data.supervisorPerformance ?? null;
+          const normalizedSup: PerformanceMetrics | undefined = rawSup
+            ? {
+                technical: typeof rawSup?.technical === 'number' ? rawSup.technical : DEFAULT_PERFORMANCE.technical,
+                communication: typeof rawSup?.communication === 'number' ? rawSup.communication : DEFAULT_PERFORMANCE.communication,
+                punctuality: typeof rawSup?.punctuality === 'number' ? rawSup.punctuality : DEFAULT_PERFORMANCE.punctuality,
+                initiative: typeof rawSup?.initiative === 'number' ? rawSup.initiative : DEFAULT_PERFORMANCE.initiative,
+                overallRating: typeof rawSup?.overallRating === 'number' ? rawSup.overallRating : DEFAULT_PERFORMANCE.overallRating,
+              }
+            : undefined;
+
           return {
             id: d.id,
             label,
@@ -329,6 +362,27 @@ const InternManagementPage: React.FC = () => {
             supervisorScore: data.supervisorScore,
             supervisorComments: data.supervisorComments,
             programRating: typeof data.programRating === 'number' ? data.programRating : 0,
+
+            submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : undefined,
+            supervisorReviewedDate: typeof data.supervisorReviewedDate === 'string' ? data.supervisorReviewedDate : undefined,
+
+            selfPerformance: normalizedSelf,
+            selfSummary: typeof data.selfSummary === 'string' ? data.selfSummary : undefined,
+
+            supervisorPerformance: normalizedSup,
+            supervisorSummary: typeof data.supervisorSummary === 'string' ? data.supervisorSummary : undefined,
+            supervisorOverallComments:
+              typeof data.supervisorOverallComments === 'string'
+                ? data.supervisorOverallComments
+                : typeof data.supervisorSummary === 'string'
+                  ? data.supervisorSummary
+                  : undefined,
+            supervisorWorkPerformanceComments:
+              typeof data.supervisorWorkPerformanceComments === 'string' ? data.supervisorWorkPerformanceComments : undefined,
+            supervisorMentorshipQualityRating:
+              typeof data.supervisorMentorshipQualityRating === 'number' ? data.supervisorMentorshipQualityRating : undefined,
+            supervisorProgramSatisfactionRating:
+              typeof data.supervisorProgramSatisfactionRating === 'number' ? data.supervisorProgramSatisfactionRating : undefined,
           };
         });
 
@@ -573,68 +627,15 @@ const InternManagementPage: React.FC = () => {
         }}
       >
         {activeTab === 'overview' && (
-          <div className="space-y-10 animate-in slide-in-from-bottom-6 duration-500">
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-              <div className="xl:col-span-7 bg-white rounded-[3rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
-                <div className="flex items-center justify-between mb-16">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                      <BarChart3 size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">Performance Analysis</h3>
-                      {showTabs && (
-                        <div className="mt-3 inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
-                          <button
-                            onClick={() => setActiveEvalSource('SELF')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                              activeEvalSource === 'SELF'
-                                ? 'bg-white text-blue-600 shadow-md'
-                                : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            Intern
-                          </button>
-                          <button
-                            onClick={() => setActiveEvalSource('SUPERVISOR')}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                              activeEvalSource === 'SUPERVISOR'
-                                ? 'bg-white text-indigo-600 shadow-md'
-                                : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            Supervisor
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <button className="flex items-center gap-2 px-6 py-3 bg-[#4F46E5] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#4338CA] transition-all shadow-xl shadow-indigo-100">
-                    <StickyNote size={16} /> DOWNLOAD FULL AUDIT
-                  </button>
-                </div>
-                <div className="space-y-10">
-                  <ProgressRow label="TECHNICAL PROFICIENCY" score={displayPerformance.technical} color="bg-blue-600" />
-                  <ProgressRow label="TEAM COMMUNICATION" score={displayPerformance.communication} color="bg-indigo-600" />
-                  <ProgressRow label="PUNCTUALITY & RELIABILITY" score={displayPerformance.punctuality} color="bg-emerald-500" />
-                  <ProgressRow label="SELF-INITIATIVE" score={displayPerformance.initiative} color="bg-rose-500" />
-                </div>
-              </div>
-              <div className="xl:col-span-5 bg-[#3B49DF] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-                <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
-                <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
-                  <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
-                    <span className="text-6xl font-black tracking-tighter leading-none">{displayPerformance.overallRating}</span>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
-                  </div>
-                  <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
-                    {displaySummary ? `"${displaySummary}"` : '"No summary submitted."'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <FeedbackTab
+            feedback={selectedIntern.feedback}
+            activeFeedbackId={activeFeedbackId}
+            onSelectFeedback={setActiveFeedbackId}
+            activeFeedback={activeFeedback}
+            onOpenStoragePath={handleOpenStoragePath}
+            readOnly
+            hideWhenNoData
+          />
         )}
 
         {handoffProjectOpen && (
