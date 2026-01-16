@@ -14,12 +14,14 @@ const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle }) => 
       <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between gap-4">
         
         <div className="flex items-center gap-4">
-          <button 
-            onClick={onMenuToggle}
-            className="p-2 lg:hidden text-slate-500 hover:bg-slate-50 rounded-lg"
-          >
-            <Menu size={20} />
-          </button>
+          {onMenuToggle && (
+            <button 
+              onClick={onMenuToggle}
+              className="p-2 lg:hidden text-slate-500 hover:bg-slate-50 rounded-lg"
+            >
+              <Menu size={20} />
+            </button>
+          )}
           
           <div className="relative w-full max-w-[350px] hidden sm:block">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">

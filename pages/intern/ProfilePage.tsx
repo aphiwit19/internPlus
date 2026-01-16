@@ -14,7 +14,6 @@ import {
   Plus,
   ShieldCheck,
   Globe,
-  Target,
   MessageSquare,
   Camera,
   Mail,
@@ -324,12 +323,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
           </div>
 
           <div className="col-span-12 lg:col-span-3">
-            <button
-              onClick={() => navigate(pageIdToPath('INTERN', 'self-evaluation'))}
-              className="w-full mb-6 py-4 bg-[#111827] text-white rounded-[1.75rem] border border-[#111827] flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-600 hover:border-blue-600 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
-            >
-              <Target size={18} /> Self Evaluation
-            </button>
             <button
               onClick={() => navigate(pageIdToPath('INTERN', 'documents'))}
               className="w-full mb-6 py-4 bg-blue-600 text-white rounded-[1.75rem] border border-blue-600 flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"

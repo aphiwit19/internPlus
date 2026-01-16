@@ -45,7 +45,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         'activities',
         'feedback',
         'evaluation',
-        'self-evaluation',
         'certificates',
       ]);
       filteredNavItems = filteredNavItems.filter((item) => extendedAllowed.has(item.id));
@@ -62,9 +61,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     'leave': lang === 'TH' ? 'การลางาน' : 'Leave Request',
     'assignment': lang === 'TH' ? 'งานที่ได้รับมอบหมาย' : 'Assignment',
     'activities': lang === 'TH' ? 'กิจกรรม' : 'Activities',
-    'feedback': lang === 'TH' ? 'คำติชมและวิดีโอ' : 'Feedback & Video',
+    'feedback': lang === 'TH' ? 'คำติชมและประเมินตนเอง' : 'Feedback & Self Evaluation',
     'evaluation': lang === 'TH' ? 'ประเมินมหาลัย' : 'Uni Evaluation',
-    'self-evaluation': lang === 'TH' ? 'ประเมินตนเอง' : 'Self Evaluation',
     'certificates': lang === 'TH' ? 'ใบรับรอง' : 'Certificates',
     'offboarding': lang === 'TH' ? 'การแจ้งออก' : 'Offboarding',
     'allowance': lang === 'TH' ? 'เบี้ยเลี้ยง' : 'Allowance',

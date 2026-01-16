@@ -12,14 +12,34 @@ import {
   FileText,
   ExternalLink,
   Heart,
-  Zap
+  Zap,
+  BarChart3,
+  StickyNote
 } from 'lucide-react';
-import { Language, UserProfile } from '@/types';
+import { Language, PerformanceMetrics, UserProfile } from '@/types';
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
+
+const DEFAULT_PERFORMANCE: PerformanceMetrics = {
+  technical: 0,
+  communication: 0,
+  punctuality: 0,
+  initiative: 0,
+  overallRating: 0,
+};
+
+const clampScore = (v: number) => {
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(100, Math.round(v)));
+};
+
+const computeOverall = (p: Pick<PerformanceMetrics, 'technical' | 'communication' | 'punctuality' | 'initiative'>) => {
+  const avg = (p.technical + p.communication + p.punctuality + p.initiative) / 4;
+  return clampScore(avg);
+};
 
 interface FeedbackMilestone {
   id: string;
@@ -28,6 +48,8 @@ interface FeedbackMilestone {
   status: 'pending' | 'submitted' | 'reviewed' | 'locked';
   internReflection?: string;
   internProgramFeedback?: string;
+  selfPerformance?: Partial<PerformanceMetrics>;
+  selfSummary?: string;
   videoUrl?: string;
   videoStoragePath?: string;
   videoFileName?: string;
@@ -58,6 +80,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       internProgramLabel: "Part 2: Program & Mentorship Feedback",
       placeholderReflect: "What have you achieved since the last milestone?",
       placeholderProgram: "How is your relationship with your mentor?",
+      selfEvalHeader: "Self Evaluation",
+      selfEvalSubtitle: "Score yourself and submit a summary for admin review.",
+      selfEvalScoreSheet: "Score Sheet",
+      selfEvalSummary: "Executive Summary",
+      selfEvalPlaceholder: "Write a self-summary for admin review...",
       supervisorHeader: "Mentor's Assessment",
       points: "Points / 100",
       mentor: "Supervisor",
@@ -84,6 +111,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       internProgramLabel: "ส่วนที่ 2: ความคิดเห็นต่อที่ปรึกษา",
       placeholderReflect: "คุณประสบความสำเร็จอะไรบ้าง?",
       placeholderProgram: "ความสัมพันธ์กับที่ปรึกษาเป็นอย่างไร?",
+      selfEvalHeader: "ประเมินตนเอง",
+      selfEvalSubtitle: "ให้คะแนนตัวเองและส่งบทสรุปให้แอดมินตรวจสอบ",
+      selfEvalScoreSheet: "แบบประเมินคะแนน",
+      selfEvalSummary: "บทสรุปสำหรับผู้บริหาร",
+      selfEvalPlaceholder: "เขียนสรุปการประเมินตนเองเพื่อส่งให้แอดมิน...",
       supervisorHeader: "การประเมินจากที่ปรึกษา",
       points: "คะแนน / 100",
       mentor: "ที่ปรึกษา",
@@ -120,6 +152,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const [tempProgramRating, setTempProgramRating] = useState(0);
   const [tempReflection, setTempReflection] = useState('');
   const [tempProgramFeedback, setTempProgramFeedback] = useState('');
+  const [tempSelfPerformance, setTempSelfPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
+  const [tempSelfSummary, setTempSelfSummary] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -165,12 +199,26 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       const nextAll = [...weekBase, ...monthBase].map((x) => {
         const data = savedById.get(x.id) ?? null;
         if (!data) return x;
+
+        const rawSelf = (data as any)?.selfPerformance ?? null;
+        const normalizedSelfPerformance: PerformanceMetrics | undefined = rawSelf
+          ? {
+              technical: typeof rawSelf?.technical === 'number' ? rawSelf.technical : DEFAULT_PERFORMANCE.technical,
+              communication: typeof rawSelf?.communication === 'number' ? rawSelf.communication : DEFAULT_PERFORMANCE.communication,
+              punctuality: typeof rawSelf?.punctuality === 'number' ? rawSelf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+              initiative: typeof rawSelf?.initiative === 'number' ? rawSelf.initiative : DEFAULT_PERFORMANCE.initiative,
+              overallRating: typeof rawSelf?.overallRating === 'number' ? rawSelf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+            }
+          : undefined;
+
         return {
           ...x,
           status: (data.status as FeedbackMilestone['status']) ?? x.status,
           internReflection: typeof data.internReflection === 'string' ? data.internReflection : x.internReflection,
           internProgramFeedback:
             typeof data.internProgramFeedback === 'string' ? data.internProgramFeedback : x.internProgramFeedback,
+          selfPerformance: normalizedSelfPerformance ?? x.selfPerformance,
+          selfSummary: typeof (data as any).selfSummary === 'string' ? (data as any).selfSummary : x.selfSummary,
           programRating: typeof data.programRating === 'number' ? data.programRating : x.programRating,
           supervisorScore: typeof data.supervisorScore === 'number' ? data.supervisorScore : x.supervisorScore,
           supervisorComments: typeof data.supervisorComments === 'string' ? data.supervisorComments : x.supervisorComments,
@@ -205,10 +253,31 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     setTempProgramRating(active.programRating ?? 0);
     setTempReflection(active.internReflection ?? '');
     setTempProgramFeedback(active.internProgramFeedback ?? '');
+    const rawSelf = active.selfPerformance ?? null;
+    const normalizedSelfPerformance: PerformanceMetrics = {
+      technical: typeof rawSelf?.technical === 'number' ? rawSelf.technical : DEFAULT_PERFORMANCE.technical,
+      communication: typeof rawSelf?.communication === 'number' ? rawSelf.communication : DEFAULT_PERFORMANCE.communication,
+      punctuality: typeof rawSelf?.punctuality === 'number' ? rawSelf.punctuality : DEFAULT_PERFORMANCE.punctuality,
+      initiative: typeof rawSelf?.initiative === 'number' ? rawSelf.initiative : DEFAULT_PERFORMANCE.initiative,
+      overallRating: typeof rawSelf?.overallRating === 'number' ? rawSelf.overallRating : DEFAULT_PERFORMANCE.overallRating,
+    };
+    setTempSelfPerformance(normalizedSelfPerformance);
+    setTempSelfSummary(active.selfSummary ?? '');
     setPendingVideo(null);
     setPendingAttachments([]);
     setSubmitError(null);
   }, [activeId]);
+
+  const displaySelfPerformance = useMemo(() => {
+    const next: PerformanceMetrics = {
+      technical: clampScore(tempSelfPerformance.technical),
+      communication: clampScore(tempSelfPerformance.communication),
+      punctuality: clampScore(tempSelfPerformance.punctuality),
+      initiative: clampScore(tempSelfPerformance.initiative),
+      overallRating: computeOverall(tempSelfPerformance),
+    };
+    return next;
+  }, [tempSelfPerformance]);
 
   useEffect(() => {
     const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
@@ -229,6 +298,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     try {
       const milestoneId = activeId;
       const ref = doc(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones', milestoneId);
+
+      const nextSelfPerformance: PerformanceMetrics = {
+        technical: clampScore(tempSelfPerformance.technical),
+        communication: clampScore(tempSelfPerformance.communication),
+        punctuality: clampScore(tempSelfPerformance.punctuality),
+        initiative: clampScore(tempSelfPerformance.initiative),
+        overallRating: computeOverall(tempSelfPerformance),
+      };
 
       let nextVideoStoragePath: string | undefined;
       let nextVideoFileName: string | undefined;
@@ -261,6 +338,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
           internReflection: tempReflection,
           internProgramFeedback: tempProgramFeedback,
           programRating: tempProgramRating,
+          selfPerformance: nextSelfPerformance,
+          selfSummary: tempSelfSummary,
           submissionDate,
           attachments: nextAttachments,
           ...(nextVideoStoragePath ? { videoStoragePath: nextVideoStoragePath } : {}),
@@ -541,8 +620,129 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                 </div>
               </div>
             </div>
+
+            <div className="lg:col-span-12">
+              <div className="p-8 md:p-10 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                  <div>
+                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t.selfEvalHeader}</h3>
+                    <p className="text-slate-500 text-xs md:text-sm font-medium mt-2">{t.selfEvalSubtitle}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0">
+                    <BarChart3 size={22} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                  <div className="lg:col-span-8 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-6">{t.selfEvalScoreSheet}</div>
+                    <div className="space-y-7">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
+                        <ScoreInput
+                          label={lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY'}
+                          value={tempSelfPerformance.technical}
+                          onChange={(v) => setTempSelfPerformance((p) => ({ ...p, technical: v }))}
+                        />
+                        <ScoreInput
+                          label={lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION'}
+                          value={tempSelfPerformance.communication}
+                          onChange={(v) => setTempSelfPerformance((p) => ({ ...p, communication: v }))}
+                        />
+                        <ScoreInput
+                          label={lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY'}
+                          value={tempSelfPerformance.punctuality}
+                          onChange={(v) => setTempSelfPerformance((p) => ({ ...p, punctuality: v }))}
+                        />
+                        <ScoreInput
+                          label={lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE'}
+                          value={tempSelfPerformance.initiative}
+                          onChange={(v) => setTempSelfPerformance((p) => ({ ...p, initiative: v }))}
+                        />
+                      </div>
+
+                      <div className="pt-2">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                            <StickyNote size={18} />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.selfEvalSummary}</div>
+                            <div className="text-sm font-black text-slate-900">{lang === 'TH' ? 'ข้อความสรุปที่ส่งให้แอดมิน' : 'Summary sent to Admin'}</div>
+                          </div>
+                        </div>
+                        <textarea
+                          value={tempSelfSummary}
+                          onChange={(e) => setTempSelfSummary(e.target.value)}
+                          rows={6}
+                          className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                          placeholder={t.selfEvalPlaceholder}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-4 bg-[#3B49DF] rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col">
+                    <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-36 -mt-36 blur-3xl"></div>
+                    <div className="relative z-10 flex flex-col h-full">
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70">{t.selfEvalSummary}</div>
+                      <div className="flex flex-col items-center justify-center gap-8 flex-1 py-8">
+                        <div className="w-44 h-44 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
+                          <span className="text-7xl font-black tracking-tighter leading-none">{displaySelfPerformance.overallRating}</span>
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">
+                            {lang === 'TH' ? 'คะแนนเฉลี่ย' : 'AVG SCORE'}
+                          </span>
+                        </div>
+                        <p className="text-base leading-relaxed text-indigo-50 italic font-medium text-center">
+                          {tempSelfSummary
+                            ? `\"${tempSelfSummary}\"`
+                            : `\"${lang === 'TH' ? 'เขียนสรุปการประเมินตนเองเพื่อให้แอดมินตรวจสอบ' : 'Write a self-summary for admin review'}\"`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const ScoreInput = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) => {
+  const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{label}</div>
+        <div className="text-sm font-black text-slate-900">{safeValue}/100</div>
+      </div>
+      <div className="flex items-center gap-4">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-full"
+        />
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={safeValue}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-20 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none"
+        />
       </div>
     </div>
   );
