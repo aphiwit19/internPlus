@@ -11,6 +11,7 @@ export type PageId =
   | 'feedback'
   | 'evaluation'
   | 'university-evaluation'
+  | 'appointment-requests'
   | 'self-evaluation'
   | 'certificates'
   | 'offboarding'

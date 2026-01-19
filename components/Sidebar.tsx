@@ -68,6 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     'allowance': lang === 'TH' ? 'เบี้ยเลี้ยง' : 'Allowance',
     'withdrawal': lang === 'TH' ? 'การถอนตัว' : 'Withdrawal',
     'manage-interns': lang === 'TH' ? 'จัดการนักศึกษา' : 'Intern Management',
+    'appointment-requests': lang === 'TH' ? 'นัดหมายขอเข้าพบ' : 'Appointment Requests',
     'invitations': lang === 'TH' ? 'การเชิญ' : 'Invites',
     'system-settings': lang === 'TH' ? 'ตั้งค่าระบบ' : 'System Settings',
     'menu_label': lang === 'TH' ? 'เมนูหลัก' : 'MAIN MENU',

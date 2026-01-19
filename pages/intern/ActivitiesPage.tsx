@@ -16,7 +16,7 @@ import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
 import { createLeaveRepository } from '@/app/leaveRepository';
 
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { firestoreDb } from '@/firebase';
 
 interface ActivityEvent {
@@ -25,9 +25,30 @@ interface ActivityEvent {
   month: { EN: string; TH: string };
   title: { EN: string; TH: string };
   time: string;
-  type: 'LEARNING' | 'MEETING' | 'DEADLINE' | 'TASK' | 'LEAVE';
+  type: 'LEARNING' | 'MEETING' | 'DEADLINE' | 'TASK' | 'LEAVE' | 'EVALUATION';
   internName?: string;
 }
+
+type UniversityEvaluationLink = {
+  id: string;
+  label: string;
+  url: string;
+  createdAt?: unknown;
+};
+
+type UniversityEvaluationFile = {
+  id: string;
+  label: string;
+  category?: 'Sending' | 'Evaluation' | 'Requirement' | 'Other';
+  fileName: string;
+  storagePath: string;
+  createdAt?: unknown;
+};
+
+type UniversityEvaluationDoc = {
+  links?: UniversityEvaluationLink[];
+  files?: UniversityEvaluationFile[];
+};
 
 interface ActivitiesPageProps {
   lang: Language;
@@ -73,8 +94,12 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [isMonthFilterEnabled, setIsMonthFilterEnabled] = useState(false);
+
   const [leaveActivities, setLeaveActivities] = useState<ActivityEvent[]>([]);
   const [taskActivities, setTaskActivities] = useState<ActivityEvent[]>([]);
+  const [evaluationActivities, setEvaluationActivities] = useState<ActivityEvent[]>([]);
 
   const monthLabel = (d: Date) => {
     const m = d.getUTCMonth();
@@ -231,6 +256,92 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      setEvaluationActivities([]);
+      return;
+    }
+
+    const parseCreatedAt = (value: unknown): Date | null => {
+      if (!value) return null;
+      if (typeof value === 'number') {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      if (typeof value === 'string') {
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+      const maybeTs = value as { toDate?: () => Date };
+      if (typeof maybeTs?.toDate === 'function') {
+        const d = maybeTs.toDate();
+        return d && !Number.isNaN(d.getTime()) ? d : null;
+      }
+      return null;
+    };
+
+    const toDateKey = (d: Date) => {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const ref = doc(firestoreDb, 'universityEvaluations', user.id);
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) {
+        setEvaluationActivities([]);
+        return;
+      }
+
+      const data = snap.data() as UniversityEvaluationDoc;
+      const links = Array.isArray(data.links) ? data.links : [];
+      const files = Array.isArray(data.files) ? data.files : [];
+
+      const events: ActivityEvent[] = [];
+
+      links.forEach((l) => {
+        const created = parseCreatedAt(l.createdAt) ?? null;
+        const d = created ?? new Date();
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const dateKey = toDateKey(d);
+        events.push({
+          id: `evaluation:link:${l.id}:${dateKey}`,
+          day,
+          month: monthLabel(d),
+          title: {
+            EN: `Evaluation Link: ${l.label}`,
+            TH: `ลิงก์ประเมิน: ${l.label}`,
+          },
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+          type: 'TASK',
+        });
+      });
+
+      files.forEach((f) => {
+        const created = parseCreatedAt(f.createdAt) ?? null;
+        const d = created ?? new Date();
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const dateKey = toDateKey(d);
+        const cat = f.category ? ` (${f.category})` : '';
+        events.push({
+          id: `evaluation:file:${f.id}:${dateKey}`,
+          day,
+          month: monthLabel(d),
+          title: {
+            EN: `University Doc${cat}: ${f.label}`,
+            TH: `เอกสารมหาวิทยาลัย${cat}: ${f.label}`,
+          },
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+          type: 'TASK',
+        });
+      });
+
+      events.sort((a, b) => a.id.localeCompare(b.id));
+      setEvaluationActivities(events);
+    });
+  }, [user]);
+
   const groupedActivities = useMemo(() => {
     const groups: Array<{ dateLabel: string; items: ActivityEvent[] }> = [];
     const monthName = (m: string) => m;
@@ -238,6 +349,15 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
       const month = monthName(ev.month[lang]);
       return `${ev.day} ${month}`;
     };
+
+    const extractDateKey = (ev: ActivityEvent): string | null => {
+      const parts = ev.id.split(':');
+      const dateKey = parts[parts.length - 1] ?? '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey;
+      return null;
+    };
+
+    const activeMonthKey = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}`;
 
     const toSortKey = (ev: ActivityEvent) => {
       const parts = ev.id.split(':');
@@ -254,7 +374,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
       return fallback.getTime();
     };
 
-    const merged = [...leaveActivities, ...taskActivities]
+    const merged = [...leaveActivities, ...taskActivities, ...evaluationActivities]
       .map((ev) => ({ ev, key: toSortKey(ev) }))
       .sort((a, b) => a.key - b.key)
       .map((x) => x.ev);
@@ -266,7 +386,19 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
       return true;
     });
 
-    filtered.forEach((ev) => {
+    const filteredBySelectedDate = selectedDateKey
+      ? filtered.filter((ev) => extractDateKey(ev) === selectedDateKey)
+      : filtered;
+
+    const filteredByMonth = !selectedDateKey && isMonthFilterEnabled
+      ? filteredBySelectedDate.filter((ev) => {
+          const dk = extractDateKey(ev);
+          if (!dk) return false;
+          return dk.slice(0, 7) === activeMonthKey;
+        })
+      : filteredBySelectedDate;
+
+    filteredByMonth.forEach((ev) => {
       const label = labelFor(ev);
       const last = groups[groups.length - 1];
       if (!last || last.dateLabel !== label) {
@@ -276,7 +408,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
       }
     });
     return groups;
-  }, [lang, leaveActivities, taskActivities, viewMode]);
+  }, [lang, leaveActivities, taskActivities, evaluationActivities, viewMode, selectedDateKey, isMonthFilterEnabled, calendarDate]);
 
   const calendarYear = calendarDate.getFullYear();
   const calendarMonth = calendarDate.getMonth();
@@ -305,9 +437,9 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
     const showTasks = viewMode === 'ALL' || viewMode === 'TASK';
     return {
       leave: showLeaves ? setFor(leaveActivities) : new Set<string>(),
-      task: showTasks ? setFor(taskActivities) : new Set<string>(),
+      task: showTasks ? setFor([...taskActivities, ...evaluationActivities]) : new Set<string>(),
     };
-  }, [leaveActivities, taskActivities, viewMode]);
+  }, [leaveActivities, taskActivities, evaluationActivities, viewMode]);
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
@@ -404,7 +536,19 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-6">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{calendarTitle}</h4>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
+                    <button
+                      type="button"
+                      onClick={() => setIsMonthFilterEnabled((prev) => !prev)}
+                      className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
+                        isMonthFilterEnabled
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'
+                      }`}
+                      title={lang === 'TH' ? 'กรองกิจกรรมตามเดือนที่เลือก' : 'Filter activities by this month'}
+                    >
+                      {lang === 'TH' ? 'เดือน' : 'Month'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
@@ -436,8 +580,19 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                     const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const hasLeave = markerMap.leave.has(dateKey);
                     const hasTask = markerMap.task.has(dateKey);
+                    const isSelected = selectedDateKey === dateKey;
                     return (
-                      <div key={day} className={`relative aspect-square flex items-center justify-center text-xs font-black rounded-xl cursor-pointer transition-all ${isToday ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-slate-600 hover:bg-slate-50'}`}>
+                      <div
+                        key={day}
+                        onClick={() => setSelectedDateKey((prev) => (prev === dateKey ? null : dateKey))}
+                        className={`relative aspect-square flex items-center justify-center text-xs font-black rounded-xl cursor-pointer transition-all ${
+                          isToday
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-100'
+                            : isSelected
+                              ? 'bg-slate-900 text-white ring-2 ring-slate-900/20'
+                              : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
                         {day}
                         {!isToday && (hasTask || hasLeave) && (
                           <div className="absolute bottom-1.5 flex items-center gap-1">

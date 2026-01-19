@@ -34,6 +34,7 @@ export function isPageId(value: string): value is PageId {
     value === 'feedback' ||
     value === 'evaluation' ||
     value === 'university-evaluation' ||
+    value === 'appointment-requests' ||
     value === 'self-evaluation' ||
     value === 'certificates' ||
     value === 'offboarding' ||

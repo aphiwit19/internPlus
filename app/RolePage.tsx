@@ -40,6 +40,7 @@ import SupervisorLeaveRequestPage from '@/pages/supervisor/LeaveRequestPage';
 import SupervisorProfilePage from '@/pages/supervisor/ProfilePage';
 import SupervisorCertificatesPage from '@/pages/supervisor/CertificatesPage';
 import SupervisorUniversityEvaluationPage from '@/pages/supervisor/UniversityEvaluationPage';
+import SupervisorAppointmentRequestsPage from '@/pages/supervisor/AppointmentRequestsPage';
 
 import AdminProfilePage from '@/pages/admin/ProfilePage';
 
@@ -165,6 +166,8 @@ export default function RolePage() {
         return <SupervisorCertificatesPage lang={lang} user={user} />;
       case 'university-evaluation':
         return <SupervisorUniversityEvaluationPage lang={lang} user={user} />;
+      case 'appointment-requests':
+        return <SupervisorAppointmentRequestsPage lang={lang} user={user} />;
       case 'leave':
         return <SupervisorLeaveRequestPage lang={lang} role={roleFromRoute} />;
       default:

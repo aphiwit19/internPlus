@@ -43,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
 
   // Admin / Supervisor Specific
   { id: 'university-evaluation', label: 'University Evaluation', icon: <Star size={18} />, roles: ['SUPERVISOR', 'HR_ADMIN'] },
+  { id: 'appointment-requests', label: 'Appointment Requests', icon: <CalendarDays size={18} />, roles: ['SUPERVISOR'] },
   { id: 'manage-interns', label: 'Intern Management', icon: <Users size={18} />, roles: ['SUPERVISOR', 'HR_ADMIN'] },
   { id: 'invitations', label: 'Invites', icon: <Mail size={18} />, roles: ['HR_ADMIN'] },
   { id: 'system-settings', label: 'System Settings', icon: <Settings size={18} />, roles: ['HR_ADMIN'] },

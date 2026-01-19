@@ -1,6 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
+  CalendarDays,
   FileText, 
   Link as LinkIcon, 
   ExternalLink, 
@@ -82,6 +83,15 @@ type UniversityEvaluationDoc = {
     address?: string;
     instructions?: string;
   };
+  appointmentRequest?: {
+    date?: string;
+    time?: string;
+    status?: 'DRAFT' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'DONE';
+    mode?: 'ONLINE' | 'COMPANY';
+    note?: string;
+    supervisorNote?: string;
+    updatedAt?: unknown;
+  };
   pendingChanges?: boolean;
 };
 
@@ -96,6 +106,17 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       title: "University Evaluation",
       subtitle: "Manage documents and links required by your educational institution.",
       portalSync: "University Portal Sync",
+      apptTitle: 'Appointment Request',
+      apptSub: 'Propose a meeting date/time and track the request status.',
+      apptDate: 'Date',
+      apptTime: 'Time',
+      apptMode: 'Meeting Mode',
+      apptModeOnline: 'Online',
+      apptModeCompany: 'Company',
+      apptNote: 'Note (optional)',
+      apptSupervisorNote: 'Supervisor note',
+      apptSave: 'Save Appointment',
+      apptSend: 'Send Request',
       linksTitle: "Supervisor Evaluation Links",
       linksSub: "Paste external form links for your supervisor to fill.",
       addLink: "Add New Evaluation Link",
@@ -133,6 +154,17 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       title: "การประเมินผลจากมหาวิทยาลัย",
       subtitle: "จัดการเอกสารและลิงก์ที่สถาบันการศึกษาของคุณกำหนด",
       portalSync: "ซิงค์ข้อมูลกับมหาวิทยาลัย",
+      apptTitle: 'ขอเข้าพบ',
+      apptSub: 'กำหนดวัน/เวลา และติดตามสถานะการขอเข้าพบ',
+      apptDate: 'วันที่',
+      apptTime: 'เวลา',
+      apptMode: 'รูปแบบการเข้าพบ',
+      apptModeOnline: 'ออนไลน์',
+      apptModeCompany: 'บริษัท',
+      apptNote: 'หมายเหตุ (ถ้ามี)',
+      apptSupervisorNote: 'หมายเหตุจากพี่เลี้ยง',
+      apptSave: 'บันทึกการขอเข้าพบ',
+      apptSend: 'ส่งคำขอเข้าพบ',
       linksTitle: "ลิงก์การประเมินสำหรับที่ปรึกษา",
       linksSub: "วางลิงก์แบบฟอร์มภายนอกเพื่อให้ที่ปรึกษาของคุณกรอกข้อมูล",
       addLink: "เพิ่มลิงก์การประเมินใหม่",
@@ -222,6 +254,15 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     instructions: '',
   });
 
+  const [appointmentRequest, setAppointmentRequest] = useState<NonNullable<UniversityEvaluationDoc['appointmentRequest']>>({
+    date: '',
+    time: '',
+    status: 'DRAFT',
+    mode: 'ONLINE',
+    note: '',
+    supervisorNote: '',
+  });
+
   useEffect(() => {
     if (!user) return;
     setLoadError(null);
@@ -235,6 +276,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
           setSubmissionStatus('DRAFT');
           setSubmittedAt(null);
           setPendingChanges(false);
+          setAppointmentRequest({ date: '', time: '', status: 'DRAFT', mode: 'ONLINE', note: '', supervisorNote: '' });
           return;
         }
         const data = snap.data() as UniversityEvaluationDoc;
@@ -245,6 +287,9 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
         setPendingChanges(Boolean(data.pendingChanges));
         if (data.deliveryDetails) {
           setDeliveryDetails((prev) => ({ ...prev, ...data.deliveryDetails }));
+        }
+        if (data.appointmentRequest) {
+          setAppointmentRequest((prev) => ({ ...prev, ...data.appointmentRequest }));
         }
       },
       (err) => {
@@ -301,6 +346,49 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
 
   const isSubmitted = useMemo(() => submissionStatus === 'SUBMITTED', [submissionStatus]);
   const isFinalSubmitted = useMemo(() => isSubmitted && !pendingChanges, [isSubmitted, pendingChanges]);
+
+  const canSaveAppointment = useMemo(() => {
+    const date = (appointmentRequest.date ?? '').trim();
+    const time = (appointmentRequest.time ?? '').trim();
+    return Boolean(date || time || (appointmentRequest.note ?? '').trim());
+  }, [appointmentRequest]);
+
+  const canSendAppointment = useMemo(() => {
+    const date = (appointmentRequest.date ?? '').trim();
+    const time = (appointmentRequest.time ?? '').trim();
+    const mode = (appointmentRequest.mode ?? '').trim();
+    return Boolean(date && time && mode);
+  }, [appointmentRequest]);
+
+  const saveAppointment = async () => {
+    await persist({
+      appointmentRequest: {
+        date: (appointmentRequest.date ?? '').trim(),
+        time: (appointmentRequest.time ?? '').trim(),
+        status: appointmentRequest.status ?? 'DRAFT',
+        mode: appointmentRequest.mode ?? 'ONLINE',
+        note: (appointmentRequest.note ?? '').trim(),
+        supervisorNote: (appointmentRequest.supervisorNote ?? '').trim(),
+        updatedAt: serverTimestamp(),
+      },
+      pendingChanges: true,
+    });
+  };
+
+  const sendAppointment = async () => {
+    await persist({
+      appointmentRequest: {
+        date: (appointmentRequest.date ?? '').trim(),
+        time: (appointmentRequest.time ?? '').trim(),
+        status: 'REQUESTED',
+        mode: appointmentRequest.mode ?? 'ONLINE',
+        note: (appointmentRequest.note ?? '').trim(),
+        supervisorNote: (appointmentRequest.supervisorNote ?? '').trim(),
+        updatedAt: serverTimestamp(),
+      },
+      pendingChanges: true,
+    });
+  };
 
   const submittedAtLabel = useMemo(() => {
     const x = submittedAt as unknown as { toDate?: () => Date };
@@ -532,6 +620,124 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto pb-24 scrollbar-hide pr-1">
           <div className="lg:col-span-8 space-y-8">
+            <section className="rounded-[2rem] p-8 border border-slate-100 shadow-sm bg-white">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-200">
+                    <CalendarDays size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black tracking-tight text-slate-900">{t.apptTitle}</h2>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">{t.apptSub}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                  {appointmentRequest.date ? appointmentRequest.date : '--'}
+                </div>
+                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                  {appointmentRequest.time ? appointmentRequest.time : '--'}
+                </div>
+                <div className="px-4 py-2 rounded-2xl bg-blue-50 border border-blue-100 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                  {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
+                </div>
+                <div className="ml-auto hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <Clock size={14} />
+                  {lang === 'TH' ? 'พร้อมส่งเมื่อกรอกวันและเวลา' : 'Ready when date & time are set'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptDate}</label>
+                  <input
+                    type="date"
+                    value={appointmentRequest.date ?? ''}
+                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, date: e.target.value }))}
+                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptTime}</label>
+                  <input
+                    type="time"
+                    value={appointmentRequest.time ?? ''}
+                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, time: e.target.value }))}
+                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptMode}</label>
+                  <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'ONLINE' }))}
+                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                        (appointmentRequest.mode ?? 'ONLINE') === 'ONLINE'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {t.apptModeOnline}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'COMPANY' }))}
+                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                        (appointmentRequest.mode ?? 'ONLINE') === 'COMPANY'
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {t.apptModeCompany}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptNote}</label>
+                  <textarea
+                    value={appointmentRequest.note ?? ''}
+                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, note: e.target.value }))}
+                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 h-[96px] resize-none focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                  />
+                </div>
+                {String(appointmentRequest.supervisorNote ?? '').trim() ? (
+                  <div className="md:col-span-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptSupervisorNote}</label>
+                    <textarea
+                      value={String(appointmentRequest.supervisorNote ?? '')}
+                      readOnly
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 h-[96px] resize-none"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => void saveAppointment()}
+                  disabled={!user || isSaving || !canSaveAppointment}
+                  className="w-full flex items-center justify-center gap-2 bg-white text-slate-900 py-3.5 rounded-2xl text-xs font-black border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {isSaving ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}
+                  {t.apptSave}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void sendAppointment()}
+                  disabled={!user || isSaving || !canSendAppointment}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <CalendarDays size={16} />
+                  {t.apptSend}
+                </button>
+              </div>
+            </section>
+
             <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
               <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><LinkIcon size={20} /></div><div><h2 className="text-xl font-bold text-slate-900">{t.linksTitle}</h2><p className="text-xs text-slate-400 mt-1">{t.linksSub}</p></div></div>
               <div className="bg-blue-50/30 p-6 rounded-[1.5rem] border border-blue-100/50">
