@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Clock, Edit2, Save, X } from 'lucide-react';
-import { collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
 
-type AppointmentStatus = 'DRAFT' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'DONE';
+type AppointmentStatus = 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED';
 
 type AppointmentMode = 'ONLINE' | 'COMPANY';
 
@@ -27,6 +27,7 @@ type UniversityEvaluationDoc = {
   internDepartment?: string;
   supervisorId: string | null;
   appointmentRequest?: AppointmentRequest;
+  appointmentHistory?: AppointmentHistoryEntry[];
   updatedAt?: unknown;
 };
 
@@ -39,6 +40,18 @@ type InternContact = {
 };
 
 type AppointmentItem = UniversityEvaluationDoc & { id: string };
+
+type AppointmentHistoryEntry = {
+  id: string;
+  actor: 'INTERN' | 'SUPERVISOR';
+  date?: string;
+  time?: string;
+  status?: string;
+  mode?: string;
+  note?: string;
+  supervisorNote?: string;
+  createdAt?: unknown;
+};
 
 type EditDraft = {
   date: string;
@@ -77,6 +90,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
           modeOnline: 'Online',
           modeCompany: 'Company',
           supervisorNote: 'Supervisor note',
+          history: 'History',
         },
         TH: {
           title: 'นัดหมายขอเข้าพบ',
@@ -98,6 +112,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
           modeOnline: 'ออนไลน์',
           modeCompany: 'บริษัท',
           supervisorNote: 'หมายเหตุจากพี่เลี้ยง',
+          history: 'ประวัติการขอเข้าพบ',
         },
       }[lang]),
     [lang],
@@ -131,7 +146,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
             next[it.id] = {
               date: String(ar.date ?? ''),
               time: String(ar.time ?? ''),
-              status: (ar.status ?? 'DRAFT') as AppointmentStatus,
+              status: (ar.status ?? 'REQUESTED') as AppointmentStatus,
               mode: (ar.mode ?? 'ONLINE') as AppointmentMode,
               supervisorNote: String(ar.supervisorNote ?? ''),
             };
@@ -148,12 +163,14 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
   const resetDraftFromItem = (it: AppointmentItem) => {
     const ar = it.appointmentRequest ?? {};
+    const currentStatus = (ar.status ?? 'REQUESTED') as AppointmentStatus;
+    const defaultStatus: AppointmentStatus = currentStatus === 'REQUESTED' ? 'CONFIRMED' : currentStatus;
     setDrafts((prev) => ({
       ...prev,
       [it.id]: {
         date: String(ar.date ?? ''),
         time: String(ar.time ?? ''),
-        status: (ar.status ?? 'DRAFT') as AppointmentStatus,
+        status: defaultStatus,
         mode: (ar.mode ?? 'ONLINE') as AppointmentMode,
         supervisorNote: String(ar.supervisorNote ?? ''),
       },
@@ -189,8 +206,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
     if (s === 'CONFIRMED') return t.statusConfirmed;
     if (s === 'RESCHEDULED') return t.statusRescheduled;
     if (s === 'CANCELLED') return t.statusCancelled;
-    if (s === 'DONE') return t.statusDone;
-    return t.statusDraft;
+    return t.statusRequested;
   };
 
   const modeLabel = (m: AppointmentMode) => {
@@ -203,15 +219,29 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
     if (s === 'REQUESTED') return 'bg-amber-100 border-amber-200';
     if (s === 'RESCHEDULED') return 'bg-violet-100 border-violet-200';
     if (s === 'CANCELLED') return 'bg-rose-100 border-rose-200';
-    if (s === 'DONE') return 'bg-slate-100 border-slate-200';
     return 'bg-white border-slate-200';
+  };
+
+  const isScheduleChanged = (it: AppointmentItem, d: EditDraft) => {
+    const ar = it.appointmentRequest ?? {};
+    const prevDate = String(ar.date ?? '');
+    const prevTime = String(ar.time ?? '');
+    const prevMode = (ar.mode ?? 'ONLINE') as AppointmentMode;
+    return d.date !== prevDate || d.time !== prevTime || d.mode !== prevMode;
   };
 
   const canSave = (id: string) => {
     const d = drafts[id];
     if (!d) return false;
-    if (d.status === 'DRAFT') return Boolean(d.date || d.time);
-    return Boolean(d.date && d.time && d.mode);
+    if (!d.date || !d.time || !d.mode) return false;
+    if (d.status === 'REQUESTED') return false;
+    if (d.status === 'RESCHEDULED') {
+      if (!String(d.supervisorNote ?? '').trim()) return false;
+      const it = items.find((x) => x.id === id);
+      if (!it) return false;
+      return isScheduleChanged(it, d);
+    }
+    return true;
   };
 
   const handleSave = async (id: string) => {
@@ -226,6 +256,16 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         'appointmentRequest.status': d.status,
         'appointmentRequest.mode': d.mode,
         'appointmentRequest.supervisorNote': d.supervisorNote,
+        appointmentHistory: arrayUnion({
+          id: String(Date.now()),
+          actor: 'SUPERVISOR',
+          date: d.date,
+          time: d.time,
+          status: d.status,
+          mode: d.mode,
+          supervisorNote: d.supervisorNote,
+          createdAt: Date.now(),
+        }),
         'appointmentRequest.updatedAt': serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -262,7 +302,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
             <div className="space-y-4">
               {items.map((it) => {
                 const ar = it.appointmentRequest ?? {};
-                const currentStatus = (ar.status ?? 'DRAFT') as AppointmentStatus;
+                const currentStatus = (ar.status ?? 'REQUESTED') as AppointmentStatus;
                 const currentMode = (ar.mode ?? 'ONLINE') as AppointmentMode;
                 const draft = drafts[it.id];
                 const contact = internContacts[it.internId] ?? internContacts[it.id] ?? null;
@@ -353,7 +393,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               onChange={(e) =>
                                 setDrafts((prev) => ({
                                   ...prev,
-                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'DRAFT', mode: 'ONLINE', supervisorNote: '' }), date: e.target.value },
+                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'REQUESTED', mode: 'ONLINE', supervisorNote: '' }), date: e.target.value },
                                 }))
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
@@ -368,7 +408,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               onChange={(e) =>
                                 setDrafts((prev) => ({
                                   ...prev,
-                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'DRAFT', mode: 'ONLINE', supervisorNote: '' }), time: e.target.value },
+                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'REQUESTED', mode: 'ONLINE', supervisorNote: '' }), time: e.target.value },
                                 }))
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
@@ -382,7 +422,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               onChange={(e) =>
                                 setDrafts((prev) => ({
                                   ...prev,
-                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'DRAFT', mode: 'ONLINE', supervisorNote: '' }), mode: e.target.value as AppointmentMode },
+                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'REQUESTED', mode: 'ONLINE', supervisorNote: '' }), mode: e.target.value as AppointmentMode },
                                 }))
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
@@ -395,21 +435,21 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                           <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.status}</label>
                             <select
-                              value={draft?.status ?? 'DRAFT'}
+                              value={draft?.status ?? 'REQUESTED'}
                               onChange={(e) =>
                                 setDrafts((prev) => ({
                                   ...prev,
-                                  [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'DRAFT', mode: 'ONLINE', supervisorNote: '' }), status: e.target.value as AppointmentStatus },
+                                  [it.id]: {
+                                    ...(prev[it.id] ?? { date: '', time: '', status: 'REQUESTED', mode: 'ONLINE', supervisorNote: '' }),
+                                    status: e.target.value as AppointmentStatus,
+                                  },
                                 }))
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
                             >
-                              <option value="DRAFT">{t.statusDraft}</option>
-                              <option value="REQUESTED">{t.statusRequested}</option>
                               <option value="CONFIRMED">{t.statusConfirmed}</option>
                               <option value="RESCHEDULED">{t.statusRescheduled}</option>
                               <option value="CANCELLED">{t.statusCancelled}</option>
-                              <option value="DONE">{t.statusDone}</option>
                             </select>
                           </div>
 
@@ -433,7 +473,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                             onChange={(e) =>
                               setDrafts((prev) => ({
                                 ...prev,
-                                [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'DRAFT', mode: 'ONLINE', supervisorNote: '' }), supervisorNote: e.target.value },
+                                [it.id]: { ...(prev[it.id] ?? { date: '', time: '', status: 'REQUESTED', mode: 'ONLINE', supervisorNote: '' }), supervisorNote: e.target.value },
                               }))
                             }
                             className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 h-[84px] resize-none"
@@ -441,6 +481,41 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                         </div>
                       </div>
                     )}
+
+                    {Array.isArray(it.appointmentHistory) && it.appointmentHistory.length > 0 ? (
+                      <div className="mt-5 p-5 rounded-[1.5rem] bg-slate-50 border border-slate-100">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{t.history}</div>
+                        <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
+                          {[...it.appointmentHistory]
+                            .slice()
+                            .reverse()
+                            .map((h) => (
+                              <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                    {h.actor === 'SUPERVISOR' ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor') : lang === 'TH' ? 'นักศึกษา' : 'Intern'}
+                                  </div>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                    {statusLabel((String(h.status ?? 'REQUESTED') as AppointmentStatus) ?? 'REQUESTED')}
+                                  </div>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                    {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
+                                  </div>
+                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                    {h.mode ? modeLabel(String(h.mode) as AppointmentMode) : '--'}
+                                  </div>
+                                </div>
+                                {String(h.supervisorNote ?? '').trim() ? (
+                                  <div className="mt-2 text-xs font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
+                                ) : null}
+                                {String(h.note ?? '').trim() ? (
+                                  <div className="mt-2 text-xs font-bold text-slate-600 whitespace-pre-wrap">{String(h.note)}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {typeof ar.note === 'string' && ar.note.trim() ? (
                       <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-100">

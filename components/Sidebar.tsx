@@ -60,7 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     'attendance': lang === 'TH' ? 'ลงเวลาเข้างาน' : 'Attendance',
     'leave': lang === 'TH' ? 'การลางาน' : 'Leave Request',
     'assignment': lang === 'TH' ? 'งานที่ได้รับมอบหมาย' : 'Assignment',
-    'activities': lang === 'TH' ? 'กิจกรรม' : 'Activities',
+    'activities': lang === 'TH' ? 'กิจกรรมและลำดับเวลา' : 'Activities & Timeline',
     'feedback': lang === 'TH' ? 'คำติชมและประเมินตนเอง' : 'Feedback & Self Evaluation',
     'evaluation': lang === 'TH' ? 'ประเมินมหาลัย' : 'Uni Evaluation',
     'certificates': lang === 'TH' ? 'ใบรับรอง' : 'Certificates',

@@ -41,6 +41,7 @@ import SupervisorProfilePage from '@/pages/supervisor/ProfilePage';
 import SupervisorCertificatesPage from '@/pages/supervisor/CertificatesPage';
 import SupervisorUniversityEvaluationPage from '@/pages/supervisor/UniversityEvaluationPage';
 import SupervisorAppointmentRequestsPage from '@/pages/supervisor/AppointmentRequestsPage';
+import SupervisorActivitiesPage from '@/pages/supervisor/ActivitiesPage';
 
 import AdminProfilePage from '@/pages/admin/ProfilePage';
 
@@ -158,6 +159,8 @@ export default function RolePage() {
     switch (resolvedPageId) {
       case 'dashboard':
         return <SupervisorDashboardPage user={user} onNavigate={onNavigate} lang={lang} />;
+      case 'activities':
+        return <SupervisorActivitiesPage lang={lang} user={user} />;
       case 'manage-interns':
         return <SupervisorInternManagementPage user={user} onNavigate={onNavigate} lang={lang} />;
       case 'profile':

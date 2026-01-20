@@ -21,12 +21,13 @@ import {
   Mail,
   MapPin,
   Save,
-  Clock
+  Clock,
+  Bell
 } from 'lucide-react';
 import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
 import { firestoreDb, firebaseStorage } from '@/firebase';
-import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 interface UniDocument {
@@ -50,6 +51,18 @@ type UniversityEvaluationFile = {
   category?: 'Sending' | 'Evaluation' | 'Requirement' | 'Other';
   fileName: string;
   storagePath: string;
+  createdAt?: unknown;
+};
+
+type AppointmentHistoryEntry = {
+  id: string;
+  actor: 'INTERN' | 'SUPERVISOR';
+  date?: string;
+  time?: string;
+  status?: string;
+  mode?: string;
+  note?: string;
+  supervisorNote?: string;
   createdAt?: unknown;
 };
 
@@ -92,6 +105,17 @@ type UniversityEvaluationDoc = {
     supervisorNote?: string;
     updatedAt?: unknown;
   };
+  appointmentHistory?: Array<{
+    id: string;
+    actor: 'INTERN' | 'SUPERVISOR';
+    date?: string;
+    time?: string;
+    status?: string;
+    mode?: string;
+    note?: string;
+    supervisorNote?: string;
+    createdAt?: unknown;
+  }>;
   pendingChanges?: boolean;
 };
 
@@ -263,6 +287,64 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     supervisorNote: '',
   });
 
+  const [appointmentHistory, setAppointmentHistory] = useState<AppointmentHistoryEntry[]>([]);
+
+  const appointmentStatusLabel = useMemo(() => {
+    const s = String(appointmentRequest.status ?? 'DRAFT');
+    const isCancelled = s === 'CANCELLED';
+    if (lang === 'TH') return isCancelled ? 'ยกเลิกนัด' : 'ขอนัดหมาย';
+    return isCancelled ? 'Cancelled' : 'Appointment Requested';
+  }, [appointmentRequest.status, lang]);
+
+  const supervisorRespondedBanner = useMemo(() => {
+    const s = String(appointmentRequest.status ?? '');
+    if (s !== 'CONFIRMED' && s !== 'RESCHEDULED' && s !== 'CANCELLED') return null;
+    const title =
+      lang === 'TH'
+        ? s === 'CONFIRMED'
+          ? 'พี่เลี้ยงยืนยันนัดหมายแล้ว'
+          : s === 'RESCHEDULED'
+            ? 'พี่เลี้ยงเลื่อนนัด'
+            : 'พี่เลี้ยงยกเลิกนัด'
+        : s === 'CONFIRMED'
+          ? 'Supervisor confirmed the appointment'
+          : s === 'RESCHEDULED'
+            ? 'Supervisor rescheduled the appointment'
+            : 'Supervisor cancelled the appointment';
+    const note = String(appointmentRequest.supervisorNote ?? '').trim();
+    const subtitle = note ? note : null;
+    const toneClass =
+      s === 'CANCELLED'
+        ? 'bg-rose-50 border-rose-200 text-rose-700'
+        : s === 'RESCHEDULED'
+          ? 'bg-sky-50 border-sky-200 text-sky-700'
+          : 'bg-emerald-50 border-emerald-200 text-emerald-700';
+    const emphasisClass =
+      s === 'RESCHEDULED'
+        ? 'shadow-lg ring-4 ring-sky-100 border-sky-300'
+        : 'shadow-sm';
+    const accentClass =
+      s === 'RESCHEDULED'
+        ? 'bg-sky-500'
+        : s === 'CANCELLED'
+          ? 'bg-rose-500'
+          : 'bg-emerald-500';
+    return { title, subtitle, toneClass, emphasisClass, accentClass };
+  }, [appointmentRequest.status, appointmentRequest.supervisorNote, lang]);
+
+  const isAppointmentLocked = useMemo(() => {
+    return false;
+  }, []);
+
+  const supervisorStatusLabel = useMemo(() => {
+    const s = String(appointmentRequest.status ?? '');
+    if (s === 'CONFIRMED') return lang === 'TH' ? 'ยืนยันนัดหมาย' : 'Confirmed';
+    if (s === 'RESCHEDULED') return lang === 'TH' ? 'เลื่อนนัด' : 'Rescheduled';
+    if (s === 'CANCELLED') return lang === 'TH' ? 'ยกเลิกนัด' : 'Cancelled';
+    if (s === 'REQUESTED') return lang === 'TH' ? 'ขอนัดหมาย' : 'Requested';
+    return lang === 'TH' ? '—' : '—';
+  }, [appointmentRequest.status, lang]);
+
   useEffect(() => {
     if (!user) return;
     setLoadError(null);
@@ -277,6 +359,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
           setSubmittedAt(null);
           setPendingChanges(false);
           setAppointmentRequest({ date: '', time: '', status: 'DRAFT', mode: 'ONLINE', note: '', supervisorNote: '' });
+          setAppointmentHistory([]);
           return;
         }
         const data = snap.data() as UniversityEvaluationDoc;
@@ -291,6 +374,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
         if (data.appointmentRequest) {
           setAppointmentRequest((prev) => ({ ...prev, ...data.appointmentRequest }));
         }
+        setAppointmentHistory(Array.isArray(data.appointmentHistory) ? (data.appointmentHistory as AppointmentHistoryEntry[]) : []);
       },
       (err) => {
         const e = err as { code?: string; message?: string };
@@ -347,12 +431,6 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
   const isSubmitted = useMemo(() => submissionStatus === 'SUBMITTED', [submissionStatus]);
   const isFinalSubmitted = useMemo(() => isSubmitted && !pendingChanges, [isSubmitted, pendingChanges]);
 
-  const canSaveAppointment = useMemo(() => {
-    const date = (appointmentRequest.date ?? '').trim();
-    const time = (appointmentRequest.time ?? '').trim();
-    return Boolean(date || time || (appointmentRequest.note ?? '').trim());
-  }, [appointmentRequest]);
-
   const canSendAppointment = useMemo(() => {
     const date = (appointmentRequest.date ?? '').trim();
     const time = (appointmentRequest.time ?? '').trim();
@@ -360,22 +438,17 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     return Boolean(date && time && mode);
   }, [appointmentRequest]);
 
-  const saveAppointment = async () => {
-    await persist({
-      appointmentRequest: {
-        date: (appointmentRequest.date ?? '').trim(),
-        time: (appointmentRequest.time ?? '').trim(),
-        status: appointmentRequest.status ?? 'DRAFT',
-        mode: appointmentRequest.mode ?? 'ONLINE',
-        note: (appointmentRequest.note ?? '').trim(),
-        supervisorNote: (appointmentRequest.supervisorNote ?? '').trim(),
-        updatedAt: serverTimestamp(),
-      },
-      pendingChanges: true,
-    });
-  };
-
   const sendAppointment = async () => {
+    const next: AppointmentHistoryEntry = {
+      id: String(Date.now()),
+      actor: 'INTERN' as const,
+      date: (appointmentRequest.date ?? '').trim(),
+      time: (appointmentRequest.time ?? '').trim(),
+      status: 'REQUESTED',
+      mode: appointmentRequest.mode ?? 'ONLINE',
+      note: (appointmentRequest.note ?? '').trim(),
+      createdAt: Date.now(),
+    };
     await persist({
       appointmentRequest: {
         date: (appointmentRequest.date ?? '').trim(),
@@ -386,6 +459,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
         supervisorNote: (appointmentRequest.supervisorNote ?? '').trim(),
         updatedAt: serverTimestamp(),
       },
+      appointmentHistory: arrayUnion(next) as unknown as AppointmentHistoryEntry[],
       pendingChanges: true,
     });
   };
@@ -631,6 +705,10 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <p className="text-xs text-slate-500 mt-1 font-medium">{t.apptSub}</p>
                   </div>
                 </div>
+
+                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                  {appointmentStatusLabel}
+                </div>
               </div>
 
               <div className="mb-6 flex flex-wrap items-center gap-2">
@@ -704,38 +782,53 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 h-[96px] resize-none focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
                   />
                 </div>
-                {String(appointmentRequest.supervisorNote ?? '').trim() ? (
-                  <div className="md:col-span-3">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptSupervisorNote}</label>
-                    <textarea
-                      value={String(appointmentRequest.supervisorNote ?? '')}
-                      readOnly
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 h-[96px] resize-none"
-                    />
-                  </div>
-                ) : null}
               </div>
 
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => void saveAppointment()}
-                  disabled={!user || isSaving || !canSaveAppointment}
-                  className="w-full flex items-center justify-center gap-2 bg-white text-slate-900 py-3.5 rounded-2xl text-xs font-black border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {isSaving ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}
-                  {t.apptSave}
-                </button>
-                <button
-                  type="button"
                   onClick={() => void sendAppointment()}
                   disabled={!user || isSaving || !canSendAppointment}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 md:col-span-2"
                 >
                   <CalendarDays size={16} />
                   {t.apptSend}
                 </button>
               </div>
+
+              {appointmentHistory.length > 0 ? (
+                <div className="mt-8">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em] mb-3">
+                    {lang === 'TH' ? 'ประวัติการขอเข้าพบ' : 'Appointment History'}
+                  </div>
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
+                    {[...appointmentHistory]
+                      .slice()
+                      .reverse()
+                      .map((h) => (
+                        <div key={h.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                              {h.actor === 'SUPERVISOR' ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor') : lang === 'TH' ? 'นักศึกษา' : 'Intern'}
+                            </div>
+                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                              {String(h.status ?? '—')}
+                            </div>
+                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                              {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
+                            </div>
+                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                              {String(h.mode ?? '--')}
+                            </div>
+                          </div>
+                          {String(h.supervisorNote ?? '').trim() ? (
+                            <div className="mt-2 text-xs font-bold text-slate-700 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
+                          ) : null}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
@@ -1058,6 +1151,47 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
             </section>
           </div>
           <div className="lg:col-span-4 space-y-8">
+            {supervisorRespondedBanner ? (
+              <section
+                className={`border rounded-[2.5rem] p-8 text-sm font-black relative overflow-hidden ${supervisorRespondedBanner.toneClass} ${supervisorRespondedBanner.emphasisClass}`}
+                role="status"
+              >
+                <div className={`absolute left-0 top-0 bottom-0 w-2 ${supervisorRespondedBanner.accentClass}`} />
+                <div className="relative z-10">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-3xl bg-rose-600 border border-rose-600 flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-rose-200">
+                      <Bell size={34} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-[0.35em] opacity-70">
+                        {lang === 'TH' ? 'แจ้งเตือน' : 'Notification'}
+                      </div>
+                      <div className="mt-2 text-[16px] leading-snug">{supervisorRespondedBanner.title}</div>
+                    </div>
+                  </div>
+                  {supervisorRespondedBanner.subtitle ? (
+                    <div className="mt-3 text-[12px] font-bold opacity-90 whitespace-pre-wrap">
+                      {supervisorRespondedBanner.subtitle}
+                    </div>
+                  ) : null}
+                  <div className="mt-6 flex flex-wrap items-center gap-2">
+                    <div className="px-4 py-2 rounded-2xl bg-white/70 border border-white/60 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {supervisorStatusLabel}
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-white/60 border border-white/60 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {appointmentRequest.date ? appointmentRequest.date : '--'}
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-white/60 border border-white/60 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {appointmentRequest.time ? appointmentRequest.time : '--'}
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-white/70 border border-white/60 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
             <section className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center"><Building2 size={20} className="text-blue-400" /></div><h3 className="text-lg font-bold">{t.companyInfo}</h3></div>
