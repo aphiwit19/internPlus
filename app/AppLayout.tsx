@@ -10,6 +10,8 @@ import { signOut } from 'firebase/auth';
 
 import { firebaseAuth } from '@/firebase';
 
+import { Toaster } from 'sonner';
+
 import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
 
@@ -49,6 +51,7 @@ export default function AppLayout() {
 
   return (
     <div className="h-screen bg-slate-50 flex overflow-hidden text-slate-900">
+      <Toaster position="top-right" richColors closeButton />
       <Sidebar
         activeId={activeId}
         activeRole={activeRole}

@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Clock, Edit2, Save, X } from 'lucide-react';
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
+
+import { toast } from 'sonner';
 
 type AppointmentStatus = 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED';
 
@@ -123,6 +125,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, EditDraft>>({});
+
+  const toastInitRef = useRef(false);
+  const prevToastMapRef = useRef<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,6 +142,31 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
         arr.sort((a, b) => (a.internName || '').localeCompare(b.internName || ''));
         setItems(arr);
+
+        const nextMap: Record<string, string> = {};
+        arr.forEach((it) => {
+          const ar = it.appointmentRequest;
+          const key = `${String(ar?.status ?? '')}|${String(ar?.date ?? '')}|${String(ar?.time ?? '')}|${String(ar?.mode ?? '')}|${String(ar?.note ?? '')}`;
+          nextMap[it.id] = key;
+
+          if (toastInitRef.current) {
+            const prevKey = prevToastMapRef.current[it.id];
+            if (prevKey && prevKey !== key) {
+              const status = String(ar?.status ?? 'REQUESTED');
+              const title = lang === 'TH' ? `คำขอเข้าพบมีการอัปเดต: ${it.internName}` : `Appointment request updated: ${it.internName}`;
+              const detail = `${String(ar?.date ?? '--')} ${String(ar?.time ?? '--')} • ${String(ar?.mode ?? 'ONLINE')}`;
+              toast(title, { description: `${status}\n${detail}`, duration: 6000 });
+            }
+            if (!prevKey) {
+              const title = lang === 'TH' ? `มีคำขอเข้าพบใหม่: ${it.internName}` : `New appointment request: ${it.internName}`;
+              const detail = `${String(ar?.date ?? '--')} ${String(ar?.time ?? '--')} • ${String(ar?.mode ?? 'ONLINE')}`;
+              toast(title, { description: detail, duration: 6000 });
+            }
+          }
+        });
+
+        prevToastMapRef.current = nextMap;
+        if (!toastInitRef.current) toastInitRef.current = true;
 
         setDrafts((prev) => {
           const next: Record<string, EditDraft> = { ...prev };

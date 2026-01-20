@@ -31,6 +31,7 @@ type ActivityEvent = {
   time: string;
   type: 'LEAVE' | 'APPOINTMENT';
   internName?: string;
+  status?: string;
 };
 
 interface SupervisorActivitiesPageProps {
@@ -67,6 +68,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
           subtitle: 'Overview of appointment requests from your interns.',
           viewAll: 'All',
           viewAppt: 'Appointments',
+          statusAll: 'All status',
+          statusRequested: 'Requested',
+          statusConfirmed: 'Confirmed',
+          statusRescheduled: 'Rescheduled',
+          statusCancelled: 'Cancelled',
           calendar: 'Calendar Overview',
           days: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
           empty: 'No activities yet.',
@@ -81,6 +87,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
           subtitle: 'ภาพรวมการขอเข้าพบจากนักศึกษาที่คุณดูแล',
           viewAll: 'ทั้งหมด',
           viewAppt: 'ขอเข้าพบ',
+          statusAll: 'ทุกสถานะ',
+          statusRequested: 'ขอเข้าพบแล้ว',
+          statusConfirmed: 'ยืนยันแล้ว',
+          statusRescheduled: 'เลื่อนนัด',
+          statusCancelled: 'ยกเลิก',
           calendar: 'ภาพรวมปฏิทิน',
           days: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'],
           empty: 'ยังไม่มีกิจกรรม',
@@ -103,6 +114,8 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
 
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [isMonthFilterEnabled, setIsMonthFilterEnabled] = useState(false);
+
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED'>('ALL');
 
   const [apptActivities, setApptActivities] = useState<ActivityEvent[]>([]);
 
@@ -133,6 +146,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
           time: ar.time ? String(ar.time) : '—',
           type: 'APPOINTMENT',
           internName: data.internName,
+          status: typeof ar.status === 'string' ? ar.status : undefined,
         });
       });
 
@@ -140,6 +154,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       setApptActivities(out);
     });
   }, [t.apptCompany, t.apptOnline, t.apptTitle, user.id]);
+
+  const filteredApptActivities = useMemo(() => {
+    if (statusFilter === 'ALL') return apptActivities;
+    return apptActivities.filter((ev) => String(ev.status ?? 'REQUESTED') === statusFilter);
+  }, [apptActivities, statusFilter]);
 
   const groupedActivities = useMemo(() => {
     const groups: Array<{ dateLabel: string; items: ActivityEvent[] }> = [];
@@ -165,7 +184,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       return fallback.getTime();
     };
 
-    const merged = [...apptActivities]
+    const merged = [...filteredApptActivities]
       .map((ev) => ({ ev, key: toSortKey(ev) }))
       .sort((a, b) => a.key - b.key)
       .map((x) => x.ev);
@@ -194,7 +213,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     });
 
     return groups;
-  }, [apptActivities, calendarDate, isMonthFilterEnabled, lang, selectedDateKey, viewMode]);
+  }, [calendarDate, filteredApptActivities, isMonthFilterEnabled, lang, selectedDateKey, viewMode]);
 
   const calendarYear = calendarDate.getFullYear();
   const calendarMonth = calendarDate.getMonth();
@@ -221,9 +240,9 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
 
     const showAppt = viewMode === 'ALL' || viewMode === 'APPOINTMENT';
     return {
-      appt: showAppt ? setFor(apptActivities) : new Set<string>(),
+      appt: showAppt ? setFor(filteredApptActivities) : new Set<string>(),
     };
-  }, [apptActivities, viewMode]);
+  }, [filteredApptActivities, viewMode]);
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
@@ -234,25 +253,41 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
         </div>
 
         <div className="mb-10">
-          <div className="inline-flex bg-white border border-slate-100/60 rounded-[1.5rem] p-1.5 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setViewMode('ALL')}
-              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
-                viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {t.viewAll}
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('APPOINTMENT')}
-              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
-                viewMode === 'APPOINTMENT' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {t.viewAppt}
-            </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex bg-white border border-slate-100/60 rounded-[1.5rem] p-1.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode('ALL')}
+                className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                  viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {t.viewAll}
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('APPOINTMENT')}
+                className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                  viewMode === 'APPOINTMENT' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {t.viewAppt}
+              </button>
+            </div>
+
+            <div className="bg-white border border-slate-100/60 rounded-[1.5rem] p-1.5 shadow-sm">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="bg-white text-slate-700 text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-[1.25rem] border border-transparent focus:outline-none"
+              >
+                <option value="ALL">{t.statusAll}</option>
+                <option value="REQUESTED">{t.statusRequested}</option>
+                <option value="CONFIRMED">{t.statusConfirmed}</option>
+                <option value="RESCHEDULED">{t.statusRescheduled}</option>
+                <option value="CANCELLED">{t.statusCancelled}</option>
+              </select>
+            </div>
           </div>
         </div>
 

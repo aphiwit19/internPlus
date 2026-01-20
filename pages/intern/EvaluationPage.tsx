@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseAuth, firebaseStorage } from '@/firebase';
+import { toast } from 'sonner';
 import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
@@ -332,6 +333,9 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     return { title, subtitle, toneClass, emphasisClass, accentClass };
   }, [appointmentRequest.status, appointmentRequest.supervisorNote, lang]);
 
+  const appointmentToastInitRef = useRef(false);
+  const prevAppointmentToastKeyRef = useRef<string>('');
+
   const isAppointmentLocked = useMemo(() => {
     return false;
   }, []);
@@ -360,6 +364,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
           setPendingChanges(false);
           setAppointmentRequest({ date: '', time: '', status: 'DRAFT', mode: 'ONLINE', note: '', supervisorNote: '' });
           setAppointmentHistory([]);
+          appointmentToastInitRef.current = false;
+          prevAppointmentToastKeyRef.current = '';
           return;
         }
         const data = snap.data() as UniversityEvaluationDoc;
@@ -372,16 +378,51 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
           setDeliveryDetails((prev) => ({ ...prev, ...data.deliveryDetails }));
         }
         if (data.appointmentRequest) {
-          setAppointmentRequest((prev) => ({ ...prev, ...data.appointmentRequest }));
+          const nextAr = data.appointmentRequest;
+          const nextStatus = String(nextAr.status ?? '');
+          const toastKey = `${nextStatus}|${String(nextAr.date ?? '')}|${String(nextAr.time ?? '')}|${String(nextAr.mode ?? '')}|${String(nextAr.supervisorNote ?? '')}`;
+          const shouldNotify =
+            appointmentToastInitRef.current &&
+            toastKey !== prevAppointmentToastKeyRef.current &&
+            (nextStatus === 'CONFIRMED' || nextStatus === 'RESCHEDULED' || nextStatus === 'CANCELLED');
+
+          setAppointmentRequest((prev) => ({ ...prev, ...nextAr }));
+
+          if (!appointmentToastInitRef.current) {
+            appointmentToastInitRef.current = true;
+          } else if (shouldNotify) {
+            const title =
+              nextStatus === 'CONFIRMED'
+                ? lang === 'TH'
+                  ? 'พี่เลี้ยงยืนยันนัดหมายแล้ว'
+                  : 'Supervisor confirmed the appointment'
+                : nextStatus === 'RESCHEDULED'
+                  ? lang === 'TH'
+                    ? 'พี่เลี้ยงเลื่อนนัดหมาย'
+                    : 'Supervisor rescheduled the appointment'
+                  : lang === 'TH'
+                    ? 'พี่เลี้ยงยกเลิกนัดหมาย'
+                    : 'Supervisor cancelled the appointment';
+
+            const detail = `${String(nextAr.date ?? '--')} ${String(nextAr.time ?? '--')} • ${(nextAr.mode ?? 'ONLINE') === 'COMPANY' ? (lang === 'TH' ? 'บริษัท' : 'Company') : lang === 'TH' ? 'ออนไลน์' : 'Online'}`;
+            const description = String(nextAr.supervisorNote ?? '').trim();
+
+            toast(title, {
+              description: description ? `${detail}\n${description}` : detail,
+              duration: 8000,
+            });
+          }
+
+          prevAppointmentToastKeyRef.current = toastKey;
         }
         setAppointmentHistory(Array.isArray(data.appointmentHistory) ? (data.appointmentHistory as AppointmentHistoryEntry[]) : []);
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load'}`);
+        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load evaluation'}`);
       },
     );
-  }, [user]);
+  }, [lang, user]);
 
   const persist = async (patch: Partial<UniversityEvaluationDoc>) => {
     if (!user) return;
