@@ -16,8 +16,9 @@ import {
   Info
 } from 'lucide-react';
 import { Language } from '@/types';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { firestoreDb } from '@/firebase';
+import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes } from 'firebase/storage';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
 
 interface WithdrawalPageProps {
@@ -152,6 +153,14 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
 
     setIsSubmitting(true);
     try {
+      if (!canvasRef.current) throw new Error('Signature canvas missing');
+      const canvas = canvasRef.current;
+      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
+      if (!blob) throw new Error('Failed to create signature image');
+
+      const signatureStoragePath = `users/${user.id}/withdrawal/signatures/${Date.now()}.png`;
+      await uploadBytes(storageRef(firebaseStorage, signatureStoragePath), blob);
+
       await updateDoc(doc(firestoreDb, 'users', user.id), {
         lifecycleStatus: 'WITHDRAWAL_REQUESTED',
         withdrawalRequestedAt: serverTimestamp(),
@@ -159,6 +168,21 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
         withdrawalDetail: detailedReason,
         updatedAt: serverTimestamp(),
       });
+
+      await setDoc(
+        doc(firestoreDb, 'users', user.id, 'documents', 'withdrawal:signature'),
+        {
+          label: 'WITHDRAWAL SIGNATURE',
+          fileName: `withdrawal_signature_${user.id}.png`,
+          storagePath: signatureStoragePath,
+          policyTitle: t.title,
+          acknowledgementText: t.authTitle,
+          signedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
       setIsSubmitted(true);
     } catch {
       alert(lang === 'EN' ? 'Failed to submit withdrawal request.' : 'ไม่สามารถส่งคำขอถอนตัวได้');

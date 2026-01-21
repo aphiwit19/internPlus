@@ -333,6 +333,21 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
         },
         { merge: true },
       );
+
+      await setDoc(
+        doc(firestoreDb, 'users', user.id, 'documents', `policyTraining:${selectedItem.id}`),
+        {
+          label: 'POLICY ACKNOWLEDGEMENT',
+          fileName: `signature_${selectedItem.id}.png`,
+          storagePath: path,
+          policyTitle: selectedItem.title,
+          acknowledgementText: t.ackLabel,
+          signedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
       setSignedDocs((prev) => new Set([...prev, selectedItem.id]));
       setSigningStep('completed');
     } catch (err: unknown) {
