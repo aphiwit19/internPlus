@@ -186,39 +186,6 @@ const InternListSection: React.FC<InternListSectionProps> = ({
               </div>
             </div>
 
-            {intern.selfEvaluation && (
-              <div className="mb-8 p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                <div className="flex items-center justify-between gap-4 mb-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-blue-600 flex-shrink-0">
-                      <BarChart3 size={18} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.25em]">SELF EVALUATION</div>
-                      <div className="text-[12px] font-black text-slate-900 truncate">
-                        {intern.selfEvaluation.period ? intern.selfEvaluation.period : 'Latest'}
-                        {intern.selfEvaluation.submissionDate ? ` • ${intern.selfEvaluation.submissionDate}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="px-4 py-2 rounded-[1.25rem] bg-white border border-slate-100 text-slate-900 font-black text-sm flex items-center gap-2 flex-shrink-0">
-                    <Star size={16} className="text-amber-500" fill="currentColor" />
-                    {intern.selfEvaluation.overallRating}
-                    <span className="text-slate-300 font-black text-[10px]">/100</span>
-                  </div>
-                </div>
-
-                {intern.selfEvaluation.summary && (
-                  <div className="flex items-start gap-3 text-slate-600">
-                    <StickyNote size={16} className="mt-0.5 text-slate-400 flex-shrink-0" />
-                    <p className="text-[12px] font-bold leading-relaxed line-clamp-2">
-                      {intern.selfEvaluation.summary}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className="flex items-center justify-between pt-8 border-t border-slate-50">
               <div className="flex items-center gap-3">
                 <div

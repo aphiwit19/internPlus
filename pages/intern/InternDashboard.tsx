@@ -582,21 +582,52 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
                   {lang === 'TH' ? 'แบบประเมินล่าสุดจาก Supervisor' : 'Latest Supervisor Evaluation'}
                 </div>
-                <div className="mt-2 text-sm font-black text-slate-900">
-                  {milestoneSupervisorMeta
-                    ? (() => {
-                        const track = String(milestoneSupervisorMeta.id).startsWith('month-') ? 'MONTH' : 'WEEK';
-                        const status = String(milestoneSupervisorMeta.status ?? '').toLowerCase();
-                        const statusLabel = status === 'reviewed' ? (lang === 'TH' ? 'REVIEWED' : 'REVIEWED') : status === 'submitted' ? (lang === 'TH' ? 'SUBMITTED' : 'SUBMITTED') : (lang === 'TH' ? 'UNKNOWN' : 'UNKNOWN');
-                        return (
-                          <>
-                            {milestoneSupervisorMeta.id}  •  {track}  •  {statusLabel}
-                            {milestoneSupervisorMeta.submissionDate ? `  •  ${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${milestoneSupervisorMeta.submissionDate}` : ''}
-                            {milestoneSupervisorMeta.reviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${milestoneSupervisorMeta.reviewedDate}` : ''}
-                          </>
-                        );
-                      })()
-                    : (lang === 'TH' ? 'ยังไม่มีแบบประเมินจาก Supervisor' : 'No supervisor evaluations yet')}
+                <div className="mt-2">
+                  {milestoneSupervisorMeta ? (
+                    (() => {
+                      const track = String(milestoneSupervisorMeta.id).startsWith('month-') ? 'MONTH' : 'WEEK';
+                      const status = String(milestoneSupervisorMeta.status ?? '').toLowerCase();
+                      const statusLabel =
+                        status === 'reviewed'
+                          ? 'REVIEWED'
+                          : status === 'submitted'
+                            ? 'SUBMITTED'
+                            : 'UNKNOWN';
+
+                      const statusClass =
+                        status === 'reviewed'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : status === 'submitted'
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : 'bg-slate-50 text-slate-600 border-slate-200';
+
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-3 py-1 rounded-xl border border-slate-200 bg-white text-[11px] font-black text-slate-900 tracking-tight">
+                            {milestoneSupervisorMeta.id}
+                          </span>
+                          <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                            {track}
+                          </span>
+                          <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-black uppercase tracking-widest ${statusClass}`}>
+                            {statusLabel}
+                          </span>
+                          {milestoneSupervisorMeta.submissionDate && (
+                            <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white text-[10px] font-bold text-slate-600">
+                              {lang === 'TH' ? 'ส่ง' : 'Submitted'} {milestoneSupervisorMeta.submissionDate}
+                            </span>
+                          )}
+                          {milestoneSupervisorMeta.reviewedDate && (
+                            <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white text-[10px] font-bold text-slate-600">
+                              {lang === 'TH' ? 'ประเมิน' : 'Reviewed'} {milestoneSupervisorMeta.reviewedDate}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="mt-2 text-sm font-black text-slate-300">{lang === 'TH' ? 'ยังไม่มีแบบประเมินจาก Supervisor' : 'No supervisor evaluations yet'}</div>
+                  )}
                 </div>
               </div>
 

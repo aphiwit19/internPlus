@@ -26,6 +26,7 @@ import { Language } from '@/types';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { firestoreDb } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
+import { useNavigate } from 'react-router-dom';
 
 interface OffboardingTask {
   id: string;
@@ -43,6 +44,7 @@ interface OffboardingPageProps {
 
 const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
   const { user } = useAppContext();
+  const navigate = useNavigate();
   const t = {
     EN: {
       title: "Offboarding Progress",
@@ -52,7 +54,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
       inProgress: "IN PROGRESS",
       taskHeader: "Required Offboarding Tasks",
       taskSub: "Verification process for intern departure",
-      action: "Action",
+      action: "Accept",
       totalHours: "Total Hours",
       tasksDone: "Tasks Done",
       certificates: "Certificates",
@@ -76,7 +78,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
       inProgress: "กำลังดำเนินการ",
       taskHeader: "รายการที่ต้องดำเนินการก่อนแจ้งออก",
       taskSub: "กระบวนการตรวจสอบสำหรับการพ้นสภาพนักศึกษาฝึกงาน",
-      action: "ดำเนินการ",
+      action: "ยอมรับ",
       totalHours: "ชั่วโมงรวม",
       tasksDone: "งานที่สำเร็จ",
       certificates: "ใบรับรอง",
@@ -318,7 +320,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                     <div className="flex items-center gap-4">
                       {task.status !== 'COMPLETED' ? (
                         <button 
-                          onClick={() => handleCompleteTaskWithFeedback(task.id)} 
+                          onClick={() => navigate('/intern/training')} 
                           className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 active:scale-95 transition-all"
                         >
                           {t.action}
