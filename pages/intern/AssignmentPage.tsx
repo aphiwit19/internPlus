@@ -91,6 +91,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedProofFiles, setSelectedProofFiles] = useState<File[]>([]);
+  const [proofLinkDraft, setProofLinkDraft] = useState('');
+  const [selectedProofLinks, setSelectedProofLinks] = useState<string[]>([]);
 
   const [isSubmittingHandoff, setIsSubmittingHandoff] = useState(false);
   const [isHandoffOpen, setIsHandoffOpen] = useState(false);
@@ -421,6 +423,17 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     const now = new Date();
     const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
 
+    const MAX_PROOF_BYTES = 20 * 1024 * 1024;
+    const tooLarge = selectedProofFiles.find((f) => f.size > MAX_PROOF_BYTES) ?? null;
+    if (tooLarge) {
+      window.alert(
+        lang === 'TH'
+          ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+          : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+      );
+      return;
+    }
+
     const targetTask = selectedProject.tasks.find((t) => t.id === taskId);
     if (targetTask) {
       const overdueNow = !targetTask.actualEnd && now > new Date(targetTask.plannedEnd);
@@ -439,13 +452,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       uploaded.push({ fileName: safeName, storagePath: path });
     }
 
+    const linkAttachments = selectedProofLinks
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0)
+      .filter((u) => u.startsWith('http://') || u.startsWith('https://'));
+
     const nextTasks = selectedProject.tasks.map((t) => {
       if (t.id !== taskId) return t;
       const pEnd = new Date(t.plannedEnd);
       let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
       if (now > pEnd) finalStatus = 'DELAYED';
 
-      const mergedAttachments = [...(t.attachments ?? []), ...uploaded];
+      const mergedAttachments = [...(t.attachments ?? []), ...uploaded, ...linkAttachments];
 
       const remarkFromDraft = (delayRemarkDrafts[taskId] ?? t.delayRemark ?? '').trim();
 
@@ -469,6 +487,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     });
 
     setSelectedProofFiles([]);
+    setSelectedProofLinks([]);
+    setProofLinkDraft('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setUploadTaskId(null);
   };
@@ -1242,14 +1262,31 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                 </div>
                 Drop proof files here
               </button>
+
+              <div className="text-[11px] font-bold text-slate-500 px-2">
+                {lang === 'TH'
+                  ? 'ขนาดไฟล์สูงสุด 20MB ต่อไฟล์ (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
+                  : 'Max 20MB per file (if larger, attach a Drive/URL link instead).'}
+              </div>
               <input
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
                 multiple
                 onChange={(e) => {
-                  const incoming = Array.from(e.target.files ?? []);
+                  const incoming = Array.from(e.target.files ?? []) as File[];
                   if (incoming.length === 0) return;
+                  const MAX_PROOF_BYTES = 20 * 1024 * 1024;
+                  const tooLarge = incoming.find((f) => f.size > MAX_PROOF_BYTES) ?? null;
+                  if (tooLarge) {
+                    window.alert(
+                      lang === 'TH'
+                        ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+                        : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+                    );
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                    return;
+                  }
                   setSelectedProofFiles((prev) => {
                     const merged = [...prev, ...incoming];
                     const unique = new Map<string, File>();
@@ -1258,6 +1295,65 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                   });
                 }}
               />
+
+              <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-4">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {lang === 'TH' ? 'แนบลิงก์ (Drive/URL)' : 'Attach Link (Drive/URL)'}
+                </div>
+                <div className="flex gap-3">
+                  <input
+                    value={proofLinkDraft}
+                    onChange={(e) => setProofLinkDraft(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
+                    placeholder={lang === 'TH' ? 'วางลิงก์ Google Drive หรือ URL ที่แชร์ได้' : 'Paste a shareable Google Drive link or URL'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = proofLinkDraft.trim();
+                      if (!v) return;
+                      if (!v.startsWith('http://') && !v.startsWith('https://')) {
+                        window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+                        return;
+                      }
+                      setSelectedProofLinks((prev) => Array.from(new Set([...prev, v])));
+                      setProofLinkDraft('');
+                    }}
+                    className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
+                  >
+                    {lang === 'TH' ? 'เพิ่มลิงก์' : 'Add'}
+                  </button>
+                </div>
+              </div>
+
+              {selectedProofLinks.length > 0 && (
+                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem]">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
+                    {lang === 'TH' ? 'ลิงก์ที่แนบ' : 'Attached links'}
+                  </div>
+                  <div className="space-y-2">
+                    {selectedProofLinks.map((u) => (
+                      <div key={u} className="flex items-center justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => window.open(u, '_blank', 'noopener,noreferrer')}
+                          className="min-w-0 text-left hover:underline"
+                        >
+                          <div className="text-[12px] font-black text-slate-900 truncate">{u}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProofLinks((prev) => prev.filter((x) => x !== u))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                          title={lang === 'TH' ? 'ลบลิงก์' : 'Remove link'}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {(() => {
                 if (!selectedProject) return null;
@@ -1313,7 +1409,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
               )}
 
               <div className="flex gap-4">
-                 <button onClick={() => setUploadTaskId(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest">{t.cancel}</button>
+                 <button
+                  onClick={() => {
+                    setUploadTaskId(null);
+                    setSelectedProofFiles([]);
+                    setSelectedProofLinks([]);
+                    setProofLinkDraft('');
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest"
+                 >
+                  {t.cancel}
+                 </button>
                  <button 
                   onClick={() => void handleSubmitWithProof(uploadTaskId)}
                   disabled={(() => {

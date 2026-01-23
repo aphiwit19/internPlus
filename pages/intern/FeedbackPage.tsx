@@ -17,7 +17,7 @@ import {
   StickyNote
 } from 'lucide-react';
 import { Language, PerformanceMetrics, UserProfile } from '@/types';
-import { collection, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteField, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -77,6 +77,7 @@ interface FeedbackMilestone {
   videoStoragePath?: string;
   videoFileName?: string;
   attachments?: Array<{ fileName: string; storagePath: string }>;
+  attachmentLinks?: string[];
   supervisorScore?: number;
   supervisorComments?: string;
   supervisorPerformance?: Partial<PerformanceMetrics>;
@@ -97,6 +98,8 @@ interface FeedbackPageProps {
 
 const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const { user: authedUser } = useAppContext();
+  const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+  const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
   const t = {
     EN: {
       title: "Feedback Hub",
@@ -234,6 +237,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const attachmentsInputRef = useRef<HTMLInputElement>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+  const [pendingVideoUrl, setPendingVideoUrl] = useState('');
+  const [attachmentLinkDraft, setAttachmentLinkDraft] = useState('');
+  const [pendingAttachmentLinks, setPendingAttachmentLinks] = useState<string[]>([]);
 
   const active = milestones.find((m) => m.id === activeId) || milestones[0];
   const activeSupervisorScore =
@@ -358,9 +364,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
               ? (data as any).supervisorProgramSatisfactionRating
               : x.supervisorProgramSatisfactionRating,
           submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
+          videoUrl: typeof (data as any).videoUrl === 'string' ? (data as any).videoUrl : x.videoUrl,
           videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
           videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
           attachments: Array.isArray(data.attachments) ? (data.attachments as any) : x.attachments,
+          attachmentLinks: Array.isArray((data as any).attachmentLinks) ? ((data as any).attachmentLinks as any) : x.attachmentLinks,
         };
       });
 
@@ -400,6 +408,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     setTempSelfSummary(active.selfSummary ?? '');
     setPendingVideo(null);
     setPendingAttachments([]);
+    setPendingVideoUrl('');
+    setAttachmentLinkDraft('');
+    setPendingAttachmentLinks([]);
     setSubmitError(null);
   }, [activeId]);
 
@@ -431,6 +442,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     window.open(url, '_blank');
   };
 
+  const openUrl = (url: string) => {
+    const v = (url ?? '').trim();
+    if (!v) return;
+    window.open(v, '_blank', 'noopener,noreferrer');
+  };
+
   const handleSubmit = async () => {
     if (!effectiveUser) return;
     setIsSubmitting(true);
@@ -449,23 +466,52 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
       let nextVideoStoragePath: string | undefined;
       let nextVideoFileName: string | undefined;
+      let nextVideoUrl: string | undefined;
       if (pendingVideo) {
+        if (pendingVideo.size > MAX_VIDEO_BYTES) {
+          setSubmitError(
+            lang === 'TH'
+              ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+              : 'Video exceeds 50MB. Please attach a Drive/URL link instead.',
+          );
+          setIsSubmitting(false);
+          return;
+        }
         const p = `users/${effectiveUser.id}/feedbackMilestones/${milestoneId}/video/${Date.now()}_${pendingVideo.name}`;
         await uploadBytes(storageRef(firebaseStorage, p), pendingVideo);
         nextVideoStoragePath = p;
         nextVideoFileName = pendingVideo.name;
+      } else {
+        const v = pendingVideoUrl.trim();
+        if (v) nextVideoUrl = v;
       }
 
       let nextAttachments: Array<{ fileName: string; storagePath: string }> = Array.isArray(active.attachments)
         ? [...active.attachments]
         : [];
       if (pendingAttachments.length > 0) {
+        const tooLarge = pendingAttachments.find((f) => f.size > MAX_ATTACHMENT_BYTES) ?? null;
+        if (tooLarge) {
+          setSubmitError(
+            lang === 'TH'
+              ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+              : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+          );
+          setIsSubmitting(false);
+          return;
+        }
         for (const f of pendingAttachments) {
           const p = `users/${effectiveUser.id}/feedbackMilestones/${milestoneId}/attachments/${Date.now()}_${f.name}`;
           await uploadBytes(storageRef(firebaseStorage, p), f);
           nextAttachments = [...nextAttachments, { fileName: f.name, storagePath: p }];
         }
       }
+
+      const existingLinks = Array.isArray(active.attachmentLinks) ? active.attachmentLinks : [];
+      const mergedLinks = [...existingLinks, ...pendingAttachmentLinks]
+        .map((u) => (typeof u === 'string' ? u.trim() : ''))
+        .filter((u) => u.length > 0)
+        .filter((u) => u.startsWith('http://') || u.startsWith('https://'));
 
       const today = new Date();
       const submissionDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -482,8 +528,20 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
           selfSummary: tempSelfSummary,
           submissionDate,
           attachments: nextAttachments,
-          ...(nextVideoStoragePath ? { videoStoragePath: nextVideoStoragePath } : {}),
-          ...(nextVideoFileName ? { videoFileName: nextVideoFileName } : {}),
+          ...(mergedLinks.length > 0 ? { attachmentLinks: mergedLinks } : {}),
+          ...(nextVideoStoragePath
+            ? {
+                videoStoragePath: nextVideoStoragePath,
+                ...(nextVideoFileName ? { videoFileName: nextVideoFileName } : {}),
+                videoUrl: deleteField(),
+              }
+            : nextVideoUrl
+              ? {
+                  videoUrl: nextVideoUrl,
+                  videoStoragePath: deleteField(),
+                  videoFileName: deleteField(),
+                }
+              : {}),
           submittedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -502,6 +560,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
       setPendingVideo(null);
       setPendingAttachments([]);
+      setPendingVideoUrl('');
+      setAttachmentLinkDraft('');
+      setPendingAttachmentLinks([]);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       setSubmitError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Submit failed'}`);
@@ -715,6 +776,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
                    <div className="space-y-4">
                       <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Video size={14}/> {t.videoReflect}</h4>
+                      <div className="text-[11px] font-bold text-slate-500">
+                        {lang === 'TH'
+                          ? 'ขนาดไฟล์วิดีโอสูงสุด 50MB (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
+                          : 'Max video size 50MB (if larger, attach a Drive/URL link instead).'}
+                      </div>
                       {active.videoStoragePath ? (
                         <div
                           onClick={() => void openStoragePath(active.videoStoragePath!)}
@@ -730,6 +796,21 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             </span>
                           </div>
                         </div>
+                      ) : active.videoUrl ? (
+                        <div
+                          onClick={() => openUrl(active.videoUrl!)}
+                          className="relative aspect-video bg-slate-900 rounded-[2.5rem] overflow-hidden group/v cursor-pointer"
+                        >
+                          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 group-hover/v:bg-slate-900/20 transition-all">
+                            <Play size={40} className="text-white fill-white" />
+                          </div>
+                          <div className="absolute bottom-5 left-6 right-6 flex items-center justify-between text-white/70 text-[10px] font-black uppercase tracking-widest">
+                            <span className="truncate">{lang === 'TH' ? 'Video Link' : 'Video Link'}</span>
+                            <span className="flex items-center gap-2">
+                              <ExternalLink size={14} /> OPEN
+                            </span>
+                          </div>
+                        </div>
                       ) : (
                         <div
                           onClick={() => videoInputRef.current?.click()}
@@ -740,12 +821,62 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             accept="video/*"
                             ref={videoInputRef}
                             className="hidden"
-                            onChange={(e) => setPendingVideo(e.target.files?.[0] ?? null)}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] ?? null;
+                              if (!f) {
+                                setPendingVideo(null);
+                                return;
+                              }
+                              if (f.size > MAX_VIDEO_BYTES) {
+                                window.alert(
+                                  lang === 'TH'
+                                    ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+                                    : 'Video exceeds 50MB. Please attach a Drive/URL link instead.',
+                                );
+                                if (videoInputRef.current) videoInputRef.current.value = '';
+                                setPendingVideo(null);
+                                return;
+                              }
+                              setPendingVideoUrl('');
+                              setPendingVideo(f);
+                            }}
                           />
                           <Video size={32} className="text-slate-300 mb-2" />
                           <p className="text-[10px] font-black text-slate-400 uppercase">{pendingVideo ? pendingVideo.name : t.uploadVideo}</p>
                         </div>
                       )}
+
+                      <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          {lang === 'TH' ? 'หรือแนบลิงก์วิดีโอ (Drive/URL)' : 'Or attach video link (Drive/URL)'}
+                        </div>
+                        <div className="flex gap-3">
+                          <input
+                            value={pendingVideoUrl}
+                            onChange={(e) => {
+                              setPendingVideoUrl(e.target.value);
+                            }}
+                            className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
+                            placeholder={lang === 'TH' ? 'วางลิงก์วิดีโอที่แชร์ได้ (http/https)' : 'Paste a shareable video link (http/https)'}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const v = pendingVideoUrl.trim();
+                              if (!v) return;
+                              if (!v.startsWith('http://') && !v.startsWith('https://')) {
+                                window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+                                return;
+                              }
+                              setPendingVideo(null);
+                              if (videoInputRef.current) videoInputRef.current.value = '';
+                            }}
+                            className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
+                          >
+                            {lang === 'TH' ? 'ใช้ลิงก์' : 'Use'}
+                          </button>
+                        </div>
+                      </div>
                    </div>
                    <div className="space-y-6">
                       <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Heart size={14}/> {t.programRatingLabel}</h4>
@@ -769,6 +900,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
                 <div className="mb-12">
                   <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><FileText size={14}/> {lang === 'TH' ? 'แนบไฟล์' : 'Attachments'}</h4>
+                  <div className="text-[11px] font-bold text-slate-500 mt-2">
+                    {lang === 'TH'
+                      ? 'ขนาดไฟล์แนบสูงสุด 20MB ต่อไฟล์ (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
+                      : 'Max 20MB per attachment file (if larger, attach a Drive/URL link instead).'}
+                  </div>
                   <div className="mt-4 flex items-center gap-4 flex-wrap">
                     <button
                       onClick={() => attachmentsInputRef.current?.click()}
@@ -781,7 +917,25 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                       type="file"
                       multiple
                       className="hidden"
-                      onChange={(e) => setPendingAttachments(Array.from(e.target.files ?? []))}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []) as File[];
+                        if (files.length === 0) {
+                          setPendingAttachments([]);
+                          return;
+                        }
+                        const tooLarge = files.find((f) => f.size > MAX_ATTACHMENT_BYTES) ?? null;
+                        if (tooLarge) {
+                          window.alert(
+                            lang === 'TH'
+                              ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+                              : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+                          );
+                          if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
+                          setPendingAttachments([]);
+                          return;
+                        }
+                        setPendingAttachments(files);
+                      }}
                     />
                     {pendingAttachments.length > 0 && (
                       <div className="text-[11px] font-black text-slate-500">
@@ -789,6 +943,67 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                       </div>
                     )}
                   </div>
+
+                  <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {lang === 'TH' ? 'แนบลิงก์ (Drive/URL)' : 'Attach Link (Drive/URL)'}
+                    </div>
+                    <div className="flex gap-3">
+                      <input
+                        value={attachmentLinkDraft}
+                        onChange={(e) => setAttachmentLinkDraft(e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
+                        placeholder={lang === 'TH' ? 'วางลิงก์ Google Drive หรือ URL ที่แชร์ได้' : 'Paste a shareable Google Drive link or URL'}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const v = attachmentLinkDraft.trim();
+                          if (!v) return;
+                          if (!v.startsWith('http://') && !v.startsWith('https://')) {
+                            window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+                            return;
+                          }
+                          setPendingAttachmentLinks((prev) => Array.from(new Set([...prev, v])));
+                          setAttachmentLinkDraft('');
+                        }}
+                        className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
+                      >
+                        {lang === 'TH' ? 'เพิ่มลิงก์' : 'Add'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {(Array.isArray(active.attachmentLinks) && active.attachmentLinks.length > 0) || pendingAttachmentLinks.length > 0 ? (
+                    <div className="mt-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">LINKS</div>
+                      <div className="space-y-2">
+                        {[...(Array.isArray(active.attachmentLinks) ? active.attachmentLinks : []), ...pendingAttachmentLinks]
+                          .map((u) => (typeof u === 'string' ? u.trim() : ''))
+                          .filter((u) => u.length > 0)
+                          .map((u) => (
+                            <button
+                              key={u}
+                              type="button"
+                              onClick={() => openUrl(u)}
+                              className="w-full p-4 bg-white border border-slate-100 rounded-[1.5rem] flex items-center justify-between gap-4 hover:border-blue-200 hover:shadow-sm transition-all"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
+                                  <ExternalLink size={16} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[12px] font-black text-slate-800 truncate">{u}</div>
+                                </div>
+                              </div>
+                              <div className="text-blue-600 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
+                                <ExternalLink size={14} /> OPEN
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {Array.isArray(active.attachments) && active.attachments.length > 0 && (
                     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">

@@ -2,6 +2,8 @@ import React from 'react';
 import { Check, CheckCircle2, Clock, Download, FileText, Plus, RotateCcw } from 'lucide-react';
 
 import { TaskAttachment } from '@/types';
+import { firebaseStorage } from '@/firebase';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
 export type TaskStatus = 'DONE' | 'IN_PROGRESS' | 'DELAYED' | 'REVISION';
 
@@ -21,6 +23,22 @@ interface TasksTabProps {
 
 const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTaskStatus }) => {
   const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
+
+  const handleOpenAttachment = async (a: TaskAttachment) => {
+    if (typeof a === 'string') {
+      const v = a.trim();
+      if (!v.startsWith('http://') && !v.startsWith('https://')) return;
+      window.open(v, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500">
@@ -75,7 +93,11 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
                           <FileText size={24} />
                         </div>
                         <p className="text-[14px] font-black text-slate-800 truncate max-w-[200px] leading-none mb-1">{attachmentLabel(file)}</p>
-                        <button className="w-11 h-11 bg-[#111827] text-white rounded-xl flex items-center justify-center hover:bg-blue-600 transition-all ml-2 shadow-xl shadow-slate-900/10 active:scale-95">
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenAttachment(file)}
+                          className="w-11 h-11 bg-[#111827] text-white rounded-xl flex items-center justify-center hover:bg-blue-600 transition-all ml-2 shadow-xl shadow-slate-900/10 active:scale-95"
+                        >
                           <Download size={20} />
                         </button>
                       </div>

@@ -582,13 +582,34 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     setIsSaving(true);
     try {
       const orderedSteps = [...onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+      const sanitizedSteps: RoadmapStep[] = orderedSteps.map((s) => {
+        const base: RoadmapStep = {
+          id: s.id,
+          title: s.title,
+          active: s.active,
+          type: s.type,
+          attachedDocuments: Array.isArray(s.attachedDocuments) ? s.attachedDocuments : [],
+        };
+
+        if (s.type === 'EXTERNAL_URL') {
+          return {
+            ...base,
+            ...(s.externalUrl ? { externalUrl: s.externalUrl } : {}),
+          };
+        }
+
+        return {
+          ...base,
+          ...(s.targetPage ? { targetPage: s.targetPage } : {}),
+        };
+      });
       const batch = writeBatch(firestoreDb);
 
       const ref = doc(firestoreDb, 'config', 'systemSettings');
       batch.set(
         ref,
         {
-          onboardingSteps: orderedSteps,
+          onboardingSteps: sanitizedSteps,
           allowance: {
             payoutFreq,
             wfoRate,
@@ -629,8 +650,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           if (op.offboardingTasks) {
             batch.update(userRef, {
               lifecycleStatus: 'WITHDRAWN',
-              postProgramAccessLevel: op.accessLevel,
-              postProgramRetentionPeriod: op.retentionPeriod,
+              ...(op.accessLevel ? { postProgramAccessLevel: op.accessLevel } : {}),
+              ...(op.retentionPeriod ? { postProgramRetentionPeriod: op.retentionPeriod } : {}),
               offboardingRequestedAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
@@ -638,8 +659,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             // Regular withdrawal user
             batch.update(userRef, {
               lifecycleStatus: 'WITHDRAWN',
-              postProgramAccessLevel: op.accessLevel,
-              postProgramRetentionPeriod: op.retentionPeriod,
+              ...(op.accessLevel ? { postProgramAccessLevel: op.accessLevel } : {}),
+              ...(op.retentionPeriod ? { postProgramRetentionPeriod: op.retentionPeriod } : {}),
               withdrawalRequestedAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
@@ -663,8 +684,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       setOnboardingSteps(orderedSteps);
       setPendingUserOperations({});
       alert(lang === 'EN' ? 'System configuration deployed successfully.' : 'ปรับใช้การตั้งค่าระบบเรียบร้อยแล้ว');
-    } catch {
-      alert(lang === 'EN' ? 'Failed to deploy config.' : 'ไม่สามารถปรับใช้การตั้งค่าได้');
+    } catch (err) {
+      console.error('Failed to deploy config:', err);
+      const details = err instanceof Error ? err.message : String(err);
+      alert(`${lang === 'EN' ? 'Failed to deploy config.' : 'ไม่สามารถปรับใช้การตั้งค่าได้'}\n${details}`);
     } finally {
       setIsSaving(false);
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, CalendarDays, Download, FileText } from 'lucide-react';
+import { ChevronLeft, Clock, CalendarDays, Download, ExternalLink, FileText } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -102,7 +102,11 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
   const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
 
   const attachmentUrl = async (a: TaskAttachment): Promise<string | null> => {
-    if (typeof a === 'string') return null;
+    if (typeof a === 'string') {
+      const v = a.trim();
+      if (!v.startsWith('http://') && !v.startsWith('https://')) return null;
+      return v;
+    }
     const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
     return url;
   };
@@ -248,7 +252,7 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
                           });
                         }}
                         className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
-                        title={lang === 'TH' ? 'ดาวน์โหลด' : 'Download'}
+                        title={typeof a === 'string' ? (lang === 'TH' ? 'เปิดลิงก์' : 'Open') : (lang === 'TH' ? 'ดาวน์โหลด' : 'Download')}
                         type="button"
                       >
                         <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
@@ -259,7 +263,7 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
                           <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
                         </div>
                         <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
-                          <Download size={18} />
+                          {typeof a === 'string' ? <ExternalLink size={18} /> : <Download size={18} />}
                         </div>
                       </button>
                     ))}

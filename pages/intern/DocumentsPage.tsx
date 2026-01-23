@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { ExternalLink, FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
@@ -9,8 +9,9 @@ import { firestoreDb, firebaseStorage } from '@/firebase';
 
 type UserDocument = {
   label: string;
-  fileName: string;
-  storagePath: string;
+  fileName?: string;
+  storagePath?: string;
+  url?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -35,6 +36,8 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const { user } = useAppContext();
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
 
+  const MAX_DOC_BYTES = 20 * 1024 * 1024;
+
   const [activeRequiredLabels, setActiveRequiredLabels] = useState<string[]>([]);
   const [allStepLabels, setAllStepLabels] = useState<string[]>([]);
 
@@ -44,9 +47,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newFile, setNewFile] = useState<File | null>(null);
+  const [newUrl, setNewUrl] = useState('');
 
   const fileSlotInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingSlotLabel, setPendingSlotLabel] = useState<string | null>(null);
+  const [slotUrlDrafts, setSlotUrlDrafts] = useState<Record<string, string>>({});
 
   const t = useMemo(
     () =>
@@ -138,6 +143,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
 
   const upsertDocumentByLabel = async (label: string, file: File) => {
     if (!user) return;
+    if (file.size > MAX_DOC_BYTES) {
+      setUploadError(
+        lang === 'TH'
+          ? `ไฟล์ "${file.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+          : `File "${file.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+      );
+      return;
+    }
     setUploadError(null);
     setIsUploading(true);
     try {
@@ -151,6 +164,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
           label,
           fileName: safeName,
           storagePath: path,
+          url: null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         } satisfies UserDocument);
@@ -158,7 +172,9 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
       }
 
       try {
-        await deleteObject(storageRef(firebaseStorage, existing.storagePath));
+        if (existing.storagePath) {
+          await deleteObject(storageRef(firebaseStorage, existing.storagePath));
+        }
       } catch {
         // ignore (e.g., missing file or permission)
       }
@@ -166,6 +182,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
       await updateDoc(doc(firestoreDb, 'users', user.id, 'documents', existing.id), {
         fileName: safeName,
         storagePath: path,
+        url: null,
         updatedAt: serverTimestamp(),
       });
     } catch (err: unknown) {
@@ -177,17 +194,71 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     }
   };
 
+  const upsertDocumentLinkByLabel = async (label: string, url: string) => {
+    if (!user) return;
+    const v = url.trim();
+    if (!v) return;
+    if (!v.startsWith('http://') && !v.startsWith('https://')) {
+      setUploadError(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+      return;
+    }
+
+    setUploadError(null);
+    setIsUploading(true);
+    try {
+      const existing = documents.find((d) => d.label === label);
+      if (!existing) {
+        await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
+          label,
+          fileName: v,
+          url: v,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        } satisfies UserDocument);
+        return;
+      }
+
+      try {
+        if (existing.storagePath) {
+          await deleteObject(storageRef(firebaseStorage, existing.storagePath));
+        }
+      } catch {
+        // ignore
+      }
+
+      await updateDoc(doc(firestoreDb, 'users', user.id, 'documents', existing.id), {
+        fileName: v,
+        url: v,
+        storagePath: null,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      console.error('Document link save failed', e);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save failed'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleAddDocument = async () => {
     const label = normalizedNewLabel;
-    if (!label || !newFile) return;
+    if (!label) return;
+    const linkValue = newUrl.trim();
+    if (!newFile && !linkValue) return;
     if (isBlockedNewLabel) {
       setUploadError(lang === 'TH' ? 'ไม่สามารถเพิ่มเอกสารที่ถูกควบคุมโดยแอดมินได้' : 'This document name is controlled by admin.' );
       return;
     }
-    await upsertDocumentByLabel(label, newFile);
+    if (newFile) {
+      await upsertDocumentByLabel(label, newFile);
+    } else {
+      await upsertDocumentLinkByLabel(label, linkValue);
+    }
     setIsAdding(false);
     setNewFile(null);
     setNewLabel('');
+    setNewUrl('');
   };
 
   const handleDeleteDocument = async (docId: string) => {
@@ -197,15 +268,22 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
 
     if (!window.confirm(lang === 'TH' ? 'ลบเอกสารนี้หรือไม่?' : 'Delete this document?')) return;
 
-    await deleteObject(storageRef(firebaseStorage, item.storagePath));
+    if (item.storagePath) {
+      await deleteObject(storageRef(firebaseStorage, item.storagePath));
+    }
     await deleteDoc(doc(firestoreDb, 'users', user.id, 'documents', docId));
   };
 
   const handleDownloadDocument = async (docId: string) => {
     const item = documents.find((d) => d.id === docId);
     if (!item) return;
+    if (item.url) {
+      window.open(item.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!item.storagePath) return;
     const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleUploadForSlot = (label: string) => {
@@ -218,6 +296,17 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     await upsertDocumentByLabel(pendingSlotLabel, file);
     setPendingSlotLabel(null);
     if (fileSlotInputRef.current) fileSlotInputRef.current.value = '';
+  };
+
+  const handleSlotSaveLink = async (label: string) => {
+    const v = (slotUrlDrafts[label] ?? '').trim();
+    if (!v) return;
+    await upsertDocumentLinkByLabel(label, v);
+    setSlotUrlDrafts((prev) => {
+      const next = { ...prev };
+      delete next[label];
+      return next;
+    });
   };
 
   if (!user) return null;
@@ -302,6 +391,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                           <p className="text-[12px] font-black truncate text-slate-800" title={label}>
                             {label}
                           </p>
+                          <div className="text-[11px] font-bold text-slate-500">
+                            {lang === 'TH'
+                              ? 'ขนาดไฟล์สูงสุด 20MB (ถ้าเกินให้แนบลิงก์แทน)'
+                              : 'Max 20MB file size (if larger, attach a link instead).'}
+                          </div>
                           {isUploaded ? (
                             <button
                               onClick={() => void handleDownloadDocument(item!.id)}
@@ -313,6 +407,33 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                           ) : (
                             <p className="text-[12px] font-black truncate text-slate-400">Not Uploaded</p>
                           )}
+
+                          <div className="mt-3 flex items-center gap-2">
+                            <input
+                              value={slotUrlDrafts[label] ?? ''}
+                              onChange={(e) =>
+                                setSlotUrlDrafts((prev) => ({
+                                  ...prev,
+                                  [label]: e.target.value,
+                                }))
+                              }
+                              className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
+                              placeholder={
+                                lang === 'TH'
+                                  ? 'แนบลิงก์ Drive/URL (http/https)'
+                                  : 'Attach Drive/URL link (http/https)'
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleSlotSaveLink(label)}
+                              disabled={!((slotUrlDrafts[label] ?? '').trim()) || isUploading}
+                              className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center border border-slate-100 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={lang === 'TH' ? 'บันทึกลิงก์' : 'Save link'}
+                            >
+                              <ExternalLink size={16} />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -452,9 +573,46 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                 <div className="mt-4">
                   <input
                     type="file"
-                    onChange={(e) => setNewFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      if (!f) {
+                        setNewFile(null);
+                        return;
+                      }
+                      if (f.size > MAX_DOC_BYTES) {
+                        window.alert(
+                          lang === 'TH'
+                            ? `ไฟล์ "${f.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
+                            : `File "${f.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+                        );
+                        setNewFile(null);
+                        return;
+                      }
+                      setNewUrl('');
+                      setNewFile(f);
+                    }}
                     className="block w-full text-sm"
                   />
+                </div>
+
+                <div className="mt-2 text-[11px] font-bold text-slate-500">
+                  {lang === 'TH'
+                    ? 'ขนาดไฟล์สูงสุด 20MB ต่อไฟล์ (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
+                    : 'Max 20MB per file (if larger, attach a Drive/URL link instead).'}
+                </div>
+
+                <div className="mt-6">
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {lang === 'TH' ? 'หรือแนบลิงก์ (Drive/URL)' : 'Or attach link (Drive/URL)'}
+                    </div>
+                    <input
+                      value={newUrl}
+                      onChange={(e) => setNewUrl(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                      placeholder={lang === 'TH' ? 'วางลิงก์ที่แชร์ได้ (http/https)' : 'Paste a shareable link (http/https)'}
+                    />
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-3 mt-8">
@@ -467,7 +625,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                   <button
                     onClick={() => void handleAddDocument()}
                     className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
-                    disabled={!normalizedNewLabel || !newFile || isBlockedNewLabel}
+                    disabled={!normalizedNewLabel || (!newFile && !newUrl.trim()) || isBlockedNewLabel}
                   >
                     {t.upload}
                   </button>

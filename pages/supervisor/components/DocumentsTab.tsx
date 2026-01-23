@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, ShieldCheck } from 'lucide-react';
+import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -7,8 +7,9 @@ import { firestoreDb, firebaseStorage } from '@/firebase';
 
 type UserDocument = {
   label: string;
-  fileName: string;
-  storagePath: string;
+  fileName?: string;
+  storagePath?: string;
+  url?: string;
   policyTitle?: string;
   acknowledgementText?: string;
   signedAt?: unknown;
@@ -43,8 +44,13 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const handleDownloadDocument = async (docId: string) => {
     const item = documents.find((d) => d.id === docId);
     if (!item) return;
+    if (item.url) {
+      window.open(item.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!item.storagePath) return;
     const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const orderedDocuments = useMemo(() => {
@@ -137,7 +143,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
         )}
         <div className="min-w-0">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
-          <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName}</p>
+          <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
           {(d.policyTitle || d.acknowledgementText) && (
             <p className="text-[11px] font-bold text-slate-500 truncate mt-1">{d.policyTitle ? d.policyTitle : d.acknowledgementText}</p>
           )}
@@ -151,9 +157,9 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
       <button
         onClick={() => void handleDownloadDocument(d.id)}
         className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
-        title="Download"
+        title={d.url ? 'Open' : 'Download'}
       >
-        <Download size={16} />
+        {d.url ? <ExternalLink size={16} /> : <Download size={16} />}
       </button>
     </div>
   );
