@@ -12,11 +12,15 @@ export interface AllowanceClaim {
   internId: string;
   internName: string;
   avatar: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  monthKey?: string;
   amount: number;
   period: string;
   breakdown: { wfo: number; wfh: number; leaves: number };
   status: 'PENDING' | 'APPROVED' | 'PAID';
   paymentDate?: string;
+  paidAtMs?: number;
   isPayoutLocked?: boolean;
   lockReason?: string;
 }
@@ -29,6 +33,8 @@ export interface InternRecord {
   dept: string;
   status: 'Active' | 'Onboarding' | 'Completed' | 'WITHDRAWAL_REQUESTED' | 'OFFBOARDING_REQUESTED' | 'WITHDRAWN' | 'COMPLETED_REPORTED';
   lifecycleStatus?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
   supervisor: {
     name: string;
     avatar: string;

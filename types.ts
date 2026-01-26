@@ -35,6 +35,8 @@ export interface UserProfile {
   lineId?: string;
   position?: string;
   internPeriod?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
   supervisorId?: string;
   supervisorName?: string;
   assignedInterns?: string[]; // IDs of interns (for Supervisors)

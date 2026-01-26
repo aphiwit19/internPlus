@@ -74,6 +74,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
     position: '',
     studentId: '',
     internPeriod: '',
+    bankName: '',
+    bankAccountNumber: '',
   });
 
   useEffect(() => {
@@ -85,6 +87,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       position: user.position || '',
       studentId: user.studentId || '',
       internPeriod: user.internPeriod || '',
+      bankName: user.bankName || '',
+      bankAccountNumber: user.bankAccountNumber || '',
     });
   }, [user]);
 
@@ -190,6 +194,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       position: editForm.position,
       studentId: editForm.studentId,
       internPeriod: editForm.internPeriod,
+      bankName: editForm.bankName,
+      bankAccountNumber: editForm.bankAccountNumber,
     });
     setIsEditing(false);
   };
@@ -256,6 +262,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                   <InfoRow label="Dept." value={user.department} />
                   <InfoRow label="Email" value={user.email} />
                   <InfoRow label="Phone" value={user.phone || ''} />
+                  <InfoRow label="Bank" value={user.bankName || '-'} />
+                  <InfoRow label="Account" value={user.bankAccountNumber || '-'} />
                </div>
             </div>
           </div>
@@ -359,6 +367,8 @@ const EditProfileModal: React.FC<{
     position: string;
     studentId: string;
     internPeriod: string;
+    bankName: string;
+    bankAccountNumber: string;
   };
   onChange: (next: {
     name: string;
@@ -367,6 +377,8 @@ const EditProfileModal: React.FC<{
     position: string;
     studentId: string;
     internPeriod: string;
+    bankName: string;
+    bankAccountNumber: string;
   }) => void;
   onClose: () => void;
   onSave: () => void;
@@ -382,6 +394,8 @@ const EditProfileModal: React.FC<{
       position: 'Position',
       studentId: 'Student ID',
       internPeriod: 'Intern Period',
+      bankName: 'Bank',
+      bankAccountNumber: 'Bank Account Number',
     },
     TH: {
       title: 'แก้ไขโปรไฟล์',
@@ -393,6 +407,8 @@ const EditProfileModal: React.FC<{
       position: 'ตำแหน่ง',
       studentId: 'รหัสนักศึกษา',
       internPeriod: 'ช่วงฝึกงาน',
+      bankName: 'ธนาคาร',
+      bankAccountNumber: 'เลขบัญชี',
     },
   }[lang];
 
@@ -417,6 +433,8 @@ const EditProfileModal: React.FC<{
               <Field label={t.position} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
               <Field label={t.studentId} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
               <Field label={t.internPeriod} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
+              <Field label={t.bankName} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
+              <Field label={t.bankAccountNumber} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
             </div>
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">

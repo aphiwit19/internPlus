@@ -42,6 +42,7 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -81,6 +82,8 @@ type UserDoc = {
   supervisorId?: string;
   supervisorName?: string;
   lifecycleStatus?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
 };
 
 function normalizeRoles(data: Pick<UserDoc, 'roles' | 'role' | 'isDualRole'> | null | undefined): UserRole[] {
@@ -110,6 +113,8 @@ function toInternRecord(id: string, data: UserDoc): InternRecord {
     dept: data.department || 'Unknown',
     status,
     lifecycleStatus: data.lifecycleStatus,
+    bankName: data.bankName,
+    bankAccountNumber: data.bankAccountNumber,
     supervisor: null,
   };
 }
@@ -125,6 +130,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   // Modal States
   const [signingCert, setSigningCert] = useState<CertRequest | null>(null);
   const [assigningIntern, setAssigningIntern] = useState<InternRecord | null>(null);
+  const [payoutClaimId, setPayoutClaimId] = useState<string | null>(null);
+  const [payoutPaidAtInput, setPayoutPaidAtInput] = useState('');
   
   // Signature States
   const [hasSigned, setHasSigned] = useState(false);
@@ -149,6 +156,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     wfhRate: 50,
     applyTax: true,
     taxPercent: 3,
+  });
+
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const monthKeyFromDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  const [selectedMonthKey, setSelectedMonthKey] = useState(() => monthKeyFromDate(new Date()));
+
+  const monthOptions = Array.from({ length: 12 }, (_, idx) => {
+    const base = new Date();
+    const x = new Date(base.getFullYear(), base.getMonth() - idx, 1);
+    return monthKeyFromDate(x);
   });
 
   const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
@@ -193,11 +210,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       return;
     }
 
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    const monthKey = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}`;
+    const parts = selectedMonthKey.split('-');
+    const year = Number(parts[0]);
+    const monthIdx = Number(parts[1]) - 1;
+    const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+    const safeMonthIdx = Number.isFinite(monthIdx) && monthIdx >= 0 && monthIdx <= 11 ? monthIdx : new Date().getMonth();
+
+    const monthStart = new Date(safeYear, safeMonthIdx, 1);
+    const monthEnd = new Date(safeYear, safeMonthIdx + 1, 0);
+    const monthKey = selectedMonthKey;
     const periodLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
     const toDateKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -248,22 +269,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             id: string;
             status?: AllowanceClaim['status'];
             paymentDate?: string;
+            paidAtMs?: number;
           }
         >();
         existingSnap.forEach((d) => {
           const raw = d.data() as any;
           const internId = typeof raw?.internId === 'string' ? raw.internId : null;
           if (!internId) return;
+
+          const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
           existingByInternId.set(internId, {
             id: d.id,
             status: raw?.status,
             paymentDate: typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined,
+            paidAtMs: typeof paidAtMs === 'number' ? paidAtMs : undefined,
           });
         });
 
         const next: AllowanceClaim[] = [];
         const batch = writeBatch(firestoreDb);
-        const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const prevMonthStart = new Date(safeYear, safeMonthIdx - 1, 1);
         const leaveFromKey = toDateKey(prevMonthStart);
         const leaveToKey = toDateKey(monthEnd);
 
@@ -345,11 +370,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             internId: intern.id,
             internName: intern.name,
             avatar: intern.avatar,
+            bankName: intern.bankName,
+            bankAccountNumber: intern.bankAccountNumber,
+            monthKey,
             amount: net,
             period: periodLabel,
             breakdown: { wfo, wfh, leaves },
             status,
             ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
+            ...(typeof existing?.paidAtMs === 'number' ? { paidAtMs: existing.paidAtMs } : {}),
             ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
           });
 
@@ -367,6 +396,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               status,
               ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
               ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
+              ...(typeof existing?.paidAtMs === 'number' ? { paidAt: Timestamp.fromMillis(existing.paidAtMs) } : {}),
               updatedAt: serverTimestamp(),
             },
             { merge: true },
@@ -394,7 +424,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     return () => {
       cancelled = true;
     };
-  }, [activeTab, allowanceRules.applyTax, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, internRoster]);
+  }, [activeTab, allowanceRules.applyTax, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, internRoster, selectedMonthKey]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'));
@@ -518,21 +548,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     }
   };
 
-  const handleProcessPayment = async (id: string) => {
-    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  const handleProcessPayment = (id: string) => {
     const claim = allowanceClaims.find((c) => c.id === id);
     if (claim?.isPayoutLocked) {
       alert(claim.lockReason || 'This payout is locked until program completion.');
       return;
     }
+    setPayoutClaimId(id);
+    setPayoutPaidAtInput('');
+  };
+
+  const handleConfirmProcessPayment = async () => {
+    if (!payoutClaimId) return;
+    const claim = allowanceClaims.find((c) => c.id === payoutClaimId);
+    if (claim?.isPayoutLocked) {
+      alert(claim.lockReason || 'This payout is locked until program completion.');
+      return;
+    }
+    if (!payoutPaidAtInput) return;
+
+    const paidAtDate = new Date(payoutPaidAtInput);
+    if (Number.isNaN(paidAtDate.getTime())) return;
+
+    const paymentDate = paidAtDate.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
     try {
-      await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
+      await updateDoc(doc(firestoreDb, 'allowanceClaims', payoutClaimId), {
         status: 'PAID',
-        paymentDate: today,
-        paidAt: serverTimestamp(),
+        paymentDate,
+        paidAt: Timestamp.fromDate(paidAtDate),
         updatedAt: serverTimestamp(),
       });
-      setAllowanceClaims((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'PAID', paymentDate: today } : a)));
+      setAllowanceClaims((prev) =>
+        prev.map((a) =>
+          a.id === payoutClaimId ? { ...a, status: 'PAID', paymentDate, paidAtMs: paidAtDate.getTime() } : a,
+        ),
+      );
+      setPayoutClaimId(null);
+      setPayoutPaidAtInput('');
     } catch {
       alert('Failed to process payout. Please check Firestore permissions and try again.');
     }
@@ -645,6 +704,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
              errorMessage={allowanceLoadError}
              onAuthorize={handleAuthorizeAllowance}
              onProcessPayment={handleProcessPayment}
+             monthOptions={monthOptions}
+             selectedMonthKey={selectedMonthKey}
+             onSelectMonthKey={setSelectedMonthKey}
            />
          )}
 
@@ -694,6 +756,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                  ))}
               </div>
            </div>
+        </div>
+      )}
+
+      {payoutClaimId && (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Confirm Payout</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Set payout date & time</p>
+              </div>
+              <button
+                onClick={() => {
+                  setPayoutClaimId(null);
+                  setPayoutPaidAtInput('');
+                }}
+                className="text-slate-300 hover:text-slate-900"
+              >
+                <X size={28} />
+              </button>
+            </div>
+
+            <label className="space-y-2 block">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paid at</div>
+              <input
+                type="datetime-local"
+                value={payoutPaidAtInput}
+                onChange={(e) => setPayoutPaidAtInput(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+              />
+            </label>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setPayoutClaimId(null);
+                  setPayoutPaidAtInput('');
+                }}
+                className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleConfirmProcessPayment()}
+                disabled={!payoutPaidAtInput}
+                className="px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
