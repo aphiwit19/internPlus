@@ -16,6 +16,7 @@ export type PageId =
   | 'certificates'
   | 'offboarding'
   | 'allowance'
+  | 'payouts'
   | 'withdrawal'
   | 'withdrawn-offboarding-users'
   | 'withdrawn-withdrawal-users'

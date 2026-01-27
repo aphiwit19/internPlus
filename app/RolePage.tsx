@@ -42,6 +42,7 @@ import SupervisorCertificatesPage from '@/pages/supervisor/CertificatesPage';
 import SupervisorUniversityEvaluationPage from '@/pages/supervisor/UniversityEvaluationPage';
 import SupervisorAppointmentRequestsPage from '@/pages/supervisor/AppointmentRequestsPage';
 import SupervisorActivitiesPage from '@/pages/supervisor/ActivitiesPage';
+import SupervisorPayoutsPage from '@/pages/supervisor/PayoutsPage';
 
 import AdminProfilePage from '@/pages/admin/ProfilePage';
 
@@ -163,6 +164,8 @@ export default function RolePage() {
         return <SupervisorActivitiesPage lang={lang} user={user} />;
       case 'manage-interns':
         return <SupervisorInternManagementPage user={user} onNavigate={onNavigate} lang={lang} />;
+      case 'payouts':
+        return <SupervisorPayoutsPage user={user} lang={lang} />;
       case 'profile':
         return <SupervisorProfilePage user={user} lang={lang} />;
       case 'certificates':

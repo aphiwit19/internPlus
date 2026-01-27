@@ -270,6 +270,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             status?: AllowanceClaim['status'];
             paymentDate?: string;
             paidAtMs?: number;
+            amount?: number;
+            supervisorAdjustedAmount?: number;
+            supervisorAdjustmentNote?: string;
+            supervisorAdjustedBy?: string;
+            supervisorAdjustedAtMs?: number;
           }
         >();
         existingSnap.forEach((d) => {
@@ -278,11 +283,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           if (!internId) return;
 
           const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
+          const supervisorAdjustedAtMs =
+            typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
           existingByInternId.set(internId, {
             id: d.id,
             status: raw?.status,
             paymentDate: typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined,
             paidAtMs: typeof paidAtMs === 'number' ? paidAtMs : undefined,
+            amount: typeof raw?.amount === 'number' ? raw.amount : undefined,
+            supervisorAdjustedAmount: typeof raw?.supervisorAdjustedAmount === 'number' ? raw.supervisorAdjustedAmount : undefined,
+            supervisorAdjustmentNote: typeof raw?.supervisorAdjustmentNote === 'string' ? raw.supervisorAdjustmentNote : undefined,
+            supervisorAdjustedBy: typeof raw?.supervisorAdjustedBy === 'string' ? raw.supervisorAdjustedBy : undefined,
+            supervisorAdjustedAtMs: typeof supervisorAdjustedAtMs === 'number' ? supervisorAdjustedAtMs : undefined,
           });
         });
 
@@ -359,6 +371,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               ? existing.status
               : 'PENDING';
 
+          const supervisorAdjustedAmount = existing?.supervisorAdjustedAmount;
+          const finalAmount = typeof supervisorAdjustedAmount === 'number' ? supervisorAdjustedAmount : net;
+          const shouldPreserveExistingAmount = status === 'PAID' || typeof supervisorAdjustedAmount === 'number';
+          const amountToStore = shouldPreserveExistingAmount && typeof existing?.amount === 'number' ? existing.amount : finalAmount;
+
           const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
           const isPayoutLocked = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
           const lockReason = isPayoutLocked
@@ -373,7 +390,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             bankName: intern.bankName,
             bankAccountNumber: intern.bankAccountNumber,
             monthKey,
-            amount: net,
+            amount: amountToStore,
+            calculatedAmount: net,
+            supervisorAdjustedAmount: existing?.supervisorAdjustedAmount,
+            supervisorAdjustmentNote: existing?.supervisorAdjustmentNote,
+            supervisorAdjustedBy: existing?.supervisorAdjustedBy,
+            ...(typeof existing?.supervisorAdjustedAtMs === 'number'
+              ? { supervisorAdjustedAtMs: existing.supervisorAdjustedAtMs }
+              : {}),
             period: periodLabel,
             breakdown: { wfo, wfh, leaves },
             status,
@@ -391,12 +415,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               avatar: intern.avatar,
               monthKey,
               period: periodLabel,
-              amount: net,
+              amount: amountToStore,
+              calculatedAmount: net,
               breakdown: { wfo, wfh, leaves },
               status,
               ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
               ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
               ...(typeof existing?.paidAtMs === 'number' ? { paidAt: Timestamp.fromMillis(existing.paidAtMs) } : {}),
+              ...(typeof existing?.supervisorAdjustedAmount === 'number'
+                ? {
+                    supervisorAdjustedAmount: existing.supervisorAdjustedAmount,
+                    supervisorAdjustmentNote: existing.supervisorAdjustmentNote,
+                    supervisorAdjustedBy: existing.supervisorAdjustedBy,
+                    ...(typeof existing?.supervisorAdjustedAtMs === 'number'
+                      ? { supervisorAdjustedAt: Timestamp.fromMillis(existing.supervisorAdjustedAtMs) }
+                      : {}),
+                  }
+                : {}),
               updatedAt: serverTimestamp(),
             },
             { merge: true },

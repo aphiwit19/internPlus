@@ -39,6 +39,7 @@ export function isPageId(value: string): value is PageId {
     value === 'certificates' ||
     value === 'offboarding' ||
     value === 'allowance' ||
+    value === 'payouts' ||
     value === 'withdrawal' ||
     value === 'withdrawn-offboarding-users' ||
     value === 'withdrawn-withdrawal-users' ||
