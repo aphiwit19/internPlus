@@ -157,6 +157,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
             const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
             const supervisorAdjustedAtMs =
               typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
+            const adminAdjustedAtMs =
+              typeof raw?.adminAdjustedAt?.toMillis === 'function' ? raw.adminAdjustedAt.toMillis() : undefined;
             const bank = bankByInternId.get(internId);
 
             const breakdown = {
@@ -172,13 +174,22 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
             const storedAmount = typeof raw?.amount === 'number' ? raw.amount : 0;
             const supervisorAdjustedAmount = typeof raw?.supervisorAdjustedAmount === 'number' ? raw.supervisorAdjustedAmount : undefined;
+            const adminAdjustedAmount = typeof raw?.adminAdjustedAmount === 'number' ? raw.adminAdjustedAmount : undefined;
             const shouldUseComputed =
               typeof supervisorAdjustedAmount !== 'number' &&
+              typeof adminAdjustedAmount !== 'number' &&
               (storedAmount === 0) &&
               (breakdown.wfo > 0 || breakdown.wfh > 0) &&
               (raw?.status !== 'PAID');
 
-            const amount = shouldUseComputed ? computedNet : (typeof supervisorAdjustedAmount === 'number' ? supervisorAdjustedAmount : storedAmount);
+            const amount =
+              typeof adminAdjustedAmount === 'number'
+                ? adminAdjustedAmount
+                : typeof supervisorAdjustedAmount === 'number'
+                  ? supervisorAdjustedAmount
+                  : shouldUseComputed
+                    ? computedNet
+                    : storedAmount;
 
             allClaims.push({
               id: d.id,
@@ -194,6 +205,10 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               supervisorAdjustmentNote: typeof raw?.supervisorAdjustmentNote === 'string' ? raw.supervisorAdjustmentNote : undefined,
               supervisorAdjustedBy: typeof raw?.supervisorAdjustedBy === 'string' ? raw.supervisorAdjustedBy : undefined,
               supervisorAdjustedAtMs: typeof supervisorAdjustedAtMs === 'number' ? supervisorAdjustedAtMs : undefined,
+              adminAdjustedAmount,
+              adminAdjustmentNote: typeof raw?.adminAdjustmentNote === 'string' ? raw.adminAdjustmentNote : undefined,
+              adminAdjustedBy: typeof raw?.adminAdjustedBy === 'string' ? raw.adminAdjustedBy : undefined,
+              adminAdjustedAtMs: typeof adminAdjustedAtMs === 'number' ? adminAdjustedAtMs : undefined,
               period: typeof raw?.period === 'string' ? raw.period : selectedMonthKey,
               breakdown,
               status: raw?.status === 'PAID' || raw?.status === 'APPROVED' || raw?.status === 'PENDING' ? raw.status : 'PENDING',
@@ -228,6 +243,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const handleOpenEdit = (claim: AllowanceClaim) => {
     if (!assignedInternIds.includes(claim.internId)) return;
     if (claim.status === 'PAID') return;
+    if (typeof claim.adminAdjustedAmount === 'number') return;
     setEditingClaim(claim);
     setEditAmount(String(claim.amount ?? 0));
     setEditNote('');
@@ -237,6 +253,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
     if (!editingClaim) return;
     if (!assignedInternIds.includes(editingClaim.internId)) return;
     if (editingClaim.status === 'PAID') return;
+    if (typeof editingClaim.adminAdjustedAmount === 'number') return;
 
     const nextAmount = Number(editAmount);
     if (!Number.isFinite(nextAmount)) return;

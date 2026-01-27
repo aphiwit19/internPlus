@@ -215,6 +215,20 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [applyTax, setApplyTax] = useState(true);
   const [taxPercent, setTaxPercent] = useState(3);
 
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const monthKeyFromDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  const payPeriodMonthOptions = Array.from({ length: 12 }, (_, idx) => {
+    const base = new Date();
+    const x = new Date(base.getFullYear(), base.getMonth() - idx, 1);
+    return monthKeyFromDate(x);
+  });
+
+  const [selectedPayPeriodMonthKey, setSelectedPayPeriodMonthKey] = useState(() => monthKeyFromDate(new Date()));
+  const [payPeriodStartDate, setPayPeriodStartDate] = useState('');
+  const [payPeriodEndDate, setPayPeriodEndDate] = useState('');
+  const [payPeriodPlannedPayoutDate, setPayPeriodPlannedPayoutDate] = useState('');
+  const [payPeriodError, setPayPeriodError] = useState<string | null>(null);
+
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
@@ -295,6 +309,35 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       },
     );
   }, []);
+
+  useEffect(() => {
+    const periodRef = doc(firestoreDb, 'payPeriods', selectedPayPeriodMonthKey);
+    return onSnapshot(
+      periodRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setPayPeriodStartDate('');
+          setPayPeriodEndDate('');
+          setPayPeriodPlannedPayoutDate('');
+          setPayPeriodError(null);
+          return;
+        }
+        const data = snap.data() as {
+          periodStart?: string;
+          periodEnd?: string;
+          plannedPayoutDate?: string;
+        };
+
+        setPayPeriodStartDate(typeof data.periodStart === 'string' ? data.periodStart : '');
+        setPayPeriodEndDate(typeof data.periodEnd === 'string' ? data.periodEnd : '');
+        setPayPeriodPlannedPayoutDate(typeof data.plannedPayoutDate === 'string' ? data.plannedPayoutDate : '');
+        setPayPeriodError(null);
+      },
+      () => {
+        // ignore
+      },
+    );
+  }, [selectedPayPeriodMonthKey]);
   const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnUsers, setWithdrawnUsers] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnAccessOverrides, setWithdrawnAccessOverrides] = useState<Record<string, PostProgramAccessLevel>>({});
@@ -627,6 +670,47 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         { merge: true },
       );
 
+      if (activeTab === 'allowance') {
+        const isIso = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+        const start = payPeriodStartDate.trim();
+        const end = payPeriodEndDate.trim();
+        const payout = payPeriodPlannedPayoutDate.trim();
+
+        if (start && !isIso(start)) {
+          setPayPeriodError('Period start date must be in YYYY-MM-DD format.');
+          setIsSaving(false);
+          return;
+        }
+        if (end && !isIso(end)) {
+          setPayPeriodError('Period end date must be in YYYY-MM-DD format.');
+          setIsSaving(false);
+          return;
+        }
+        if (payout && !isIso(payout)) {
+          setPayPeriodError('Planned payout date must be in YYYY-MM-DD format.');
+          setIsSaving(false);
+          return;
+        }
+        if (start && end && start > end) {
+          setPayPeriodError('Period end date must be on or after period start date.');
+          setIsSaving(false);
+          return;
+        }
+
+        const payPeriodRef = doc(firestoreDb, 'payPeriods', selectedPayPeriodMonthKey);
+        batch.set(
+          payPeriodRef,
+          {
+            monthKey: selectedPayPeriodMonthKey,
+            ...(start ? { periodStart: start } : {}),
+            ...(end ? { periodEnd: end } : {}),
+            ...(payout ? { plannedPayoutDate: payout } : {}),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
       for (const op of Object.values(pendingUserOperations) as PendingUserOperation[]) {
         const userRef = doc(firestoreDb, 'users', op.userId);
         if (op.type === 'APPLY_WITHDRAWAL') {
@@ -680,14 +764,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       }
 
       await batch.commit();
-
-      setOnboardingSteps(orderedSteps);
-      setPendingUserOperations({});
-      alert(lang === 'EN' ? 'System configuration deployed successfully.' : 'ปรับใช้การตั้งค่าระบบเรียบร้อยแล้ว');
+      setPayPeriodError(null);
     } catch (err) {
-      console.error('Failed to deploy config:', err);
-      const details = err instanceof Error ? err.message : String(err);
-      alert(`${lang === 'EN' ? 'Failed to deploy config.' : 'ไม่สามารถปรับใช้การตั้งค่าได้'}\n${details}`);
+      console.error(err);
+      alert(lang === 'EN' ? 'Failed to save settings.' : 'ไม่สามารถบันทึกการตั้งค่าได้');
     } finally {
       setIsSaving(false);
     }
@@ -1102,6 +1182,68 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                     </div>
 
                     <div className="space-y-12">
+                      <div className="bg-[#F8FAFC] border border-slate-200 rounded-[2rem] p-8">
+                        <div className="flex items-start justify-between gap-6 flex-col md:flex-row md:items-center">
+                          <div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">MONTHLY PAY PERIOD</div>
+                            <div className="mt-2 text-lg font-black text-slate-900">Cutoff window & payout date</div>
+                            <div className="mt-2 text-[11px] font-bold text-slate-500">Used for monthly claim calculation and planned payout date.</div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <select
+                              value={selectedPayPeriodMonthKey}
+                              onChange={(e) => setSelectedPayPeriodMonthKey(e.target.value)}
+                              className="px-5 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black text-slate-700 outline-none"
+                            >
+                              {payPeriodMonthOptions.map((m) => (
+                                <option key={m} value={m}>
+                                  {m}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {payPeriodError && (
+                          <div className="mt-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl text-sm font-bold text-rose-700">
+                            {payPeriodError}
+                          </div>
+                        )}
+
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <label className="space-y-2 block">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period Start</div>
+                            <input
+                              type="date"
+                              value={payPeriodStartDate}
+                              onChange={(e) => setPayPeriodStartDate(e.target.value)}
+                              className="w-full px-5 py-4 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                          </label>
+
+                          <label className="space-y-2 block">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period End</div>
+                            <input
+                              type="date"
+                              value={payPeriodEndDate}
+                              onChange={(e) => setPayPeriodEndDate(e.target.value)}
+                              className="w-full px-5 py-4 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                          </label>
+
+                          <label className="space-y-2 block">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Planned Payout Date</div>
+                            <input
+                              type="date"
+                              value={payPeriodPlannedPayoutDate}
+                              onChange={(e) => setPayPeriodPlannedPayoutDate(e.target.value)}
+                              className="w-full px-5 py-4 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                          </label>
+                        </div>
+                      </div>
+
                       <div>
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">PAYOUT FREQUENCY</label>
                         <div className="flex gap-4">

@@ -38,6 +38,7 @@ import {
   arrayUnion,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -57,6 +58,7 @@ import RosterTab from './components/RosterTab';
 import { AllowanceClaim, CertRequest, InternRecord, Mentor } from './adminDashboardTypes';
 
 import { firestoreDb } from '@/firebase';
+import { firebaseAuth } from '@/firebase';
 import { UserRole } from '@/types';
 
 const MOCK_MENTORS: Mentor[] = [
@@ -149,6 +151,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([]);
   const [isAllowanceLoading, setIsAllowanceLoading] = useState(false);
   const [allowanceLoadError, setAllowanceLoadError] = useState<string | null>(null);
+  const [isBulkAuthorizing, setIsBulkAuthorizing] = useState(false);
+  const [isBulkPaying, setIsBulkPaying] = useState(false);
+  const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
+  const [bulkPaidAtInput, setBulkPaidAtInput] = useState('');
+
+  const [editingAllowanceClaim, setEditingAllowanceClaim] = useState<AllowanceClaim | null>(null);
+  const [editAllowanceAmount, setEditAllowanceAmount] = useState('');
+  const [editAllowanceNote, setEditAllowanceNote] = useState('');
+  const [isSavingAllowanceEdit, setIsSavingAllowanceEdit] = useState(false);
 
   const [allowanceRules, setAllowanceRules] = useState({
     payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
@@ -167,6 +178,126 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     const x = new Date(base.getFullYear(), base.getMonth() - idx, 1);
     return monthKeyFromDate(x);
   });
+
+  const handleOpenAdminAllowanceEdit = (claim: AllowanceClaim) => {
+    if (activeTab !== 'allowances') return;
+    if (claim.status === 'PAID') return;
+    if (claim.isPayoutLocked) return;
+    setEditingAllowanceClaim(claim);
+    setEditAllowanceAmount(String(claim.amount ?? 0));
+    setEditAllowanceNote('');
+  };
+
+  const handleSaveAdminAllowanceEdit = async () => {
+    if (!editingAllowanceClaim) return;
+    if (editingAllowanceClaim.status === 'PAID') return;
+    if (editingAllowanceClaim.isPayoutLocked) return;
+
+    const nextAmount = Number(editAllowanceAmount);
+    if (!Number.isFinite(nextAmount)) return;
+    const note = editAllowanceNote.trim();
+    if (!note) return;
+
+    try {
+      setIsSavingAllowanceEdit(true);
+      const uid = firebaseAuth.currentUser?.uid;
+      await updateDoc(doc(firestoreDb, 'allowanceClaims', editingAllowanceClaim.id), {
+        amount: nextAmount,
+        adminAdjustedAmount: nextAmount,
+        adminAdjustmentNote: note,
+        adminAdjustedBy: uid ?? 'HR_ADMIN',
+        adminAdjustedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setAllowanceClaims((prev) =>
+        prev.map((c) =>
+          c.id === editingAllowanceClaim.id
+            ? {
+                ...c,
+                amount: nextAmount,
+                adminAdjustedAmount: nextAmount,
+                adminAdjustmentNote: note,
+                adminAdjustedBy: uid ?? 'HR_ADMIN',
+                adminAdjustedAtMs: Date.now(),
+              }
+            : c,
+        ),
+      );
+      setEditingAllowanceClaim(null);
+      setEditAllowanceAmount('');
+      setEditAllowanceNote('');
+    } catch {
+      alert('Failed to save admin adjustment. Please check permissions and try again.');
+    } finally {
+      setIsSavingAllowanceEdit(false);
+    }
+  };
+
+  const handleOpenBulkPayModal = () => {
+    if (activeTab !== 'allowances') return;
+    const candidates = allowanceClaims.filter((c) => c.status !== 'PAID' && !c.isPayoutLocked);
+    if (candidates.length === 0) {
+      alert('No claims available to pay.');
+      return;
+    }
+    setBulkPaidAtInput('');
+    setIsBulkPayModalOpen(true);
+  };
+
+  const handleConfirmBulkPay = async () => {
+    if (activeTab !== 'allowances') return;
+    if (isBulkPaying) return;
+    if (!bulkPaidAtInput) return;
+
+    const paidAtDate = new Date(bulkPaidAtInput);
+    if (Number.isNaN(paidAtDate.getTime())) return;
+
+    const candidates = allowanceClaims.filter((c) => c.status !== 'PAID' && !c.isPayoutLocked);
+    if (candidates.length === 0) {
+      alert('No claims available to pay.');
+      return;
+    }
+
+    if (!window.confirm(`Pay ${candidates.length} claim(s) for ${selectedMonthKey}?`)) return;
+
+    const paymentDate = paidAtDate.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    try {
+      setIsBulkPaying(true);
+      const batch = writeBatch(firestoreDb);
+      for (const c of candidates) {
+        batch.update(doc(firestoreDb, 'allowanceClaims', c.id), {
+          status: 'PAID',
+          ...(c.status === 'PENDING' ? { approvedAt: serverTimestamp() } : {}),
+          paymentDate,
+          paidAt: Timestamp.fromDate(paidAtDate),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+
+      setAllowanceClaims((prev) =>
+        prev.map((c) =>
+          c.status !== 'PAID' && !c.isPayoutLocked
+            ? { ...c, status: 'PAID', paymentDate, paidAtMs: paidAtDate.getTime() }
+            : c,
+        ),
+      );
+      setIsBulkPayModalOpen(false);
+      setBulkPaidAtInput('');
+    } catch {
+      alert('Failed to bulk pay payouts. Please check Firestore permissions and try again.');
+    } finally {
+      setIsBulkPaying(false);
+    }
+  };
 
   const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
   const [mentorOptions, setMentorOptions] = useState<MentorOption[]>([]);
@@ -255,11 +386,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       });
       await Promise.all(runners);
     };
-
     const load = async () => {
       try {
         if (!cancelled) setIsAllowanceLoading(true);
         if (!cancelled) setAllowanceLoadError(null);
+
+        const payPeriodSnap = await getDoc(doc(firestoreDb, 'payPeriods', monthKey));
+        const payPeriodData = payPeriodSnap.exists() ? (payPeriodSnap.data() as any) : null;
+        const periodStartIso = typeof payPeriodData?.periodStart === 'string' ? payPeriodData.periodStart : null;
+        const periodEndIso = typeof payPeriodData?.periodEnd === 'string' ? payPeriodData.periodEnd : null;
+        const plannedPayoutDate = typeof payPeriodData?.plannedPayoutDate === 'string' ? payPeriodData.plannedPayoutDate : undefined;
+
+        const toUtcDate = (iso: string) => {
+          const d = new Date(`${iso}T00:00:00.000Z`);
+          return Number.isNaN(d.getTime()) ? null : d;
+        };
+
+        const configuredStart = periodStartIso ? toUtcDate(periodStartIso) : null;
+        const configuredEnd = periodEndIso ? toUtcDate(periodEndIso) : null;
+        const periodStart = clampDay(configuredStart ?? monthStart);
+        const periodEnd = clampDay(configuredEnd ?? monthEnd);
+
         const existingSnap = await getDocs(
           query(collection(firestoreDb, 'allowanceClaims'), where('monthKey', '==', monthKey)),
         );
@@ -275,6 +422,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             supervisorAdjustmentNote?: string;
             supervisorAdjustedBy?: string;
             supervisorAdjustedAtMs?: number;
+            adminAdjustedAmount?: number;
+            adminAdjustmentNote?: string;
+            adminAdjustedBy?: string;
+            adminAdjustedAtMs?: number;
           }
         >();
         existingSnap.forEach((d) => {
@@ -285,6 +436,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
           const supervisorAdjustedAtMs =
             typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
+          const adminAdjustedAtMs =
+            typeof raw?.adminAdjustedAt?.toMillis === 'function' ? raw.adminAdjustedAt.toMillis() : undefined;
           existingByInternId.set(internId, {
             id: d.id,
             status: raw?.status,
@@ -295,14 +448,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             supervisorAdjustmentNote: typeof raw?.supervisorAdjustmentNote === 'string' ? raw.supervisorAdjustmentNote : undefined,
             supervisorAdjustedBy: typeof raw?.supervisorAdjustedBy === 'string' ? raw.supervisorAdjustedBy : undefined,
             supervisorAdjustedAtMs: typeof supervisorAdjustedAtMs === 'number' ? supervisorAdjustedAtMs : undefined,
+            adminAdjustedAmount: typeof raw?.adminAdjustedAmount === 'number' ? raw.adminAdjustedAmount : undefined,
+            adminAdjustmentNote: typeof raw?.adminAdjustmentNote === 'string' ? raw.adminAdjustmentNote : undefined,
+            adminAdjustedBy: typeof raw?.adminAdjustedBy === 'string' ? raw.adminAdjustedBy : undefined,
+            adminAdjustedAtMs: typeof adminAdjustedAtMs === 'number' ? adminAdjustedAtMs : undefined,
           });
         });
 
         const next: AllowanceClaim[] = [];
         const batch = writeBatch(firestoreDb);
-        const prevMonthStart = new Date(safeYear, safeMonthIdx - 1, 1);
-        const leaveFromKey = toDateKey(prevMonthStart);
-        const leaveToKey = toDateKey(monthEnd);
+        const prevWindowStart = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() - 31);
+        const leaveFromKey = toDateKey(prevWindowStart);
+        const leaveToKey = toDateKey(periodEnd);
 
         const appendClaimForIntern = async (intern: InternRecord) => {
           if (cancelled) return;
@@ -312,8 +469,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             getDocs(
               query(
                 attendanceRef,
-                where('date', '>=', toDateKey(monthStart)),
-                where('date', '<=', toDateKey(monthEnd)),
+                where('date', '>=', toDateKey(periodStart)),
+                where('date', '<=', toDateKey(periodEnd)),
               ),
             ),
             getDocs(
@@ -352,8 +509,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               if (!startDate || !endDate) return;
               for (const day of daysInclusive(startDate, endDate)) {
                 const localDay = clampDay(new Date(day.getTime()));
-                if (localDay.getTime() < clampDay(monthStart).getTime()) continue;
-                if (localDay.getTime() > clampDay(monthEnd).getTime()) continue;
+                if (localDay.getTime() < periodStart.getTime()) continue;
+                if (localDay.getTime() > periodEnd.getTime()) continue;
                 leaveDaysSet.add(toDateKey(localDay));
               }
             });
@@ -372,9 +529,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               : 'PENDING';
 
           const supervisorAdjustedAmount = existing?.supervisorAdjustedAmount;
-          const finalAmount = typeof supervisorAdjustedAmount === 'number' ? supervisorAdjustedAmount : net;
-          const shouldPreserveExistingAmount = status === 'PAID' || typeof supervisorAdjustedAmount === 'number';
-          const amountToStore = shouldPreserveExistingAmount && typeof existing?.amount === 'number' ? existing.amount : finalAmount;
+          const adminAdjustedAmount = existing?.adminAdjustedAmount;
+          const finalAmount =
+            typeof adminAdjustedAmount === 'number'
+              ? adminAdjustedAmount
+              : typeof supervisorAdjustedAmount === 'number'
+                ? supervisorAdjustedAmount
+                : net;
+
+          const shouldPreserveExistingAmount =
+            status === 'PAID' || typeof adminAdjustedAmount === 'number' || typeof supervisorAdjustedAmount === 'number';
+          const amountToStore =
+            shouldPreserveExistingAmount && typeof existing?.amount === 'number' ? existing.amount : finalAmount;
 
           const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
           const isPayoutLocked = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
@@ -390,6 +556,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             bankName: intern.bankName,
             bankAccountNumber: intern.bankAccountNumber,
             monthKey,
+            plannedPayoutDate,
             amount: amountToStore,
             calculatedAmount: net,
             supervisorAdjustedAmount: existing?.supervisorAdjustedAmount,
@@ -398,6 +565,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             ...(typeof existing?.supervisorAdjustedAtMs === 'number'
               ? { supervisorAdjustedAtMs: existing.supervisorAdjustedAtMs }
               : {}),
+            adminAdjustedAmount: existing?.adminAdjustedAmount,
+            adminAdjustmentNote: existing?.adminAdjustmentNote,
+            adminAdjustedBy: existing?.adminAdjustedBy,
+            ...(typeof existing?.adminAdjustedAtMs === 'number' ? { adminAdjustedAtMs: existing.adminAdjustedAtMs } : {}),
             period: periodLabel,
             breakdown: { wfo, wfh, leaves },
             status,
@@ -414,6 +585,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               internName: intern.name,
               avatar: intern.avatar,
               monthKey,
+              ...(plannedPayoutDate ? { plannedPayoutDate } : {}),
               period: periodLabel,
               amount: amountToStore,
               calculatedAmount: net,
@@ -429,6 +601,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                     supervisorAdjustedBy: existing.supervisorAdjustedBy,
                     ...(typeof existing?.supervisorAdjustedAtMs === 'number'
                       ? { supervisorAdjustedAt: Timestamp.fromMillis(existing.supervisorAdjustedAtMs) }
+                      : {}),
+                  }
+                : {}),
+              ...(typeof existing?.adminAdjustedAmount === 'number'
+                ? {
+                    adminAdjustedAmount: existing.adminAdjustedAmount,
+                    adminAdjustmentNote: existing.adminAdjustmentNote,
+                    adminAdjustedBy: existing.adminAdjustedBy,
+                    ...(typeof existing?.adminAdjustedAtMs === 'number'
+                      ? { adminAdjustedAt: Timestamp.fromMillis(existing.adminAdjustedAtMs) }
                       : {}),
                   }
                 : {}),
@@ -583,6 +765,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     }
   };
 
+  const handleAuthorizeAllAllowances = async () => {
+    if (activeTab !== 'allowances') return;
+    if (isBulkAuthorizing) return;
+
+    const candidates = allowanceClaims.filter((c) => c.status === 'PENDING' && !c.isPayoutLocked);
+    if (candidates.length === 0) {
+      alert('No PENDING claims available to authorize.');
+      return;
+    }
+
+    if (!window.confirm(`Authorize ${candidates.length} claim(s) for ${selectedMonthKey}?`)) return;
+
+    try {
+      setIsBulkAuthorizing(true);
+      const batch = writeBatch(firestoreDb);
+      for (const c of candidates) {
+        batch.update(doc(firestoreDb, 'allowanceClaims', c.id), {
+          status: 'APPROVED',
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      setAllowanceClaims((prev) =>
+        prev.map((c) => (c.status === 'PENDING' && !c.isPayoutLocked ? { ...c, status: 'APPROVED' } : c)),
+      );
+    } catch {
+      alert('Failed to bulk authorize payouts. Please check Firestore permissions and try again.');
+    } finally {
+      setIsBulkAuthorizing(false);
+    }
+  };
+
   const handleProcessPayment = (id: string) => {
     const claim = allowanceClaims.find((c) => c.id === id);
     if (claim?.isPayoutLocked) {
@@ -689,8 +904,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
+    <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
+        {editingAllowanceClaim && (
+          <>
+            <div
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[140]"
+              onClick={() => (isSavingAllowanceEdit ? void 0 : setEditingAllowanceClaim(null))}
+            />
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Adjust Allowance Amount</h3>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                      {editingAllowanceClaim.internName}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => (isSavingAllowanceEdit ? void 0 : setEditingAllowanceClaim(null))}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                    disabled={isSavingAllowanceEdit}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-8 space-y-5">
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">New Amount (THB)</div>
+                    <input
+                      value={editAllowanceAmount}
+                      onChange={(e) => setEditAllowanceAmount(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    />
+                  </label>
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (required)</div>
+                    <textarea
+                      value={editAllowanceNote}
+                      onChange={(e) => setEditAllowanceNote(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[120px]"
+                    />
+                  </label>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setEditingAllowanceClaim(null)}
+                      disabled={isSavingAllowanceEdit}
+                      className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => void handleSaveAdminAllowanceEdit()}
+                      disabled={isSavingAllowanceEdit || !editAllowanceNote.trim() || !String(editAllowanceAmount).trim()}
+                      className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
         
         {/* Global Admin Header */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -733,16 +1010,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           {/* TAB: ALLOWANCE PAYOUTS */}
          {activeTab === 'allowances' && (
-           <AllowancesTab
-             allowanceClaims={allowanceClaims}
-             isLoading={isAllowanceLoading}
-             errorMessage={allowanceLoadError}
-             onAuthorize={handleAuthorizeAllowance}
-             onProcessPayment={handleProcessPayment}
-             monthOptions={monthOptions}
-             selectedMonthKey={selectedMonthKey}
-             onSelectMonthKey={setSelectedMonthKey}
-           />
+           <div className="space-y-6">
+             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+               <div>
+                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bulk Actions</div>
+                 <div className="text-sm font-black text-slate-900 mt-1">Apply to all interns for selected month</div>
+               </div>
+               <div className="flex items-center gap-3">
+                 <button
+                   type="button"
+                   onClick={() => void handleAuthorizeAllAllowances()}
+                   disabled={isAllowanceLoading || isBulkAuthorizing || isBulkPaying}
+                   className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
+                 >
+                   Authorize All
+                 </button>
+                 <button
+                   type="button"
+                   onClick={handleOpenBulkPayModal}
+                   disabled={isAllowanceLoading || isBulkAuthorizing || isBulkPaying}
+                   className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
+                 >
+                   Pay All
+                 </button>
+               </div>
+             </div>
+
+             <AllowancesTab
+               allowanceClaims={allowanceClaims}
+               isLoading={isAllowanceLoading}
+               errorMessage={allowanceLoadError}
+               onAuthorize={handleAuthorizeAllowance}
+               onProcessPayment={handleProcessPayment}
+               monthOptions={monthOptions}
+               selectedMonthKey={selectedMonthKey}
+               onSelectMonthKey={setSelectedMonthKey}
+               onRowClick={handleOpenAdminAllowanceEdit}
+             />
+           </div>
          )}
 
         </div>
@@ -791,6 +1096,60 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                  ))}
               </div>
            </div>
+        </div>
+      )}
+
+      {isBulkPayModalOpen && (
+        <div className="fixed inset-0 z-[124] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Confirm Bulk Payout</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Set one payout date & time for all</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (isBulkPaying) return;
+                  setIsBulkPayModalOpen(false);
+                  setBulkPaidAtInput('');
+                }}
+                className="text-slate-300 hover:text-slate-900"
+              >
+                <X size={28} />
+              </button>
+            </div>
+
+            <label className="space-y-2 block">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paid at</div>
+              <input
+                type="datetime-local"
+                value={bulkPaidAtInput}
+                onChange={(e) => setBulkPaidAtInput(e.target.value)}
+                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+              />
+            </label>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  if (isBulkPaying) return;
+                  setIsBulkPayModalOpen(false);
+                  setBulkPaidAtInput('');
+                }}
+                className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+                disabled={isBulkPaying}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleConfirmBulkPay()}
+                disabled={!bulkPaidAtInput || isBulkPaying}
+                className="px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

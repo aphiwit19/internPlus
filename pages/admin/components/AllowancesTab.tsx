@@ -36,6 +36,13 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
   const [page, setPage] = useState(1);
   const pageSize = 8;
   const [noteClaim, setNoteClaim] = useState<AllowanceClaim | null>(null);
+  const [noteSource, setNoteSource] = useState<'ADMIN' | 'SUPERVISOR'>('SUPERVISOR');
+
+  const todayStartMs = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, []);
 
   const filtered = useMemo(() => {
     const q = nameQuery.trim().toLowerCase();
@@ -57,6 +64,18 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
     });
   }, [allowanceClaims, nameQuery, payFrom, payTo, statusFilter]);
 
+  const overdueCount = useMemo(() => {
+    return filtered.filter((c) => {
+      if (c.status === 'PAID') return false;
+      if (c.isPayoutLocked) return false;
+      const iso = typeof c.plannedPayoutDate === 'string' ? c.plannedPayoutDate : '';
+      if (!iso) return false;
+      const ms = new Date(`${iso}T00:00:00.000Z`).getTime();
+      if (Number.isNaN(ms)) return false;
+      return ms <= todayStartMs;
+    }).length;
+  }, [filtered, todayStartMs]);
+
   useEffect(() => {
     setPage(1);
   }, [nameQuery, statusFilter, payFrom, payTo, selectedMonthKey]);
@@ -77,9 +96,16 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
             <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Supervisor Adjustment Note</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Adjustment Note</h3>
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
                     {noteClaim.internName}
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest mt-2">
+                    {noteSource === 'ADMIN' ? (
+                      <span className="text-rose-600">ADMIN ADJUSTED</span>
+                    ) : (
+                      <span className="text-indigo-600">SUPERVISOR ADJUSTED</span>
+                    )}
                   </div>
                 </div>
                 <button
@@ -93,14 +119,18 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                 <div className="bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Adjusted Amount</div>
                   <div className="text-lg font-black text-slate-900">
-                    {Number(noteClaim.supervisorAdjustedAmount ?? noteClaim.amount ?? 0).toLocaleString()} THB
+                    {Number(
+                      (noteSource === 'ADMIN'
+                        ? noteClaim.adminAdjustedAmount
+                        : noteClaim.supervisorAdjustedAmount) ?? noteClaim.amount ?? 0,
+                    ).toLocaleString()} THB
                   </div>
                 </div>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Note</div>
                   <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
-                    {noteClaim.supervisorAdjustmentNote || '-'}
+                    {(noteSource === 'ADMIN' ? noteClaim.adminAdjustmentNote : noteClaim.supervisorAdjustmentNote) || '-'}
                   </div>
                 </div>
 
@@ -122,6 +152,15 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
         <div className="flex items-center justify-between mb-10">
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">Allowance Disbursement</h3>
         </div>
+
+        {overdueCount > 0 && !isLoading && !errorMessage && (
+          <div className="mb-8 p-5 bg-amber-50 border border-amber-100 rounded-[1.5rem]">
+            <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Payout overdue</div>
+            <div className="mt-2 text-sm font-bold text-amber-900">
+              {overdueCount} claim(s) reached planned payout date but are not paid yet.
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
           <div className="lg:col-span-4">
@@ -195,6 +234,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                 <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Activity Mix</th>
                 <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Period Amount</th>
                 <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Planned payout</th>
                 <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pay date</th>
                 {!readOnly && <th className="pb-6 text-right pr-4">Action</th>}
               </tr>
@@ -202,7 +242,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
             <tbody className="divide-y divide-slate-50">
               {!isLoading && Boolean(errorMessage) && (
                 <tr>
-                  <td colSpan={readOnly ? 7 : 8} className="py-10 text-center">
+                  <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
                     <div className="text-sm font-black text-rose-600">โหลดข้อมูลไม่สำเร็จ</div>
                     <div className="text-[11px] font-bold text-slate-400 mt-1 break-words">{errorMessage}</div>
                   </td>
@@ -211,7 +251,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
 
               {isLoading && (
                 <tr>
-                  <td colSpan={readOnly ? 7 : 8} className="py-10 text-center">
+                  <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
                     <div className="text-sm font-black text-slate-700">กำลังดาวน์โหลดอยู่…</div>
                     <div className="text-[11px] font-bold text-slate-400 mt-1">Loading payout data</div>
                   </td>
@@ -220,7 +260,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
 
               {!isLoading && !errorMessage && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={readOnly ? 7 : 8} className="py-10 text-center">
+                  <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
                     <div className="text-sm font-black text-slate-700">ไม่พบข้อมูล</div>
                   </td>
                 </tr>
@@ -263,25 +303,41 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                     <div
                       className="flex flex-col"
                       title={
-                        typeof claim.supervisorAdjustedAmount === 'number'
-                          ? claim.supervisorAdjustmentNote || 'Adjusted'
-                          : undefined
+                        typeof claim.adminAdjustedAmount === 'number'
+                          ? claim.adminAdjustmentNote || 'Admin Adjusted'
+                          : typeof claim.supervisorAdjustedAmount === 'number'
+                            ? claim.supervisorAdjustmentNote || 'Supervisor Adjusted'
+                            : undefined
                       }
                     >
                       <span className="text-sm font-black text-slate-900">{Number(claim.amount ?? 0).toLocaleString()} THB</span>
-                      {typeof claim.supervisorAdjustedAmount === 'number' && (
+                      {typeof claim.adminAdjustedAmount === 'number' ? (
+                        <button
+                          type="button"
+                          className="text-left text-[10px] font-black text-rose-600 uppercase tracking-widest hover:underline"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setNoteSource('ADMIN');
+                            setNoteClaim(claim);
+                          }}
+                        >
+                          Admin Adjusted
+                        </button>
+                      ) : typeof claim.supervisorAdjustedAmount === 'number' ? (
                         <button
                           type="button"
                           className="text-left text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            setNoteSource('SUPERVISOR');
                             setNoteClaim(claim);
                           }}
                         >
-                          Adjusted
+                          Supervisor Adjusted
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </td>
                   <td className="py-6">
@@ -296,6 +352,28 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                     >
                       {claim.status}
                     </span>
+                  </td>
+                  <td className="py-6">
+                    {(() => {
+                      const iso = typeof claim.plannedPayoutDate === 'string' ? claim.plannedPayoutDate : '';
+                      if (!iso) return <span className="text-[11px] font-black text-slate-400">-</span>;
+                      const ms = new Date(`${iso}T00:00:00.000Z`).getTime();
+                      const isOverdue =
+                        !Number.isNaN(ms) &&
+                        ms <= todayStartMs &&
+                        claim.status !== 'PAID' &&
+                        !claim.isPayoutLocked;
+                      return (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] font-black text-slate-700">{iso}</span>
+                          {isOverdue ? (
+                            <span className="inline-flex w-fit px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-rose-50 text-rose-600 border border-rose-100">
+                              Overdue
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="py-6">
                     <span className="text-[11px] font-black text-slate-700">{claim.paymentDate || '-'}</span>
@@ -317,14 +395,20 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                         </div>
                       ) : claim.status === 'PENDING' ? (
                         <button
-                          onClick={() => onAuthorize(claim.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAuthorize(claim.id);
+                          }}
                           className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2 ml-auto"
                         >
                           <ShieldCheck size={14} /> Authorize
                         </button>
                       ) : claim.status === 'APPROVED' ? (
                         <button
-                          onClick={() => onProcessPayment(claim.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onProcessPayment(claim.id);
+                          }}
                           className="px-5 py-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all shadow-sm flex items-center gap-2 ml-auto"
                         >
                           <Banknote size={14} /> Process Payout

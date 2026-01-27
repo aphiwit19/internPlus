@@ -15,11 +15,16 @@ export interface AllowanceClaim {
   bankName?: string;
   bankAccountNumber?: string;
   monthKey?: string;
+  plannedPayoutDate?: string;
   calculatedAmount?: number;
   supervisorAdjustedAmount?: number;
   supervisorAdjustmentNote?: string;
   supervisorAdjustedBy?: string;
   supervisorAdjustedAtMs?: number;
+  adminAdjustedAmount?: number;
+  adminAdjustmentNote?: string;
+  adminAdjustedBy?: string;
+  adminAdjustedAtMs?: number;
   amount: number;
   period: string;
   breakdown: { wfo: number; wfh: number; leaves: number };
