@@ -37,11 +37,13 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
 
   const [claims, setClaims] = useState<AllowanceClaimRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('');
 
   useEffect(() => {
     if (!user?.id) {
       setClaims([]);
       setIsLoading(false);
+      setSelectedMonthKey('');
       return;
     }
     setIsLoading(true);
@@ -67,6 +69,11 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
           })
           .sort((a, b) => String(b.monthKey ?? '').localeCompare(String(a.monthKey ?? '')));
         setClaims(next);
+        setSelectedMonthKey((prev) => {
+          if (prev) return prev;
+          const firstMonthKey = next.find((c) => c.monthKey)?.monthKey ?? '';
+          return firstMonthKey;
+        });
         setIsLoading(false);
       },
       () => {
@@ -76,17 +83,30 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
     );
   }, [user?.id]);
 
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of claims) {
+      if (c.monthKey) set.add(c.monthKey);
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [claims]);
+
+  const filteredClaims = useMemo(() => {
+    if (!selectedMonthKey) return claims;
+    return claims.filter((c) => c.monthKey === selectedMonthKey);
+  }, [claims, selectedMonthKey]);
+
   const totals = useMemo(() => {
     let earned = 0;
     let pending = 0;
     let paid = 0;
-    for (const c of claims) {
+    for (const c of filteredClaims) {
       earned += c.amount;
       if (c.status === 'PAID') paid += c.amount;
       if (c.status === 'PENDING' || c.status === 'APPROVED') pending += c.amount;
     }
     return { earned, pending, paid };
-  }, [claims]);
+  }, [filteredClaims]);
 
   const formatNumber = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
   const t = {
@@ -171,7 +191,28 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
               </div>
             </div>
             <div className="lg:col-span-8 bg-white rounded-[2.5rem] p-8 md:p-10 border border-slate-100 shadow-sm flex flex-col">
-              <div className="flex items-center justify-between mb-10"><h3 className="text-xl font-bold text-slate-900 flex items-center gap-3"><History size={20} /> {t.ledger}</h3><div className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-400 uppercase">{t.history}</div></div>
+              <div className="flex items-center justify-between mb-10">
+                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
+                  <History size={20} /> {t.ledger}
+                </h3>
+                <div className="flex items-center gap-3">
+                  {monthOptions.length > 0 && (
+                    <select
+                      value={selectedMonthKey}
+                      onChange={(e) => setSelectedMonthKey(e.target.value)}
+                      className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-500 uppercase border border-slate-100"
+                    >
+                      <option value="">ALL</option>
+                      {monthOptions.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-400 uppercase">{t.history}</div>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -187,7 +228,7 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
                       </tr>
                     )}
 
-                    {!isLoading && claims.length === 0 && (
+                    {!isLoading && filteredClaims.length === 0 && (
                       <tr>
                         <td colSpan={5} className="py-10 text-center">
                           <div className="text-sm font-black text-slate-700">ไม่พบข้อมูล</div>
@@ -195,7 +236,7 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang }) => {
                       </tr>
                     )}
 
-                    {claims.map((c) => (
+                    {filteredClaims.map((c) => (
                       <tr key={c.id} className="group hover:bg-slate-50/50 transition-colors">
                         <td className="py-6 pl-4 font-bold text-slate-700 text-sm">{c.paymentDate ?? c.period ?? c.monthKey ?? '-'}</td>
                         <td className="py-6">
