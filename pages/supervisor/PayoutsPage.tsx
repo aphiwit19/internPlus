@@ -279,7 +279,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   };
 
   return (
-    <div className="h-full w-full p-4 md:p-6 lg:p-10 bg-slate-50">
+    <div className="h-full min-h-0 w-full overflow-y-auto p-4 md:p-6 lg:p-10 bg-slate-50">
       <div className="max-w-7xl mx-auto w-full">
         {editingClaim && (
           <>
