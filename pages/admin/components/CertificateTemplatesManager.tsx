@@ -47,6 +47,11 @@ function tryResolveStoragePathFromFirebaseDownloadUrl(url: string): string | nul
   }
 }
 
+function withCacheBust(url: string): string {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${Date.now()}`;
+}
+
 export default function CertificateTemplatesManager({ lang, onBack, initialView }: Props) {
   const t = useMemo(
     () =>
@@ -128,6 +133,13 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
     [editingId, templates],
   );
 
+  const openEdit = (tplId: string) => {
+    setError(null);
+    setBgUrl(null);
+    setLoadingBg(false);
+    setEditingId(tplId);
+  };
+
   useEffect(() => {
     // Canonicalize to backgroundPath only.
     // If older docs contain backgroundUrl, decode it into a storage path and persist.
@@ -155,6 +167,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
     const tpl = editingTemplate;
     if (!tpl) {
       setBgUrl(null);
+      setLoadingBg(false);
       return;
     }
 
@@ -162,6 +175,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       const resolved = tryResolveStoragePathFromFirebaseDownloadUrl(tpl.backgroundUrl);
       if (!resolved) {
         setBgUrl(tpl.backgroundUrl);
+        setLoadingBg(false);
         return;
       }
 
@@ -175,6 +189,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
 
     if (!tpl.backgroundPath) {
       setBgUrl(null);
+      setLoadingBg(false);
       return;
     }
 
@@ -193,7 +208,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         setBgUrl(null);
       })
       .finally(() => setLoadingBg(false));
-  }, [editingTemplate]);
+  }, [editingTemplate, lang]);
 
   const createTemplate = async () => {
     setError(null);
@@ -312,7 +327,9 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
 
     setError(null);
     try {
-      const path = `templates/backgrounds/${Date.now()}_${file.name}`;
+      const tpl = templates.find((x) => x.id === templateId);
+      const existingPath = tpl?.backgroundPath ?? null;
+      const path = existingPath || `templates/backgrounds/${Date.now()}_${file.name}`;
       await uploadBytes(storageRef(firebaseStorage, path), file);
       await updateDoc(doc(firestoreDb, 'certificateTemplates', templateId), {
         backgroundPath: path,
@@ -322,7 +339,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       });
 
       const url = await getDownloadURL(storageRef(firebaseStorage, path));
-      setBgUrl(url);
+      setBgUrl(withCacheBust(url));
 
       if (openEditorAfterUploadRef.current === templateId) {
         openEditorAfterUploadRef.current = null;
@@ -667,7 +684,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditingId(tpl.id)}
+                  onClick={() => openEdit(tpl.id)}
                   className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-black flex items-center gap-2"
                 >
                   <Pencil size={14} />

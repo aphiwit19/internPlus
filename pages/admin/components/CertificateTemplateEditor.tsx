@@ -62,7 +62,6 @@ function useHtmlImage(url: string | null) {
       return;
     }
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => setImage(img);
     img.onerror = () => setImage(null);
     img.src = url;
