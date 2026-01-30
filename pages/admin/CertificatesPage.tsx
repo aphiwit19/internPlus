@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, ChevronLeft, Clock, Download, FileText, Upload } from 'lucide-react';
-import { collection, onSnapshot, query, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
+import { Award, ChevronLeft, Clock, Download, FileText, Settings2, Upload } from 'lucide-react';
+import { collection, onSnapshot, query, serverTimestamp, updateDoc, doc, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { Language } from '@/types';
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
+import CertificateTemplatesManager from './components/CertificateTemplatesManager';
 
 type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
 
@@ -27,6 +29,18 @@ type CertificateRequestDoc = {
   issuedByRole?: 'SUPERVISOR' | 'HR_ADMIN';
   fileName?: string;
   storagePath?: string;
+  templateId?: string;
+  issuedPngPath?: string;
+  issuedPdfPath?: string;
+};
+
+type CertificateTemplateDoc = {
+  name?: string;
+  type?: CertificateRequestType;
+  backgroundPath?: string;
+  backgroundUrl?: string;
+  active?: boolean;
+  isActive?: boolean;
 };
 
 interface AdminCertificatesPageProps {
@@ -70,6 +84,13 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUpload, setPendingUpload] = useState<{ requestId: string } | null>(null);
+  const [templates, setTemplates] = useState<Array<CertificateTemplateDoc & { id: string }>>([]);
+  const [selectedTemplateByType, setSelectedTemplateByType] = useState<Record<CertificateRequestType, string>>({
+    COMPLETION: '',
+    RECOMMENDATION: '',
+  });
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'requests' | 'templates'>('requests');
 
   useEffect(() => {
     setLoadError(null);
@@ -96,6 +117,21 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       (err) => {
         const e = err as { code?: string; message?: string };
         setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load requests'}`);
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'certificateTemplates'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as CertificateTemplateDoc) }));
+        setTemplates(items);
+      },
+      (err) => {
+        const e = err as { code?: string; message?: string };
+        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load templates'}`);
       },
     );
   }, []);
@@ -136,9 +172,31 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
   };
 
   const handleDownload = async (req: CertificateRequestDoc & { id: string }) => {
-    if (!req.storagePath) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, req.storagePath));
+    const path = req.issuedPdfPath ?? req.storagePath;
+    if (!path) return;
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
     window.open(url, '_blank');
+  };
+
+  const handleGenerate = async (req: CertificateRequestDoc & { id: string }) => {
+    if (generatingId) return;
+    const templateId = selectedTemplateByType[req.type];
+    if (!templateId) {
+      setUploadError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      return;
+    }
+
+    setGeneratingId(req.id);
+    setUploadError(null);
+    try {
+      const fn = httpsCallable(firebaseFunctions, 'generateCertificate');
+      await fn({ requestId: req.id, templateId });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+    } finally {
+      setGeneratingId(null);
+    }
   };
 
   const interns = useMemo(() => {
@@ -188,6 +246,38 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     return map;
   }, [activeIntern]);
 
+  const requestStats = useMemo(() => {
+    const requested = requests.filter((r) => r.status === 'REQUESTED').length;
+    const issued = requests.filter((r) => r.status === 'ISSUED').length;
+    return { requested, issued, total: requests.length };
+  }, [requests]);
+
+  const templatesByType = useMemo(() => {
+    const byType: Record<CertificateRequestType, Array<CertificateTemplateDoc & { id: string }>> = {
+      COMPLETION: [],
+      RECOMMENDATION: [],
+    };
+    for (const tpl of templates) {
+      const isTplActive = tpl.active ?? tpl.isActive ?? true;
+      if (!isTplActive) continue;
+
+      if (tpl.type === 'COMPLETION') {
+        byType.COMPLETION.push(tpl);
+        continue;
+      }
+
+      if (tpl.type === 'RECOMMENDATION') {
+        byType.RECOMMENDATION.push(tpl);
+        continue;
+      }
+
+      // If template has no type field (legacy / console-created), show it in both dropdowns.
+      byType.COMPLETION.push(tpl);
+      byType.RECOMMENDATION.push(tpl);
+    }
+    return byType;
+  }, [templates]);
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <input
@@ -212,12 +302,51 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
         ) : null}
 
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
+              <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="px-4 py-2 rounded-2xl bg-white border border-slate-100 text-[11px] font-black uppercase tracking-widest text-slate-600">
+                  {lang === 'TH' ? 'ทั้งหมด' : 'Total'}: {requestStats.total}
+                </div>
+                <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-100 text-[11px] font-black uppercase tracking-widest text-amber-700">
+                  {lang === 'TH' ? 'รอดำเนินการ' : 'Requested'}: {requestStats.requested}
+                </div>
+                <div className="px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-[11px] font-black uppercase tracking-widest text-emerald-700">
+                  {lang === 'TH' ? 'ออกแล้ว' : 'Issued'}: {requestStats.issued}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-1 flex items-center gap-1 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => setMode('requests')}
+                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  mode === 'requests' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {lang === 'TH' ? 'คำขอ' : 'Requests'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('templates')}
+                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                  mode === 'templates' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Settings2 size={16} />
+                {lang === 'TH' ? 'เทมเพลต' : 'Templates'}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
-          {interns.length === 0 ? (
+          {mode === 'templates' ? (
+            <CertificateTemplatesManager lang={lang} onBack={() => setMode('requests')} initialView="create" />
+          ) : interns.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
               <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
             </div>
@@ -292,20 +421,50 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
-                          <button
-                            type="button"
-                            onClick={() => openUpload(req.id)}
-                            disabled={uploadingId === req.id}
-                            className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
-                          >
-                            {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                            {uploadingId === req.id ? t.uploading : t.upload}
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <select
+                              value={selectedTemplateByType[meta.type]}
+                              onChange={(e) =>
+                                setSelectedTemplateByType((prev) => ({
+                                  ...prev,
+                                  [meta.type]: e.target.value,
+                                }))
+                              }
+                              className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                            >
+                              <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                              {templatesByType[meta.type].map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>
+                                  {tpl.name || tpl.id}
+                                </option>
+                              ))}
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleGenerate(req)}
+                              disabled={generatingId === req.id}
+                              className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                              {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Generate' : 'Generate')}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openUpload(req.id)}
+                              disabled={uploadingId === req.id}
+                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                              {uploadingId === req.id ? t.uploading : t.upload}
+                            </button>
+                          </div>
                         ) : status === 'ISSUED' && req ? (
                           <button
                             type="button"
                             onClick={() => void handleDownload(req)}
-                            disabled={!req.storagePath}
+                            disabled={!(req.issuedPdfPath ?? req.storagePath)}
                             className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
                             title={t.download}
                           >

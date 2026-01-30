@@ -27,6 +27,7 @@ interface CertificateItem {
   requestId?: string;
   fileName?: string;
   storagePath?: string;
+  issuedPdfPath?: string;
 }
 
  type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
@@ -47,6 +48,7 @@ interface CertificateItem {
    issuedByRole?: 'SUPERVISOR' | 'HR_ADMIN';
    fileName?: string;
    storagePath?: string;
+   issuedPdfPath?: string;
  };
 
 interface CertificatesPageProps {
@@ -192,7 +194,8 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
           status: 'ready',
           requestId: latest.id,
           fileName: latest.fileName,
-          storagePath: latest.storagePath,
+          storagePath: latest.issuedPdfPath ?? latest.storagePath,
+          issuedPdfPath: latest.issuedPdfPath,
         };
       }
       return {
@@ -245,8 +248,9 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
   };
 
   const handleDownload = async (cert: CertificateItem) => {
-    if (!cert.storagePath) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, cert.storagePath));
+    const path = cert.issuedPdfPath ?? cert.storagePath;
+    if (!path) return;
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
     window.open(url, '_blank');
   };
 

@@ -1,0 +1,17 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "predeploy": [
+        "npm --prefix functions install",
+        "npm --prefix functions run build"
+      ]
+    }
+  ]
+}
