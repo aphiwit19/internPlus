@@ -10,7 +10,21 @@ service cloud.firestore {
     }
 
     function myRoles() {
-      return signedIn() ? (myUserDoc().data.roles != null ? myUserDoc().data.roles : []) : [];
+      return signedIn()
+        ? (
+            myUserDoc().data.roles != null
+              ? myUserDoc().data.roles
+              : (
+                  myUserDoc().data.role != null
+                    ? [myUserDoc().data.role]
+                    : (
+                        myUserDoc().data.isDualRole == true
+                          ? ['SUPERVISOR', 'HR_ADMIN']
+                          : []
+                      )
+                )
+          )
+        : [];
     }
 
     function hasRole(role) {

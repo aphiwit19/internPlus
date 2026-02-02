@@ -156,7 +156,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     setUploadingId(requestId);
     setUploadError(null);
     try {
-      const storagePath = `certificateRequests/${requestId}/${Date.now()}_${file.name}`;
+      const storagePath = `certificates/${req.internId}/${requestId}/${Date.now()}_${file.name}`;
       await uploadBytes(storageRef(firebaseStorage, storagePath), file);
 
       await updateDoc(doc(firestoreDb, 'certificateRequests', requestId), {

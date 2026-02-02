@@ -45,7 +45,7 @@ service firebase.storage {
 
     match /certificates/{internId}/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
-      allow write: if isHrAdmin();
+      allow write: if isHrAdmin() || isSupervisorOf(internId);
     }
 
     match /{allPaths=**} {

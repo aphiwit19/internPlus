@@ -148,10 +148,13 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     setPendingUpload(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
 
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
     setUploadingId(requestId);
     setUploadError(null);
     try {
-      const storagePath = `certificateRequests/${requestId}/${Date.now()}_${file.name}`;
+      const storagePath = `certificates/${req.internId}/${requestId}/${Date.now()}_${file.name}`;
       await uploadBytes(storageRef(firebaseStorage, storagePath), file);
 
       await updateDoc(doc(firestoreDb, 'certificateRequests', requestId), {
