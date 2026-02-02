@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Rect } from 'react-konva';
 import { doc, updateDoc } from 'firebase/firestore';
 
@@ -84,9 +84,10 @@ type Props = {
   template: CertificateTemplateDoc;
   backgroundUrl: string | null;
   onBack: () => void;
+  onSave?: (layout: CertificateTemplateLayout, previewPng: Blob | null, name: string) => Promise<void>;
 };
 
-export default function CertificateTemplateEditor({ lang, templateId, template, backgroundUrl, onBack }: Props) {
+export default function CertificateTemplateEditor({ lang, templateId, template, backgroundUrl, onBack, onSave }: Props) {
   const t = useMemo(
     () =>
       ({
@@ -133,6 +134,19 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   );
 
   const image = useHtmlImage(backgroundUrl);
+  const stageRef = useRef<any>(null);
+
+  const dataUrlToBlob = useCallback((dataUrl: string): Blob | null => {
+    const parts = dataUrl.split(',');
+    if (parts.length < 2) return null;
+    const match = parts[0]?.match(/data:(.*?);base64/);
+    const mime = match?.[1] ?? 'image/png';
+    const bin = atob(parts[1] ?? '');
+    const len = bin.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }, []);
 
   const initialLayout = useMemo<CertificateTemplateLayout>(() => {
     const w = image?.naturalWidth ?? template.layout?.canvas.width ?? 2480;
@@ -146,11 +160,17 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   const [layout, setLayout] = useState<CertificateTemplateLayout>(initialLayout);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isExportingPreview, setIsExportingPreview] = useState(false);
+  const [nameDraft, setNameDraft] = useState<string>((template.name ?? '').toString());
 
   useEffect(() => {
     setLayout(initialLayout);
     setSelectedId(null);
   }, [initialLayout]);
+
+  useEffect(() => {
+    setNameDraft((template.name ?? '').toString());
+  }, [template.name]);
 
   const selected = useMemo(() => layout.blocks.find((b) => b.id === selectedId) ?? null, [layout.blocks, selectedId]);
 
@@ -215,12 +235,48 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   const save = async () => {
     setSaving(true);
     try {
-      const ref = doc(firestoreDb, 'certificateTemplates', templateId);
-      const nextVersion = (template.layoutVersion ?? 0) + 1;
-      await updateDoc(ref, {
-        layout,
-        layoutVersion: nextVersion,
-      });
+      let previewPng: Blob | null = null;
+      try {
+        const canExportPreview = (() => {
+          if (!backgroundUrl) return true;
+          if (backgroundUrl.startsWith('blob:')) return true;
+          if (backgroundUrl.startsWith('data:')) return true;
+          try {
+            const u = new URL(backgroundUrl);
+            // If background is cross-origin and CORS isn't configured, canvas becomes tainted.
+            return u.origin === window.location.origin;
+          } catch {
+            return true;
+          }
+        })();
+
+        if (canExportPreview) {
+          setIsExportingPreview(true);
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+          const stage = stageRef.current;
+          if (stage && typeof stage.toDataURL === 'function') {
+            const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+            previewPng = dataUrlToBlob(dataUrl);
+          }
+        } else {
+          previewPng = null;
+        }
+      } catch {
+        previewPng = null;
+      } finally {
+        setIsExportingPreview(false);
+      }
+
+      if (onSave) {
+        await onSave(layout, previewPng, nameDraft.trim() || (template.name ?? templateId));
+      } else {
+        const ref = doc(firestoreDb, 'certificateTemplates', templateId);
+        const nextVersion = (template.layoutVersion ?? 0) + 1;
+        await updateDoc(ref, {
+          layout,
+          layoutVersion: nextVersion,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -231,7 +287,12 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.title}</div>
-          <div className="text-xl font-black text-slate-900 truncate">{template.name ?? templateId}</div>
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            className="mt-1 w-full max-w-md px-4 py-2 rounded-2xl border border-slate-200 text-sm font-black text-slate-900"
+            placeholder={lang === 'TH' ? 'ชื่อ Template' : 'Template name'}
+          />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -271,6 +332,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           <div className="bg-white border border-slate-100 rounded-[2rem] p-4 shadow-sm overflow-hidden">
             <div className="w-full flex justify-center">
               <Stage
+                ref={stageRef}
                 width={layout.canvas.width * stageScale}
                 height={layout.canvas.height * stageScale}
                 onMouseDown={(e) => {
@@ -304,7 +366,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                     />
                   ))}
 
-                  {selected ? (
+                  {!isExportingPreview && selected ? (
                     <Rect
                       x={selected.x - 8}
                       y={selected.y - 8}

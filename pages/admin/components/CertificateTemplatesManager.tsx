@@ -47,11 +47,6 @@ function tryResolveStoragePathFromFirebaseDownloadUrl(url: string): string | nul
   }
 }
 
-function withCacheBust(url: string): string {
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}v=${Date.now()}`;
-}
-
 export default function CertificateTemplatesManager({ lang, onBack, initialView }: Props) {
   const t = useMemo(
     () =>
@@ -102,6 +97,8 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUploadTemplateId, setPendingUploadTemplateId] = useState<string | null>(null);
   const pendingUploadTemplateIdRef = useRef<string | null>(null);
+  const localBgPreviewUrlRef = useRef<string | null>(null);
+  const pendingBgFileRef = useRef<{ templateId: string; file: File } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState<string>('');
   const [savingName, setSavingName] = useState(false);
@@ -133,13 +130,6 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
     [editingId, templates],
   );
 
-  const openEdit = (tplId: string) => {
-    setError(null);
-    setBgUrl(null);
-    setLoadingBg(false);
-    setEditingId(tplId);
-  };
-
   useEffect(() => {
     // Canonicalize to backgroundPath only.
     // If older docs contain backgroundUrl, decode it into a storage path and persist.
@@ -166,8 +156,16 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
   useEffect(() => {
     const tpl = editingTemplate;
     if (!tpl) {
+      if (localBgPreviewUrlRef.current) {
+        URL.revokeObjectURL(localBgPreviewUrlRef.current);
+        localBgPreviewUrlRef.current = null;
+      }
+      pendingBgFileRef.current = null;
       setBgUrl(null);
-      setLoadingBg(false);
+      return;
+    }
+
+    if (editingId && pendingBgFileRef.current?.templateId === editingId && localBgPreviewUrlRef.current) {
       return;
     }
 
@@ -175,7 +173,6 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       const resolved = tryResolveStoragePathFromFirebaseDownloadUrl(tpl.backgroundUrl);
       if (!resolved) {
         setBgUrl(tpl.backgroundUrl);
-        setLoadingBg(false);
         return;
       }
 
@@ -187,28 +184,41 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       return;
     }
 
-    if (!tpl.backgroundPath) {
+    const backgroundPath = tpl.backgroundPath as string | undefined;
+    const previewPath = (tpl as any).previewPath as string | undefined;
+    const candidates = [backgroundPath, previewPath].filter(Boolean) as string[];
+
+    if (candidates.length === 0) {
       setBgUrl(null);
-      setLoadingBg(false);
       return;
     }
 
     setLoadingBg(true);
-    void getDownloadURL(storageRef(firebaseStorage, tpl.backgroundPath))
-      .then((url) => setBgUrl(url))
-      .catch((err: unknown) => {
-        const e = err as { code?: string; message?: string };
-        if (e?.code === 'storage/object-not-found') {
-          setError(
-            lang === 'TH'
-              ? `ไม่พบไฟล์พื้นหลังใน Storage: ${tpl.backgroundPath} (ไฟล์อาจถูกลบไปแล้ว) กรุณาอัปโหลดพื้นหลังใหม่หรือกดลบพื้นหลังใน Template นี้`
-              : `Background file not found in Storage: ${tpl.backgroundPath}. Please upload a new background or remove the background from this template.`,
-          );
+    void (async () => {
+      let lastErr: unknown = null;
+      for (const p of candidates) {
+        try {
+          const url = await getDownloadURL(storageRef(firebaseStorage, p));
+          setBgUrl(url);
+          return;
+        } catch (err: unknown) {
+          lastErr = err;
         }
-        setBgUrl(null);
-      })
-      .finally(() => setLoadingBg(false));
-  }, [editingTemplate, lang]);
+      }
+
+      const e = lastErr as { code?: string; message?: string };
+      if (e?.code === 'storage/object-not-found') {
+        setError(
+          lang === 'TH'
+            ? `ไม่พบไฟล์ใน Storage: ${candidates[0] ?? ''} (ไฟล์อาจถูกลบไปแล้ว) กรุณาอัปโหลดพื้นหลังใหม่หรือกดลบพื้นหลังใน Template นี้`
+            : `File not found in Storage: ${candidates[0] ?? ''}. Please upload a new background or remove the background from this template.`,
+        );
+      } else {
+        setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load template image'}`);
+      }
+      setBgUrl(null);
+    })().finally(() => setLoadingBg(false));
+  }, [editingTemplate]);
 
   const createTemplate = async () => {
     setError(null);
@@ -221,13 +231,73 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         layoutVersion: 1,
         createdAt: serverTimestamp(),
       } satisfies CertificateTemplateDoc);
-      pendingUploadTemplateIdRef.current = res.id;
-      setPendingUploadTemplateId(res.id);
-      openEditorAfterUploadRef.current = res.id;
-      setTimeout(() => fileInputRef.current?.click(), 0);
+      setEditingId(res.id);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Create failed'}`);
+    }
+  };
+
+  const saveTemplateWithPreview = async (
+    templateId: string,
+    template: CertificateTemplateDoc & { id: string },
+    layout: CertificateTemplateLayout,
+    previewPng: Blob | null,
+    name: string,
+  ) => {
+    setError(null);
+    try {
+      let backgroundPath: string | null | undefined;
+      let previewPath: string | null | undefined;
+
+      const pending = pendingBgFileRef.current;
+      if (pending && pending.templateId === templateId) {
+        const path = `templates/backgrounds/${Date.now()}_${pending.file.name}`;
+        await uploadBytes(storageRef(firebaseStorage, path), pending.file);
+        backgroundPath = path;
+      }
+
+      if (previewPng) {
+        const p = `templates/previews/${templateId}/${Date.now()}_preview.png`;
+        await uploadBytes(storageRef(firebaseStorage, p), previewPng, { contentType: 'image/png' });
+        previewPath = p;
+      }
+
+      const nextVersion = (template.layoutVersion ?? 0) + 1;
+      const ref = doc(firestoreDb, 'certificateTemplates', templateId);
+      await updateDoc(ref, {
+        name,
+        layout,
+        layoutVersion: nextVersion,
+        ...(backgroundPath
+          ? {
+              backgroundPath,
+              backgroundUrl: null,
+            }
+          : {}),
+        ...(previewPath
+          ? {
+              previewPath,
+            }
+          : {
+              previewPath: null,
+            }),
+        updatedAt: serverTimestamp(),
+        updatedBy: firebaseAuth.currentUser?.uid ?? null,
+      });
+
+      if (localBgPreviewUrlRef.current) {
+        URL.revokeObjectURL(localBgPreviewUrlRef.current);
+        localBgPreviewUrlRef.current = null;
+      }
+      pendingBgFileRef.current = null;
+      setBgUrl(null);
+      setEditingId(null);
+      setView('list');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save failed'}`);
+      throw err;
     }
   };
 
@@ -279,7 +349,9 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
     const win = window.open('', '_blank');
     try {
       let url: string | null = null;
-      if (tpl.backgroundPath) {
+      if ((tpl as any).previewPath) {
+        url = await getDownloadURL(storageRef(firebaseStorage, (tpl as any).previewPath));
+      } else if (tpl.backgroundPath) {
         url = await getDownloadURL(storageRef(firebaseStorage, tpl.backgroundPath));
       } else if (tpl.backgroundUrl) {
         const resolved = tryResolveStoragePathFromFirebaseDownloadUrl(tpl.backgroundUrl);
@@ -327,27 +399,70 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
 
     setError(null);
     try {
-      const tpl = templates.find((x) => x.id === templateId);
-      const existingPath = tpl?.backgroundPath ?? null;
-      const path = existingPath || `templates/backgrounds/${Date.now()}_${file.name}`;
-      await uploadBytes(storageRef(firebaseStorage, path), file);
-      await updateDoc(doc(firestoreDb, 'certificateTemplates', templateId), {
-        backgroundPath: path,
-        backgroundUrl: null,
-        updatedAt: serverTimestamp(),
-        updatedBy: firebaseAuth.currentUser?.uid ?? null,
-      });
-
-      const url = await getDownloadURL(storageRef(firebaseStorage, path));
-      setBgUrl(withCacheBust(url));
-
-      if (openEditorAfterUploadRef.current === templateId) {
-        openEditorAfterUploadRef.current = null;
-        setEditingId(templateId);
+      if (localBgPreviewUrlRef.current) {
+        URL.revokeObjectURL(localBgPreviewUrlRef.current);
+        localBgPreviewUrlRef.current = null;
       }
+
+      // Preview only. Commit to Storage/Firestore on Save.
+      const previewUrl = URL.createObjectURL(file);
+      localBgPreviewUrlRef.current = previewUrl;
+      setBgUrl(previewUrl);
+      pendingBgFileRef.current = { templateId, file };
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+    }
+  };
+
+  const saveTemplate = async (templateId: string, template: CertificateTemplateDoc & { id: string }, layout: CertificateTemplateLayout) => {
+    setError(null);
+    try {
+      let backgroundPath: string | null | undefined;
+
+      const pending = pendingBgFileRef.current;
+      if (pending && pending.templateId === templateId) {
+        const path = `templates/backgrounds/${Date.now()}_${pending.file.name}`;
+        await uploadBytes(storageRef(firebaseStorage, path), pending.file);
+        backgroundPath = path;
+      }
+
+      const nextVersion = (template.layoutVersion ?? 0) + 1;
+      const ref = doc(firestoreDb, 'certificateTemplates', templateId);
+      await updateDoc(ref, {
+        layout,
+        layoutVersion: nextVersion,
+        ...(backgroundPath
+          ? {
+              backgroundPath,
+              backgroundUrl: null,
+              updatedAt: serverTimestamp(),
+              updatedBy: firebaseAuth.currentUser?.uid ?? null,
+            }
+          : {
+              updatedAt: serverTimestamp(),
+              updatedBy: firebaseAuth.currentUser?.uid ?? null,
+            }),
+      });
+
+      if (backgroundPath) {
+        // Best-effort: resolve a public URL for later view/background actions.
+        // UI will return to list view after save.
+        await getDownloadURL(storageRef(firebaseStorage, backgroundPath)).catch(() => null);
+      }
+
+      if (localBgPreviewUrlRef.current) {
+        URL.revokeObjectURL(localBgPreviewUrlRef.current);
+        localBgPreviewUrlRef.current = null;
+      }
+      pendingBgFileRef.current = null;
+      setBgUrl(null);
+      setEditingId(null);
+      setView('list');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save failed'}`);
+      throw err;
     }
   };
 
@@ -407,6 +522,35 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
     setConfirmDeleteTplId(null);
     await deleteTemplate(id);
   };
+
+  if (editingId && !editingTemplate) {
+    return (
+      <div className="w-full">
+        {error ? (
+          <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setEditingId(null)}
+            className="inline-flex items-center gap-2 text-slate-600 text-sm font-bold hover:text-slate-900"
+          >
+            <ChevronLeft size={18} />
+            {t.back}
+          </button>
+        </div>
+
+        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-10 text-center">
+          <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
+            {lang === 'TH' ? 'กำลังโหลดเทมเพลท...' : 'Loading template...'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (editingTemplate && editingId) {
     return (
@@ -490,8 +634,9 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
           lang={lang}
           templateId={editingId}
           template={editingTemplate}
-          backgroundUrl={loadingBg ? null : bgUrl}
+          backgroundUrl={bgUrl}
           onBack={() => setEditingId(null)}
+          onSave={(layout, previewPng, name) => saveTemplateWithPreview(editingId, editingTemplate, layout, previewPng, name)}
         />
       </div>
     );
@@ -684,7 +829,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
                 </button>
                 <button
                   type="button"
-                  onClick={() => openEdit(tpl.id)}
+                  onClick={() => setEditingId(tpl.id)}
                   className="px-3 py-2 rounded-2xl bg-slate-900 text-white text-xs font-black flex items-center gap-2"
                 >
                   <Pencil size={14} />
