@@ -34,6 +34,15 @@ type ActivityEvent = {
   status?: string;
 };
 
+type LeaveRequestDoc = {
+  internName?: string;
+  supervisorId?: string;
+  type?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+};
+
 interface SupervisorActivitiesPageProps {
   lang: Language;
   user: UserProfile;
@@ -118,6 +127,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED'>('ALL');
 
   const [apptActivities, setApptActivities] = useState<ActivityEvent[]>([]);
+  const [leaveActivities, setLeaveActivities] = useState<ActivityEvent[]>([]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'universityEvaluations'), where('supervisorId', '==', user.id));
@@ -155,6 +165,43 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     });
   }, [t.apptCompany, t.apptOnline, t.apptTitle, user.id]);
 
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'leaveRequests'), where('supervisorId', '==', user.id));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const out: ActivityEvent[] = [];
+        snap.docs.forEach((d) => {
+          const data = d.data() as LeaveRequestDoc;
+          const start = typeof data.startDate === 'string' ? data.startDate : null;
+          if (!start) return;
+          const date = parseIsoDateKey(start);
+          if (!date) return;
+          const end = typeof data.endDate === 'string' ? data.endDate : start;
+          const leaveType = String(data.type ?? 'LEAVE');
+          const title =
+            lang === 'TH'
+              ? `ลา (${leaveType})`
+              : `Leave (${leaveType})`;
+
+          out.push({
+            id: `leave:${d.id}:${start}`,
+            day: String(date.getUTCDate()).padStart(2, '0'),
+            month: monthLabel(date),
+            title: { EN: title, TH: title },
+            time: start === end ? start : `${start} - ${end}`,
+            type: 'LEAVE',
+            internName: typeof data.internName === 'string' ? data.internName : undefined,
+            status: typeof data.status === 'string' ? data.status : undefined,
+          });
+        });
+        out.sort((a, b) => a.id.localeCompare(b.id));
+        setLeaveActivities(out);
+      },
+      () => setLeaveActivities([]),
+    );
+  }, [lang, user.id]);
+
   const filteredApptActivities = useMemo(() => {
     if (statusFilter === 'ALL') return apptActivities;
     return apptActivities.filter((ev) => String(ev.status ?? 'REQUESTED') === statusFilter);
@@ -184,7 +231,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       return fallback.getTime();
     };
 
-    const merged = [...filteredApptActivities]
+    const merged = [...filteredApptActivities, ...leaveActivities]
       .map((ev) => ({ ev, key: toSortKey(ev) }))
       .sort((a, b) => a.key - b.key)
       .map((x) => x.ev);
@@ -241,8 +288,9 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     const showAppt = viewMode === 'ALL' || viewMode === 'APPOINTMENT';
     return {
       appt: showAppt ? setFor(filteredApptActivities) : new Set<string>(),
+      leave: viewMode === 'ALL' ? setFor(leaveActivities) : new Set<string>(),
     };
-  }, [filteredApptActivities, viewMode]);
+  }, [filteredApptActivities, leaveActivities, viewMode]);
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
@@ -313,7 +361,9 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                     <div
                       key={item.id}
                       className={`bg-white rounded-[1.5rem] p-6 border shadow-sm flex items-center group hover:shadow-md transition-all cursor-pointer ${
-                        item.type === 'APPOINTMENT' ? 'border-blue-100 bg-blue-50/10' : 'border-slate-100/60'
+                        item.type === 'APPOINTMENT'
+                          ? 'border-blue-100 bg-blue-50/10'
+                          : 'border-rose-100 bg-rose-50/10'
                       }`}
                     >
                       <div
@@ -321,7 +371,13 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                           item.type === 'APPOINTMENT' ? 'border-blue-100' : 'border-slate-100'
                         }`}
                       >
-                        <span className={`text-2xl font-black leading-none ${item.type === 'APPOINTMENT' ? 'text-blue-600' : 'text-slate-800'}`}>{item.day}</span>
+                        <span
+                          className={`text-2xl font-black leading-none ${
+                            item.type === 'APPOINTMENT' ? 'text-blue-600' : 'text-rose-600'
+                          }`}
+                        >
+                          {item.day}
+                        </span>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[lang]}</span>
                       </div>
 
@@ -346,13 +402,15 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                       </div>
 
                       <div className="flex items-center gap-4">
-                        <span
-                          className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${
-                            'bg-blue-50 text-blue-600 border-blue-200'
-                          }`}
-                        >
-                          {'APPOINTMENT'}
-                        </span>
+                        {item.type === 'APPOINTMENT' ? (
+                          <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-blue-50 text-blue-600 border-blue-200">
+                            APPOINTMENT
+                          </span>
+                        ) : (
+                          <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-rose-50 text-rose-600 border-rose-200 flex items-center gap-2">
+                            <UserX size={12} /> LEAVE
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -413,6 +471,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
 
                     const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const hasAppt = markerMap.appt.has(dateKey);
+                    const hasLeave = markerMap.leave.has(dateKey);
                     const isSelected = selectedDateKey === dateKey;
 
                     return (
@@ -428,9 +487,10 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                         }`}
                       >
                         {day}
-                        {!isToday && hasAppt && (
+                        {!isToday && (hasAppt || hasLeave) && (
                           <div className="absolute bottom-1.5 flex items-center gap-1">
                             {hasAppt && <div className="w-1 h-1 bg-blue-400 rounded-full"></div>}
+                            {hasLeave && <div className="w-1 h-1 bg-rose-400 rounded-full"></div>}
                           </div>
                         )}
                       </div>

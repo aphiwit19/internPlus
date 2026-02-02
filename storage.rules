@@ -5,23 +5,47 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return signedIn() && request.auth.token.admin == true;
+    function myUserDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function myRoles() {
+      return signedIn() ? (myUserDoc().data.roles != null ? myUserDoc().data.roles : []) : [];
+    }
+
+    function hasRole(role) {
+      return signedIn() && myRoles().hasAny([role]);
+    }
+
+    function isHrAdmin() {
+      return hasRole('HR_ADMIN');
+    }
+
+    function isSupervisor() {
+      return hasRole('SUPERVISOR');
+    }
+
+    function internDoc(internId) {
+      return firestore.get(/databases/(default)/documents/users/$(internId));
+    }
+
+    function isSupervisorOf(internId) {
+      return isSupervisor() && internDoc(internId).data.supervisorId == request.auth.uid;
     }
 
     match /templates/{allPaths=**} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isHrAdmin();
     }
 
     match /certificateTemplates/{allPaths=**} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isHrAdmin();
     }
 
     match /certificates/{internId}/{allPaths=**} {
-      allow read: if signedIn() && (request.auth.uid == internId || isAdmin());
-      allow write: if isAdmin();
+      allow read: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
+      allow write: if isHrAdmin();
     }
 
     match /{allPaths=**} {

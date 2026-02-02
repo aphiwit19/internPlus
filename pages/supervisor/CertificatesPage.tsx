@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, ChevronLeft, Clock, Download, FileText, Upload } from 'lucide-react';
 import { collection, onSnapshot, query, serverTimestamp, updateDoc, where, doc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 import { Language, UserProfile } from '@/types';
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
 
 type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
 
@@ -26,6 +27,17 @@ type CertificateRequestDoc = {
   issuedByRole?: 'SUPERVISOR' | 'HR_ADMIN';
   fileName?: string;
   storagePath?: string;
+  templateId?: string;
+  issuedPngPath?: string;
+  issuedPdfPath?: string;
+};
+
+type CertificateTemplateDoc = {
+  name?: string;
+  type?: CertificateRequestType;
+  backgroundPath?: string;
+  active?: boolean;
+  isActive?: boolean;
 };
 
 interface SupervisorCertificatesPageProps {
@@ -67,6 +79,12 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<Array<CertificateTemplateDoc & { id: string }>>([]);
+  const [selectedTemplateByType, setSelectedTemplateByType] = useState<Record<CertificateRequestType, string>>({
+    COMPLETION: '',
+    RECOMMENDATION: '',
+  });
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUpload, setPendingUpload] = useState<{ requestId: string } | null>(null);
@@ -99,6 +117,21 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       },
     );
   }, [user.id]);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'certificateTemplates'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as CertificateTemplateDoc) }));
+        setTemplates(items);
+      },
+      (err) => {
+        const e = err as { code?: string; message?: string };
+        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load templates'}`);
+      },
+    );
+  }, []);
 
   const openUpload = (requestId: string) => {
     setPendingUpload({ requestId });
@@ -144,9 +177,54 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   };
 
   const handleDownload = async (req: CertificateRequestDoc & { id: string }) => {
-    if (!req.storagePath) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, req.storagePath));
+    const path = req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath;
+    if (!path) return;
+    const url = await getDownloadURL(storageRef(firebaseStorage, path));
     window.open(url, '_blank');
+  };
+
+  const templatesByType = useMemo(() => {
+    const byType: Record<CertificateRequestType, Array<CertificateTemplateDoc & { id: string }>> = {
+      COMPLETION: [],
+      RECOMMENDATION: [],
+    };
+    for (const tpl of templates) {
+      const isTplActive = tpl.active ?? tpl.isActive ?? true;
+      if (!isTplActive) continue;
+
+      if (tpl.type === 'COMPLETION') {
+        byType.COMPLETION.push(tpl);
+        continue;
+      }
+      if (tpl.type === 'RECOMMENDATION') {
+        byType.RECOMMENDATION.push(tpl);
+        continue;
+      }
+      byType.COMPLETION.push(tpl);
+      byType.RECOMMENDATION.push(tpl);
+    }
+    return byType;
+  }, [templates]);
+
+  const handleGenerate = async (req: CertificateRequestDoc & { id: string }) => {
+    if (generatingId) return;
+    const templateId = selectedTemplateByType[req.type];
+    if (!templateId) {
+      setUploadError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      return;
+    }
+
+    setGeneratingId(req.id);
+    setUploadError(null);
+    try {
+      const fn = httpsCallable(firebaseFunctions, 'generateCertificate');
+      await fn({ requestId: req.id, templateId });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+    } finally {
+      setGeneratingId(null);
+    }
   };
 
   const interns = useMemo(() => {
@@ -300,20 +378,50 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
 
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
-                          <button
-                            type="button"
-                            onClick={() => openUpload(req.id)}
-                            disabled={uploadingId === req.id}
-                            className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
-                          >
-                            {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                            {uploadingId === req.id ? t.uploading : t.upload}
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <select
+                              value={selectedTemplateByType[meta.type]}
+                              onChange={(e) =>
+                                setSelectedTemplateByType((prev) => ({
+                                  ...prev,
+                                  [meta.type]: e.target.value,
+                                }))
+                              }
+                              className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                            >
+                              <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                              {templatesByType[meta.type].map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>
+                                  {tpl.name || tpl.id}
+                                </option>
+                              ))}
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleGenerate(req)}
+                              disabled={generatingId === req.id}
+                              className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                              {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : 'Generate'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openUpload(req.id)}
+                              disabled={uploadingId === req.id}
+                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                              {uploadingId === req.id ? t.uploading : t.upload}
+                            </button>
+                          </div>
                         ) : status === 'ISSUED' && req ? (
                           <button
                             type="button"
                             onClick={() => void handleDownload(req)}
-                            disabled={!req.storagePath}
+                            disabled={!(req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath)}
                             className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
                             title={t.download}
                           >

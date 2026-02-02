@@ -83,6 +83,23 @@ function assertAdmin(context: Parameters<typeof onCall>[0] extends any ? any : n
   if ((auth.token as any)?.admin !== true) throw new HttpsError('permission-denied', 'Admin only.');
 }
 
+async function getCallerRoles(uid: string): Promise<Array<'INTERN' | 'SUPERVISOR' | 'HR_ADMIN'>> {
+  const snap = await admin.firestore().collection('users').doc(uid).get();
+  const roles = (snap.exists ? (snap.data() as any)?.roles : null) as unknown;
+  return Array.isArray(roles) ? (roles as Array<'INTERN' | 'SUPERVISOR' | 'HR_ADMIN'>) : [];
+}
+
+async function assertHrAdminOrSupervisor(context: Parameters<typeof onCall>[0] extends any ? any : never): Promise<{ uid: string; roles: string[] }> {
+  const auth = context.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Please sign in.');
+  const uid = auth.uid;
+  const roles = await getCallerRoles(uid);
+  if (!roles.includes('HR_ADMIN') && !roles.includes('SUPERVISOR')) {
+    throw new HttpsError('permission-denied', 'HR_ADMIN or SUPERVISOR only.');
+  }
+  return { uid, roles };
+}
+
 function escapeXml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -327,7 +344,7 @@ export const generateTemplatePreview = onCall({ cors: true }, async (request) =>
 
 export const generateCertificate = onCall({ cors: true }, async (request) => {
   try {
-    assertAdmin(request);
+    const caller = await assertHrAdminOrSupervisor(request);
 
     const requestId = String((request.data as any)?.requestId ?? '');
     const templateId = String((request.data as any)?.templateId ?? '');
@@ -350,6 +367,12 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
 
     const req = reqSnap.data() as CertificateRequestDoc;
     if (!req.internId) throw new HttpsError('failed-precondition', 'Request has no internId');
+
+    if (caller.roles.includes('SUPERVISOR') && !caller.roles.includes('HR_ADMIN')) {
+      if (req.supervisorId !== caller.uid) {
+        throw new HttpsError('permission-denied', 'Supervisor can only generate certificates for assigned requests.');
+      }
+    }
 
     const tplRef = db.collection('certificateTemplates').doc(templateId);
     const tplSnap = await tplRef.get();
@@ -478,9 +501,9 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
       status: 'ISSUED',
       templateId,
       issuedAt: admin.firestore.FieldValue.serverTimestamp(),
-      issuedById: request.auth!.uid,
-      issuedByName: (request.auth!.token as any)?.name ?? 'Admin',
-      issuedByRole: 'HR_ADMIN',
+      issuedById: caller.uid,
+      issuedByName: (request.auth!.token as any)?.name ?? (caller.roles.includes('HR_ADMIN') ? 'Admin' : 'Supervisor'),
+      issuedByRole: caller.roles.includes('HR_ADMIN') ? 'HR_ADMIN' : 'SUPERVISOR',
       issuedPngPath,
       issuedPdfPath,
     } satisfies Partial<CertificateRequestDoc>);

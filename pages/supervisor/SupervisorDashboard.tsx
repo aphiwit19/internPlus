@@ -79,6 +79,8 @@ interface InternDetail {
   avatar: string;
   position: string;
   internPeriod: string;
+  supervisorId?: string;
+  supervisorName?: string;
   progress: number;
   status: 'Active' | 'Inactive';
   attendance: string;
@@ -607,6 +609,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         avatar: data?.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
         position: data?.position || 'Intern',
         internPeriod: data?.internPeriod || 'TBD',
+        supervisorId: typeof data?.supervisorId === 'string' ? data.supervisorId : undefined,
+        supervisorName: typeof data?.supervisorName === 'string' ? data.supervisorName : undefined,
         progress: 0,
         status,
         attendance: '—',
@@ -726,17 +730,12 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   }, [activeTab, editSummary, selectedIntern]);
 
   useEffect(() => {
-    const allQ = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'INTERN'));
-    const unsubAll = onSnapshot(allQ, (snap) => {
-      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
-    });
-
     const assignedQ = query(collection(firestoreDb, 'users'), where('supervisorId', '==', user.id));
     const unsubAssigned = onSnapshot(assignedQ, (snap) => {
       setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
     });
     return () => {
-      unsubAll();
       unsubAssigned();
     };
   }, [mapUserToInternDetail, user.id]);
@@ -1126,9 +1125,11 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     const base = allInterns;
     if (!q) return base;
     return base.filter((i) => i.name.toLowerCase().includes(q) || i.position.toLowerCase().includes(q));
-  }, [allInterns, assignSearch]);
+  }, [interns, assignSearch]);
 
   const handleAssignIntern = async (internId: string) => {
+    // In supervisor mode, do not allow re-assigning interns.
+    return;
     const internRef = doc(firestoreDb, 'users', internId);
     const supervisorRef = doc(firestoreDb, 'users', user.id);
     await updateDoc(internRef, {

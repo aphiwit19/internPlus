@@ -98,6 +98,7 @@ const DEFAULT_PERFORMANCE: PerformanceMetrics = {
 const InternManagementPage: React.FC = () => {
   const navigate = useNavigate();
   const [interns, setInterns] = useState<AdminInternDetail[]>([]);
+  const [internsLoadError, setInternsLoadError] = useState<string | null>(null);
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,6 +126,19 @@ const InternManagementPage: React.FC = () => {
 
   const selectedIntern = interns.find((i) => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find((f) => f.id === activeFeedbackId);
+
+  const handleUpdateTaskStatus = (taskId: string, status: 'DONE' | 'REVISION') => {
+    if (!selectedInternId) return;
+    setInterns((prev) =>
+      prev.map((intern) => {
+        if (intern.id !== selectedInternId) return intern;
+        return {
+          ...intern,
+          tasks: (intern.tasks ?? []).map((t) => (t.id === taskId ? { ...t, status } : t)),
+        };
+      }),
+    );
+  };
 
   useEffect(() => {
     if (activeTab !== 'attendance') return;
@@ -190,8 +204,11 @@ const InternManagementPage: React.FC = () => {
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'INTERN'));
-    return onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => {
+    return onSnapshot(
+      q,
+      (snap) => {
+        setInternsLoadError(null);
+        const list = snap.docs.map((d) => {
         const data = d.data() as {
           name?: string;
           avatar?: string;
@@ -269,7 +286,13 @@ const InternManagementPage: React.FC = () => {
         } satisfies AdminInternDetail;
       });
       setInterns(list);
-    });
+      },
+      (err) => {
+        const e = err as { code?: string; message?: string };
+        setInterns([]);
+        setInternsLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load interns'}`);
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -311,7 +334,8 @@ const InternManagementPage: React.FC = () => {
 
         setSelectedInternAttendanceLog(logs);
       },
-      () => {
+      (err) => {
+        console.warn('attendance listener failed', err);
         setSelectedInternAttendanceLog([]);
       },
     );
@@ -322,8 +346,10 @@ const InternManagementPage: React.FC = () => {
 
     for (const intern of interns) {
       const colRef = collection(firestoreDb, 'users', intern.id, 'feedbackMilestones');
-      const unsub = onSnapshot(colRef, (snap) => {
-        const items: FeedbackItem[] = snap.docs.map((d) => {
+      const unsub = onSnapshot(
+        colRef,
+        (snap) => {
+          const items: FeedbackItem[] = snap.docs.map((d) => {
           const data = d.data() as FeedbackMilestoneDoc;
           const label = d.id;
 
@@ -386,9 +412,13 @@ const InternManagementPage: React.FC = () => {
           };
         });
 
-        setFeedbackByIntern((prev) => ({ ...prev, [intern.id]: items }));
-        setInterns((prev) => prev.map((x) => (x.id === intern.id ? { ...x, feedback: items } : x)));
-      });
+          setFeedbackByIntern((prev) => ({ ...prev, [intern.id]: items }));
+          setInterns((prev) => prev.map((x) => (x.id === intern.id ? { ...x, feedback: items } : x)));
+        },
+        (err) => {
+          console.warn('feedbackMilestones listener failed', intern.id, err);
+        },
+      );
       unsubs.push(unsub);
     }
 
@@ -761,6 +791,7 @@ const InternManagementPage: React.FC = () => {
           <TasksTab
             tasks={taskItems}
             onNewAssignment={() => setActiveTab('assignments')}
+            onUpdateTaskStatus={handleUpdateTaskStatus}
           />
         )}
 
