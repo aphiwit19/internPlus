@@ -72,12 +72,15 @@ function buildSvgFromLayout(layout, target, ctx) {
                 issuedAt: ctx.issuedAt,
             });
         const x = Math.round((b.x ?? 0) * sx);
-        const y = Math.round((b.y ?? 0) * sy);
+        const yTop = Math.round((b.y ?? 0) * sy);
         const fontSize = Math.max(6, Math.round((b.fontSize ?? 24) * sf));
         const fontWeight = b.fontWeight ?? 600;
         const fill = b.color ?? '#111827';
         const opacity = b.opacity ?? 1;
         const align = b.align ?? 'left';
+        // Konva uses y as the top of the text box, while SVG uses y as baseline.
+        // sharp's SVG renderer may ignore dominant-baseline, so we convert explicitly.
+        const y = yTop + fontSize;
         const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start';
         const lines = String(raw ?? '').split('\n');
         const lineHeight = Math.round(fontSize * 1.2);
@@ -98,6 +101,117 @@ function resolveStoragePathFromTemplate(tpl) {
     }
     throw new HttpsError('failed-precondition', 'Template has no backgroundPath');
 }
+function placeholderValueForField(key) {
+    switch (key) {
+        case 'internName':
+            return '{{internName}}';
+        case 'position':
+            return '{{position}}';
+        case 'department':
+            return '{{department}}';
+        case 'internPeriod':
+            return '{{internPeriod}}';
+        case 'systemId':
+            return '{{systemId}}';
+        case 'issueDate':
+            return '{{issueDate}}';
+        default:
+            return '';
+    }
+}
+export const generateTemplatePreview = onCall({ cors: true }, async (request) => {
+    try {
+        assertAdmin(request);
+        const templateId = String(request.data?.templateId ?? '');
+        if (!templateId)
+            throw new HttpsError('invalid-argument', 'Missing templateId');
+        const db = admin.firestore();
+        const bucket = admin.storage().bucket();
+        const tplRef = db.collection('certificateTemplates').doc(templateId);
+        const tplSnap = await tplRef.get();
+        if (!tplSnap.exists)
+            throw new HttpsError('not-found', 'certificateTemplates doc not found');
+        const tpl = tplSnap.data();
+        const backgroundStoragePath = resolveStoragePathFromTemplate(tpl);
+        if (!tpl.layout || !Array.isArray(tpl.layout.blocks)) {
+            throw new HttpsError('failed-precondition', 'Template has no layout');
+        }
+        let bgBuffer;
+        try {
+            [bgBuffer] = await bucket.file(backgroundStoragePath).download();
+        }
+        catch (err) {
+            console.error('generateTemplatePreview:downloadBackgroundFailed', { templateId, backgroundStoragePath, err });
+            throw new HttpsError('failed-precondition', `Unable to download background image at path: ${backgroundStoragePath}`);
+        }
+        const bgSharp = sharp(bgBuffer);
+        let meta;
+        try {
+            meta = await bgSharp.metadata();
+        }
+        catch (err) {
+            console.error('generateTemplatePreview:backgroundMetadataFailed', { templateId, backgroundStoragePath, err });
+            throw new HttpsError('failed-precondition', 'Background file is not a supported image (expected png/jpg).');
+        }
+        const width = tpl.layout.canvas?.width ?? meta.width ?? 2480;
+        const height = tpl.layout.canvas?.height ?? meta.height ?? 3508;
+        const bg = bgSharp.resize(width, height, { fit: 'fill' });
+        // Note: buildSvgFromLayout already resolves field values; we want placeholders instead.
+        // So we re-map blocks on the fly by injecting placeholders via a cloned layout.
+        const layoutWithPlaceholders = {
+            ...tpl.layout,
+            blocks: tpl.layout.blocks.map((b) => {
+                if (!b || b.kind !== 'text')
+                    return b;
+                if (b.source.type === 'field') {
+                    return {
+                        ...b,
+                        source: { type: 'static', text: placeholderValueForField(b.source.key) },
+                    };
+                }
+                return b;
+            }),
+        };
+        const svgWithPlaceholders = buildSvgFromLayout(layoutWithPlaceholders, { width, height }, {
+            type: tpl.type ?? 'COMPLETION',
+            internName: '',
+            internPosition: '',
+            internDepartment: '',
+            internPeriod: '',
+            systemId: '',
+            issuedAt: null,
+        });
+        const previewPng = await bg
+            .composite([
+            {
+                input: Buffer.from(svgWithPlaceholders),
+                top: 0,
+                left: 0,
+            },
+        ])
+            .png()
+            .toBuffer();
+        const previewPath = `templates/previews/${templateId}/${Date.now()}_preview.png`;
+        await bucket.file(previewPath).save(previewPng, {
+            contentType: 'image/png',
+            resumable: false,
+            metadata: {
+                cacheControl: 'no-store, max-age=0',
+            },
+        });
+        await tplRef.update({
+            previewPath,
+            previewUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { ok: true, previewPath };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        console.error('generateTemplatePreview:internalError', err);
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
 export const generateCertificate = onCall({ cors: true }, async (request) => {
     try {
         assertAdmin(request);
@@ -190,7 +304,7 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
                 internDepartment,
                 internPeriod,
                 systemId,
-                issuedAt: req.issuedAt ?? null,
+                issuedAt: req.issuedAt ?? new Date(),
             })
             : fixedSvg;
         const issuedPng = await bgSharp

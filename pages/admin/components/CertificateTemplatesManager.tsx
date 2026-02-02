@@ -109,6 +109,8 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
   const [view, setView] = useState<'create' | 'list'>(initialView ?? 'create');
   const openEditorAfterUploadRef = useRef<string | null>(null);
 
+  const visibleTemplates = useMemo(() => templates.filter((t) => !t.isDraft), [templates]);
+
   useEffect(() => {
     const q = query(collection(firestoreDb, 'certificateTemplates'));
     return onSnapshot(
@@ -227,6 +229,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         name: 'New Template',
         type: 'COMPLETION' as CertificateRequestType,
         active: true,
+        isDraft: true,
         layout: DEFAULT_LAYOUT,
         layoutVersion: 1,
         createdAt: serverTimestamp(),
@@ -257,11 +260,9 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         backgroundPath = path;
       }
 
-      if (previewPng) {
-        const p = `templates/previews/${templateId}/${Date.now()}_preview.png`;
-        await uploadBytes(storageRef(firebaseStorage, p), previewPng, { contentType: 'image/png' });
-        previewPath = p;
-      }
+      // Preview generation is handled server-side to avoid browser CORS/tainted canvas.
+      // We clear previewPath here to avoid showing stale preview while the server updates it.
+      previewPath = null;
 
       const nextVersion = (template.layoutVersion ?? 0) + 1;
       const ref = doc(firestoreDb, 'certificateTemplates', templateId);
@@ -269,6 +270,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         name,
         layout,
         layoutVersion: nextVersion,
+        isDraft: false,
         ...(backgroundPath
           ? {
               backgroundPath,
@@ -285,6 +287,13 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         updatedAt: serverTimestamp(),
         updatedBy: firebaseAuth.currentUser?.uid ?? null,
       });
+
+      try {
+        const fn = httpsCallable(firebaseFunctions, 'generateTemplatePreview');
+        void fn({ templateId });
+      } catch {
+        // ignore
+      }
 
       if (localBgPreviewUrlRef.current) {
         URL.revokeObjectURL(localBgPreviewUrlRef.current);
@@ -780,7 +789,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
         </div>
       ) : null}
 
-      {templates.length === 0 ? (
+      {visibleTemplates.length === 0 ? (
         <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
           <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
         </div>
@@ -792,7 +801,7 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
             <div className="col-span-3 text-right"> </div>
           </div>
 
-          {templates.map((tpl) => (
+          {visibleTemplates.map((tpl) => (
             <div key={tpl.id} className="grid grid-cols-12 px-6 py-4 border-b border-slate-50 items-center">
               <div className="col-span-6 min-w-0">
                 <div className="text-sm font-black text-slate-900 truncate">{tpl.name ?? tpl.id}</div>

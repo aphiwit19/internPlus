@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Rect } from 'react-konva';
+import type Konva from 'konva';
 import { doc, updateDoc } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
@@ -41,6 +42,7 @@ export type CertificateTemplateDoc = {
   type?: CertificateRequestType;
   backgroundPath?: string;
   backgroundUrl?: string;
+  isDraft?: boolean;
   active?: boolean;
   isActive?: boolean;
   layout?: CertificateTemplateLayout;
@@ -134,7 +136,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   );
 
   const image = useHtmlImage(backgroundUrl);
-  const stageRef = useRef<any>(null);
+  const stageRef = useRef<Konva.Stage>(null);
 
   const dataUrlToBlob = useCallback((dataUrl: string): Blob | null => {
     const parts = dataUrl.split(',');
@@ -195,13 +197,16 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   }, []);
 
   const addStaticText = () => {
+    const baseX = Math.round(layout.canvas.width * 0.1);
+    const baseY = Math.round(layout.canvas.height * 0.2);
+    const maxY = layout.blocks.reduce((acc, b) => Math.max(acc, b.y), 0);
+    const nextY = Math.min(layout.canvas.height - 60, Math.max(baseY, maxY + 60));
     const block: TemplateTextBlock = {
       id: makeId(),
       kind: 'text',
-      x: Math.round(layout.canvas.width * 0.1),
-      y: Math.round(layout.canvas.height * 0.2),
-      fontSize: Math.round(layout.canvas.width * 0.03),
-      fontWeight: 700,
+      x: baseX,
+      y: nextY,
+      fontSize: 16,
       color: '#111827',
       align: 'left',
       source: { type: 'static', text: 'New text\n(second line)' },
@@ -211,13 +216,16 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   };
 
   const addFieldText = () => {
+    const baseX = Math.round(layout.canvas.width * 0.1);
+    const baseY = Math.round(layout.canvas.height * 0.3);
+    const maxY = layout.blocks.reduce((acc, b) => Math.max(acc, b.y), 0);
+    const nextY = Math.min(layout.canvas.height - 60, Math.max(baseY, maxY + 60));
     const block: TemplateTextBlock = {
       id: makeId(),
       kind: 'text',
-      x: Math.round(layout.canvas.width * 0.1),
-      y: Math.round(layout.canvas.height * 0.3),
-      fontSize: Math.round(layout.canvas.width * 0.035),
-      fontWeight: 800,
+      x: baseX,
+      y: nextY,
+      fontSize: 16,
       color: '#111827',
       align: 'left',
       source: { type: 'field', key: 'internName' },
@@ -355,29 +363,21 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                       width={b.width}
                       text={displayText(b)}
                       fontSize={b.fontSize}
-                      fontStyle={b.fontWeight && b.fontWeight >= 700 ? 'bold' : 'normal'}
+                      fontStyle="normal"
                       fill={b.color}
                       opacity={b.opacity ?? 1}
                       align={b.align ?? 'left'}
                       draggable
-                      onDragEnd={(e) => updateBlock(b.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) })}
-                      onMouseDown={() => setSelectedId(b.id)}
+                      onDragEnd={(e) => {
+                        updateBlock(b.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) });
+                        setSelectedId(null);
+                      }}
+                      onMouseDown={() => {
+                        setSelectedId(b.id);
+                      }}
                       listening
                     />
                   ))}
-
-                  {!isExportingPreview && selected ? (
-                    <Rect
-                      x={selected.x - 8}
-                      y={selected.y - 8}
-                      width={(selected.width ?? 400) + 16}
-                      height={Math.max(80, selected.fontSize * 2) + 16}
-                      stroke="#3b82f6"
-                      strokeWidth={3}
-                      dash={[10, 6]}
-                      listening={false}
-                    />
-                  ) : null}
                 </Layer>
               </Stage>
             </div>
@@ -425,30 +425,14 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs font-black text-slate-600 mb-2">{t.fontSize}</div>
-                    <input
-                      type="number"
-                      value={selected.fontSize}
-                      onChange={(e) => updateBlock(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 0) })}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-black text-slate-600 mb-2">{t.fontWeight}</div>
-                    <select
-                      value={String(selected.fontWeight ?? 400)}
-                      onChange={(e) => updateBlock(selected.id, { fontWeight: Number(e.target.value) as 400 | 600 | 700 | 800 })}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                    >
-                      <option value="400">400</option>
-                      <option value="600">600</option>
-                      <option value="700">700</option>
-                      <option value="800">800</option>
-                    </select>
-                  </div>
+                <div>
+                  <div className="text-xs font-black text-slate-600 mb-2">{t.fontSize}</div>
+                  <input
+                    type="number"
+                    value={selected.fontSize}
+                    onChange={(e) => updateBlock(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 0) })}
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
