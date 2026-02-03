@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
-import { Users, UserPlus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, UserPlus, X } from 'lucide-react';
 
 import { InternRecord } from '../adminDashboardTypes';
 
@@ -10,6 +10,35 @@ interface RosterTabProps {
 }
 
 const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor }) => {
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 5;
+
+  const visibleInterns = useMemo(() => {
+    return internRoster.filter((intern) => intern.status === 'Active' || intern.status === 'WITHDRAWN');
+  }, [internRoster]);
+
+  const pageCount = useMemo(() => {
+    const count = Math.ceil(visibleInterns.length / PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [visibleInterns.length]);
+
+  useEffect(() => {
+    setPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > pageCount) return pageCount;
+      return prev;
+    });
+  }, [pageCount]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [visibleInterns.length]);
+
+  const pageItems = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return visibleInterns.slice(start, start + PAGE_SIZE);
+  }, [page, visibleInterns]);
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm overflow-hidden">
@@ -34,12 +63,7 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {internRoster
-                .filter(intern => 
-                  intern.status === 'Active' || 
-                  intern.status === 'WITHDRAWN'
-                )
-                .map(intern => (
+              {pageItems.map(intern => (
                 <tr key={intern.id} className="group hover:bg-slate-50/50 transition-all">
                   <td className="py-6 pl-4">
                     <div className="flex items-center gap-4">
@@ -90,6 +114,45 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
             </tbody>
           </table>
         </div>
+
+        {pageCount > 1 && (
+          <div className="pt-6 flex justify-center">
+            <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPage(p)}
+                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                    p === page
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={page >= pageCount}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

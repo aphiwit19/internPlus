@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-import { ArrowUpRight, Banknote, Building2, CreditCard, Home, ShieldCheck, UserX } from 'lucide-react';
+import { ArrowUpRight, Banknote, Building2, ChevronLeft, ChevronRight, CreditCard, Home, ShieldCheck, UserX } from 'lucide-react';
 
 import { AllowanceClaim } from '../adminDashboardTypes';
 
@@ -34,7 +34,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
   const [payFrom, setPayFrom] = useState('');
   const [payTo, setPayTo] = useState('');
   const [page, setPage] = useState(1);
-  const pageSize = 8;
+  const pageSize = readOnly ? 4 : 8;
   const [noteClaim, setNoteClaim] = useState<AllowanceClaim | null>(null);
   const [noteSource, setNoteSource] = useState<'ADMIN' | 'SUPERVISOR'>('SUPERVISOR');
 
@@ -427,40 +427,42 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
         </div>
 
         {filtered.length > pageSize && (
-          <div className="flex items-center justify-between mt-6">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Page {safePage} of {totalPages}
-            </div>
-
-            <div className="flex items-center gap-2">
+          <div className="pt-6 flex justify-center">
+            <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage <= 1}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50"
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                aria-label="Previous page"
               >
-                &lt;
+                <ChevronLeft size={18} />
               </button>
 
               {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((p) => (
                 <button
                   key={p}
+                  type="button"
                   onClick={() => setPage(p)}
-                  className={`px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest border transition-all ${
+                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
                     p === safePage
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
                   }`}
+                  aria-current={p === safePage ? 'page' : undefined}
                 >
                   {p}
                 </button>
               ))}
 
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage >= totalPages}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50"
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                aria-label="Next page"
               >
-                &gt;
+                <ChevronRight size={18} />
               </button>
             </div>
           </div>

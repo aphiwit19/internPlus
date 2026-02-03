@@ -40,7 +40,6 @@ import {
   Edit3,
   Settings,
   Zap,
-  Bell,
   Navigation,
   FileBadge,
   FileCheck,
@@ -868,12 +867,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             <p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p>
           </div>
           
-          <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
-             <TabBtn active={activeTab === 'onboarding'} onClick={() => setActiveTab('onboarding')} icon={<Rocket size={16}/>} label={t.tabOnboarding} />
-             <TabBtn active={activeTab === 'policy'} onClick={() => setActiveTab('policy')} icon={<ShieldCheck size={16}/>} label={t.tabPolicy} />
-             <TabBtn active={activeTab === 'allowance'} onClick={() => setActiveTab('allowance')} icon={<CreditCard size={16}/>} label={t.tabAllowance} />
-             <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={16}/>} label={t.tabAccess} />
-             <TabBtn active={activeTab === 'evaluation'} onClick={() => setActiveTab('evaluation')} icon={<ClipboardList size={16}/>} label={t.tabEvaluation} />
+          <div className="flex bg-white p-1 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
+             <TabBtn active={activeTab === 'onboarding'} onClick={() => setActiveTab('onboarding')} icon={<Rocket size={14}/>} label={t.tabOnboarding} />
+             <TabBtn active={activeTab === 'policy'} onClick={() => setActiveTab('policy')} icon={<ShieldCheck size={14}/>} label={t.tabPolicy} />
+             <TabBtn active={activeTab === 'allowance'} onClick={() => setActiveTab('allowance')} icon={<CreditCard size={14}/>} label={t.tabAllowance} />
+             <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={14}/>} label={t.tabAccess} />
+             <TabBtn active={activeTab === 'evaluation'} onClick={() => setActiveTab('evaluation')} icon={<ClipboardList size={14}/>} label={t.tabEvaluation} />
           </div>
         </div>
 
@@ -1767,8 +1766,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
           {/* TAB: EVALUATION */}
           {activeTab === 'evaluation' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-500">
-              <div className="lg:col-span-8">
+            <div className="animate-in fade-in duration-500">
+              <div>
                 <section className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm relative overflow-hidden">
                   <div className="mb-12">
                     <h2 className="text-3xl font-black text-slate-900 tracking-tight">{t.tabEvaluation}</h2>
@@ -1822,113 +1821,53 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                     </div>
 
                     <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem]">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (TH/EN)' : 'EDIT HEADINGS (TH/EN)'} </div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (EN)' : 'EDIT HEADINGS (EN)'} </div>
 
-                      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">TH</div>
-                          <input
-                            value={evaluationLabelsByLang.TH.technical}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, technical: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.TH.communication}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, communication: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.TH.punctuality}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, punctuality: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.TH.initiative}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, initiative: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.TH.overallComments}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, overallComments: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.TH.workPerformance}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, workPerformance: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">EN</div>
-                          <input
-                            value={evaluationLabelsByLang.EN.technical}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, technical: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.EN.communication}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, communication: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.EN.punctuality}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, punctuality: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.EN.initiative}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, initiative: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.EN.overallComments}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, overallComments: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                          <input
-                            value={evaluationLabelsByLang.EN.workPerformance}
-                            onChange={(e) =>
-                              setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, workPerformance: e.target.value } }))
-                            }
-                            className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          />
-                        </div>
+                      <div className="mt-6 space-y-4">
+                        <input
+                          value={evaluationLabelsByLang.EN.technical}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, technical: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
+                        <input
+                          value={evaluationLabelsByLang.EN.communication}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, communication: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
+                        <input
+                          value={evaluationLabelsByLang.EN.punctuality}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, punctuality: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
+                        <input
+                          value={evaluationLabelsByLang.EN.initiative}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, initiative: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
+                        <input
+                          value={evaluationLabelsByLang.EN.overallComments}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, overallComments: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
+                        <input
+                          value={evaluationLabelsByLang.EN.workPerformance}
+                          onChange={(e) =>
+                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, workPerformance: e.target.value } }))
+                          }
+                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                        />
                       </div>
                     </div>
-                  </div>
-                </section>
-              </div>
-
-              <div className="lg:col-span-4">
-                <section className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                    {lang === 'TH' ? 'สถานะ' : 'STATUS'}
-                  </div>
-                  <div className="mt-3 text-sm font-black text-slate-900">
-                    {lang === 'TH' ? 'ยังไม่พร้อมใช้งาน' : 'Not available yet'}
                   </div>
                 </section>
               </div>
@@ -1965,7 +1904,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 // --- SUB-COMPONENTS ---
 
 const TabBtn = ({ active, onClick, icon, label }: any) => (
-  <button onClick={onClick} className={`flex items-center gap-2.5 px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
+  <button onClick={onClick} className={`flex items-center gap-1.5 px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all whitespace-nowrap ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
     {icon} {label}
   </button>
 );

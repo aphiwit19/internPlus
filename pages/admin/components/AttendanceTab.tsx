@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-import { Building2, Home } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 
@@ -31,7 +31,7 @@ type AttendanceRow = {
 };
 
 const AttendanceTab: React.FC = () => {
-  const PAGE_SIZE = 8;
+  const PAGE_SIZE = 5;
 
   const [interns, setInterns] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
   const [latestByIntern, setLatestByIntern] = useState<Record<string, AttendanceRow>>({});
@@ -238,39 +238,41 @@ const AttendanceTab: React.FC = () => {
         </div>
 
         {rows.length > PAGE_SIZE && (
-          <div className="mt-10 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
-            >
-              {'<'}
-            </button>
-
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          <div className="pt-6 flex justify-center">
+            <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
               <button
-                key={page}
                 type="button"
-                onClick={() => setCurrentPage(page)}
-                className={`w-10 h-10 rounded-xl border text-xs font-black transition-all ${
-                  page === currentPage
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
               >
-                {page}
+                <ChevronLeft size={18} />
               </button>
-            ))}
 
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
-            >
-              {'>'}
-            </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                    page === currentPage
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
         )}
       </section>

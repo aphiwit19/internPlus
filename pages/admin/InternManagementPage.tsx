@@ -100,7 +100,7 @@ const InternManagementPage: React.FC = () => {
   const [interns, setInterns] = useState<AdminInternDetail[]>([]);
   const [internsLoadError, setInternsLoadError] = useState<string | null>(null);
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('assets');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<AttendanceViewMode>('LOG');
@@ -653,7 +653,7 @@ const InternManagementPage: React.FC = () => {
         showAssignmentsTab
         onBack={() => {
           setSelectedInternId(null);
-          setActiveTab('overview');
+          setActiveTab('assets');
         }}
       >
         {activeTab === 'overview' && (
@@ -903,7 +903,7 @@ const InternManagementPage: React.FC = () => {
               onOpenAssignIntern={() => navigate(pageIdToPath('HR_ADMIN', 'invitations'))}
               onSelectIntern={(internId) => {
                 setSelectedInternId(internId);
-                setActiveTab('overview');
+                setActiveTab('assets');
               }}
             />
           </div>

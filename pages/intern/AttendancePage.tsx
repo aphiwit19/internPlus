@@ -64,7 +64,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
   const [pendingFilterWorkMode, setPendingFilterWorkMode] = useState<'ALL' | WorkMode>('ALL');
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const PAGE_SIZE = 8;
+  const PAGE_SIZE = 6;
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -436,42 +436,48 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
               </table>
             </div>
 
-            {filteredHistory.length > PAGE_SIZE && (
+            {totalPages > 1 ? (
               <div className="mt-8 flex items-center justify-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                  disabled={currentPage <= 1}
+                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                  aria-label="Previous page"
                 >
                   {'<'}
                 </button>
 
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-10 h-10 rounded-xl border text-xs font-black transition-all ${
-                      page === currentPage
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((page) => {
+                  const isActive = page === currentPage;
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-2 rounded-xl border text-[11px] font-black transition-all ${
+                        isActive
+                          ? 'bg-slate-900 border-slate-900 text-white'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
 
                 <button
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                  aria-label="Next page"
                 >
                   {'>'}
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

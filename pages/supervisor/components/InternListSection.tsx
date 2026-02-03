@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Filter, Search, Star, UserPlus, ChevronDown, X, BarChart3, StickyNote } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Filter, Search, Star, UserPlus, ChevronDown, ChevronLeft, ChevronRight, X, BarChart3, StickyNote } from 'lucide-react';
 
 export interface InternListItem {
   id: string;
@@ -44,6 +44,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
   onSelectIntern,
 }) => {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [internsPage, setInternsPage] = useState(1);
 
   const activeCount = interns.filter((i) => i.status === 'Active').length;
   const inactiveCount = interns.filter((i) => i.status === 'Inactive').length;
@@ -54,12 +55,40 @@ const InternListSection: React.FC<InternListSectionProps> = ({
     { value: 'Inactive', label: 'Inactive' },
   ];
 
-  const filteredInterns = interns.filter(intern => {
-    const matchesSearch = intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         intern.position.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || intern.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredInterns = useMemo(() => {
+    return interns.filter((intern) => {
+      const matchesSearch =
+        intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        intern.position.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || intern.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [interns, searchQuery, statusFilter]);
+
+  const INTERNS_PER_PAGE = 9;
+
+  const internsPageCount = useMemo(() => {
+    const count = Math.ceil(filteredInterns.length / INTERNS_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [filteredInterns.length]);
+
+  useEffect(() => {
+    setInternsPage(1);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    setInternsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > internsPageCount) return internsPageCount;
+      return prev;
+    });
+  }, [internsPageCount]);
+
+  const pagedInterns = useMemo(() => {
+    const start = (internsPage - 1) * INTERNS_PER_PAGE;
+    return filteredInterns.slice(start, start + INTERNS_PER_PAGE);
+  }, [filteredInterns, internsPage]);
+
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-14 gap-8">
@@ -146,7 +175,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-        {filteredInterns.map((intern) => (
+        {pagedInterns.map((intern) => (
           <div
             key={intern.id}
             onClick={() => onSelectIntern(intern.id)}
@@ -204,6 +233,45 @@ const InternListSection: React.FC<InternListSectionProps> = ({
           </div>
         ))}
       </div>
+
+      {internsPageCount > 1 && (
+        <div className="pt-10 flex justify-center">
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setInternsPage((p) => Math.max(1, p - 1))}
+              disabled={internsPage <= 1}
+              className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            {Array.from({ length: internsPageCount }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setInternsPage(p)}
+                className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                  p === internsPage
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setInternsPage((p) => Math.min(internsPageCount, p + 1))}
+              disabled={internsPage >= internsPageCount}
+              className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };

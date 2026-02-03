@@ -197,6 +197,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [pendingCertificateCount, setPendingCertificateCount] = useState<number>(0);
   const [pendingUniversityEvaluationCount, setPendingUniversityEvaluationCount] = useState<number>(0);
 
+  const [pendingActionPage, setPendingActionPage] = useState(1);
+
   const [handoffPendingByIntern, setHandoffPendingByIntern] = useState<Record<
     string,
     { count: number; next: PendingAssignmentNext | null }
@@ -280,7 +282,29 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return pendingByIntern.reduce((acc, x) => acc + x.count, 0);
   }, [pendingByIntern]);
 
-  const PENDING_ACTION_VISIBLE_COUNT = 5;
+  const PENDING_ACTION_VISIBLE_COUNT = 4;
+
+  const pendingActionPageCount = useMemo(() => {
+    const count = Math.ceil(pendingByIntern.length / PENDING_ACTION_VISIBLE_COUNT);
+    return count > 0 ? count : 1;
+  }, [pendingByIntern.length]);
+
+  useEffect(() => {
+    setPendingActionPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > pendingActionPageCount) return pendingActionPageCount;
+      return prev;
+    });
+  }, [pendingActionPageCount]);
+
+  useEffect(() => {
+    setPendingActionPage(1);
+  }, [pendingByIntern.length]);
+
+  const displayedPendingByIntern = useMemo(() => {
+    const start = (pendingActionPage - 1) * PENDING_ACTION_VISIBLE_COUNT;
+    return pendingByIntern.slice(start, start + PENDING_ACTION_VISIBLE_COUNT);
+  }, [pendingActionPage, pendingByIntern]);
 
   const handleOpenPendingAssetsForIntern = async (internId: string, next: PendingAssignmentNext | null) => {
     if (next) {
@@ -1577,7 +1601,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ITEMS REQUIRING REVIEW</p>
                             </div>
                           ) : (
-                            pendingByIntern.map((item) => (
+                            displayedPendingByIntern.map((item) => (
                               <div key={item.internId} className="p-6 bg-[#F8FAFC]/60 border border-slate-100 rounded-[2.25rem] flex items-center justify-between group hover:border-blue-200 hover:bg-white hover:shadow-xl transition-all">
                                  <div className="flex items-center gap-5 min-w-0">
                                     <img src={item.internAvatar} className="w-16 h-16 rounded-[1.5rem] object-cover ring-4 ring-white shadow-sm" alt="" />
@@ -1609,6 +1633,45 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                             ))
                           )}
                        </div>
+
+                       {pendingActionPageCount > 1 && (
+                         <div className="pt-6 flex justify-center">
+                           <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                             <button
+                               type="button"
+                               onClick={() => setPendingActionPage((p) => Math.max(1, p - 1))}
+                               disabled={pendingActionPage <= 1}
+                               className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                             >
+                               <ChevronLeft size={18} />
+                             </button>
+
+                             {Array.from({ length: pendingActionPageCount }, (_, i) => i + 1).map((p) => (
+                               <button
+                                 key={p}
+                                 type="button"
+                                 onClick={() => setPendingActionPage(p)}
+                                 className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                   p === pendingActionPage
+                                     ? 'bg-slate-900 text-white border-slate-900'
+                                     : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                 }`}
+                               >
+                                 {p}
+                               </button>
+                             ))}
+
+                             <button
+                               type="button"
+                               onClick={() => setPendingActionPage((p) => Math.min(pendingActionPageCount, p + 1))}
+                               disabled={pendingActionPage >= pendingActionPageCount}
+                               className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                             >
+                               <ChevronRight size={18} />
+                             </button>
+                           </div>
+                         </div>
+                       )}
                     </div>
 
                     <div className="lg:col-span-4 space-y-8">

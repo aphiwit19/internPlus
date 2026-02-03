@@ -36,6 +36,9 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const { user } = useAppContext();
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
 
+  const DOCS_PER_PAGE = 6;
+  const [otherDocsPage, setOtherDocsPage] = useState(1);
+
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
 
   const [activeRequiredLabels, setActiveRequiredLabels] = useState<string[]>([]);
@@ -134,6 +137,24 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     const blocked = new Set(allStepLabels);
     return documents.filter((d) => !blocked.has(d.label));
   }, [documents, allStepLabels]);
+
+  const otherDocsPageCount = useMemo(() => {
+    const count = Math.ceil(visibleDocuments.length / DOCS_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [DOCS_PER_PAGE, visibleDocuments.length]);
+
+  useEffect(() => {
+    setOtherDocsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > otherDocsPageCount) return otherDocsPageCount;
+      return prev;
+    });
+  }, [otherDocsPageCount]);
+
+  const visibleOtherDocs = useMemo(() => {
+    const start = (otherDocsPage - 1) * DOCS_PER_PAGE;
+    return visibleDocuments.slice(start, start + DOCS_PER_PAGE);
+  }, [DOCS_PER_PAGE, otherDocsPage, visibleDocuments]);
 
   const normalizedNewLabel = useMemo(() => newLabel.trim(), [newLabel]);
   const isBlockedNewLabel = useMemo(() => {
@@ -476,12 +497,10 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                  {lang === 'EN' ? 'OTHER DOCUMENTS' : 'เอกสารอื่น ๆ'}
+                  {lang === 'EN' ? 'ALL DOCUMENTS' : 'เอกสารทั้งหมด'}
                 </div>
                 <div className="text-sm font-black text-slate-900 mt-2">
-                  {lang === 'EN'
-                    ? 'These are documents you added yourself (not controlled by admin).'
-                    : 'เอกสารที่คุณเพิ่มเอง (ไม่ถูกควบคุมโดยแอดมิน)'}
+                  {lang === 'EN' ? 'All documents.' : 'เอกสารทั้งหมด'}
                 </div>
               </div>
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
@@ -495,7 +514,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
               </div>
             ) : (
               <div className="mt-6 space-y-3">
-                {visibleDocuments.map((d) => (
+                {visibleOtherDocs.map((d) => (
                   <div
                     key={d.id}
                     className="p-4 bg-slate-50 border border-slate-100 rounded-[1.25rem] flex items-center justify-between"
@@ -536,6 +555,49 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                     </div>
                   </div>
                 ))}
+
+                {otherDocsPageCount > 1 ? (
+                  <div className="pt-4 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOtherDocsPage((p) => Math.max(1, p - 1))}
+                      disabled={otherDocsPage <= 1}
+                      className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                      aria-label="Previous page"
+                    >
+                      {'<'}
+                    </button>
+
+                    {Array.from({ length: otherDocsPageCount }, (_, idx) => idx + 1).map((page) => {
+                      const isActive = page === otherDocsPage;
+                      return (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setOtherDocsPage(page)}
+                          className={`px-3 py-2 rounded-xl border text-[11px] font-black transition-all ${
+                            isActive
+                              ? 'bg-slate-900 border-slate-900 text-white'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          aria-current={isActive ? 'page' : undefined}
+                        >
+                          {page}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={() => setOtherDocsPage((p) => Math.min(otherDocsPageCount, p + 1))}
+                      disabled={otherDocsPage >= otherDocsPageCount}
+                      className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                      aria-label="Next page"
+                    >
+                      {'>'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

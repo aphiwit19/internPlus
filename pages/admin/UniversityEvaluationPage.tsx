@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Download, FileText, Link as LinkIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileText, Link as LinkIcon } from 'lucide-react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -92,6 +92,8 @@ const AdminUniversityEvaluationPage: React.FC<AdminUniversityEvaluationPageProps
   const [items, setItems] = useState<Array<UniversityEvaluationDoc & { id: string }>>([]);
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [itemsPage, setItemsPage] = useState(1);
+  const ITEMS_PAGE_SIZE = 6;
 
   useEffect(() => {
     setLoadError(null);
@@ -138,6 +140,20 @@ const AdminUniversityEvaluationPage: React.FC<AdminUniversityEvaluationPageProps
     return active.deliveryDetails ?? null;
   }, [active]);
 
+  const itemsPageCount = useMemo(() => {
+    const count = Math.ceil(items.length / ITEMS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [items.length, ITEMS_PAGE_SIZE]);
+
+  const pagedItems = useMemo(() => {
+    const start = (itemsPage - 1) * ITEMS_PAGE_SIZE;
+    return items.slice(start, start + ITEMS_PAGE_SIZE);
+  }, [items, itemsPage, ITEMS_PAGE_SIZE]);
+
+  useEffect(() => {
+    setItemsPage(1);
+  }, [items.length]);
+
   const handleDownload = async (f: UniversityEvaluationFile) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, f.storagePath));
     window.open(url, '_blank');
@@ -153,8 +169,8 @@ const AdminUniversityEvaluationPage: React.FC<AdminUniversityEvaluationPageProps
         ) : null}
 
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
+          <p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
@@ -296,7 +312,7 @@ const AdminUniversityEvaluationPage: React.FC<AdminUniversityEvaluationPageProps
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map((intern) => (
+              {pagedItems.map((intern) => (
                 <button
                   key={intern.id}
                   type="button"
@@ -336,6 +352,48 @@ const AdminUniversityEvaluationPage: React.FC<AdminUniversityEvaluationPageProps
                   </div>
                 </button>
               ))}
+
+              {itemsPageCount > 1 && (
+                <div className="pt-6 flex justify-center">
+                  <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setItemsPage((p) => Math.max(1, p - 1))}
+                      disabled={itemsPage <= 1}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    {Array.from({ length: itemsPageCount }, (_, idx) => idx + 1).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setItemsPage(p)}
+                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                          p === itemsPage
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                        }`}
+                        aria-current={p === itemsPage ? 'page' : undefined}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setItemsPage((p) => Math.min(itemsPageCount, p + 1))}
+                      disabled={itemsPage >= itemsPageCount}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

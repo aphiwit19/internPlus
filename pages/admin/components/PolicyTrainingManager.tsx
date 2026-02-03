@@ -603,7 +603,7 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
         <>
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={() => setIsEditing(false)} />
           <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-            <div className="w-full max-w-3xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+            <div className="w-full max-w-2xl max-h-[90vh] bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden flex flex-col">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-black text-slate-900 tracking-tight">{editId ? t.edit : t.add}</h3>
@@ -616,7 +616,7 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
                 </button>
               </div>
 
-              <div className="p-8 space-y-6">
+              <div className="p-8 space-y-6 overflow-y-auto flex-1">
                 {saveError && (
                   <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
                     {saveError}

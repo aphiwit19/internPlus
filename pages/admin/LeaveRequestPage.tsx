@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
+import { Award, Clock, CreditCard, UserX, Users } from 'lucide-react';
+
+import { useNavigate } from 'react-router-dom';
+
 import LeaveRequestCore from '@/pages/shared/LeaveRequestCore';
 import { Language, UserRole } from '@/types';
 
@@ -13,9 +17,35 @@ interface AdminLeaveRequestPageProps {
 }
 
 const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) => {
+  const navigate = useNavigate();
   const [quotaDays, setQuotaDays] = useState<number>(39);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  const TabBtn = ({
+    active,
+    onClick,
+    icon,
+    label,
+  }: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+  }) => {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex items-center gap-2 px-6 py-3 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+          active ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
+        }`}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  };
 
   const t = useMemo(
     () =>
@@ -91,6 +121,15 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
         lang === 'EN'
           ? 'Review and manage leave requests across the entire organization.'
           : 'ตรวจสอบและจัดการคำขอลาทั้งหมดในระบบ'
+      }
+      topNav={
+        <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label="Roster" />
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label="Attendance" />
+          <TabBtn active onClick={() => void 0} icon={<UserX size={16} />} label="Absences" />
+          <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16} />} label="Certs" />
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label="Payouts" />
+        </div>
       }
       sidePanel={
         <div className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm">

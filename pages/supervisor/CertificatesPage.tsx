@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, ChevronLeft, Clock, Download, FileText, Upload } from 'lucide-react';
+import { Award, ChevronLeft, ChevronRight, Clock, Download, FileText, Upload } from 'lucide-react';
 import { collection, onSnapshot, query, serverTimestamp, updateDoc, where, doc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
@@ -86,6 +86,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
+  const [internsPage, setInternsPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUpload, setPendingUpload] = useState<{ requestId: string } | null>(null);
 
@@ -265,6 +266,30 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     return interns.find((x) => x.internId === activeInternId) ?? null;
   }, [activeInternId, interns]);
 
+  const INTERNS_PAGE_SIZE = 6;
+
+  const internsPageCount = useMemo(() => {
+    const count = Math.ceil(interns.length / INTERNS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [interns.length]);
+
+  useEffect(() => {
+    setInternsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > internsPageCount) return internsPageCount;
+      return prev;
+    });
+  }, [internsPageCount]);
+
+  useEffect(() => {
+    setInternsPage(1);
+  }, [interns.length]);
+
+  const pagedInterns = useMemo(() => {
+    const start = (internsPage - 1) * INTERNS_PAGE_SIZE;
+    return interns.slice(start, start + INTERNS_PAGE_SIZE);
+  }, [interns, internsPage]);
+
   const requestByType = useMemo(() => {
     if (!activeIntern) return new Map<CertificateRequestType, (CertificateRequestDoc & { id: string })>();
     const map = new Map<CertificateRequestType, (CertificateRequestDoc & { id: string })>();
@@ -436,7 +461,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
-              {interns.map((intern) => {
+              {pagedInterns.map((intern) => {
                 const requestedCount = intern.requests.filter((r) => r.status === 'REQUESTED').length;
                 const issuedCount = intern.requests.filter((r) => r.status === 'ISSUED').length;
 
@@ -477,6 +502,45 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                   </button>
                 );
               })}
+
+              {internsPageCount > 1 && (
+                <div className="pt-2 flex justify-center">
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInternsPage((p) => Math.max(1, p - 1))}
+                      disabled={internsPage <= 1}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    {Array.from({ length: internsPageCount }, (_, i) => i + 1).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setInternsPage(p)}
+                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                          p === internsPage
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setInternsPage((p) => Math.min(internsPageCount, p + 1))}
+                      disabled={internsPage >= internsPageCount}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -11,7 +11,9 @@ import {
   Calendar,
   Filter,
   Check,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Language, UserRole, LeaveRequest, LeaveType } from '@/types';
 
@@ -27,6 +29,7 @@ interface LeaveRequestCoreProps {
   role: UserRole;
   headerTitle?: string;
   headerSubtitle?: string;
+  topNav?: React.ReactNode;
   protocolTitle?: string;
   protocolSubtitle?: string;
   sidePanel?: React.ReactNode | null;
@@ -37,6 +40,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   role,
   headerTitle,
   headerSubtitle,
+  topNav,
   protocolTitle,
   protocolSubtitle,
   sidePanel,
@@ -257,15 +261,45 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const overallLeaveLeft = Math.max(0, totalLeaveQuotaDays - overallLeaveUsed);
 
   const [leaveTypeFilter, setLeaveTypeFilter] = useState<LeaveType | 'ALL'>('ALL');
+  const REQUESTS_PER_PAGE = isIntern ? 3 : role === 'SUPERVISOR' ? 3 : role === 'HR_ADMIN' ? 3 : 10;
+  const [requestsPage, setRequestsPage] = useState(1);
   const filteredRequests = useMemo(() => {
     if (leaveTypeFilter === 'ALL') return requests;
     return requests.filter((r) => r.type === leaveTypeFilter);
   }, [leaveTypeFilter, requests]);
 
+  const requestsPageCount = useMemo(() => {
+    const count = Math.ceil(filteredRequests.length / REQUESTS_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [REQUESTS_PER_PAGE, filteredRequests.length]);
+
+  useEffect(() => {
+    setRequestsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > requestsPageCount) return requestsPageCount;
+      return prev;
+    });
+  }, [requestsPageCount]);
+
+  useEffect(() => {
+    setRequestsPage(1);
+  }, [leaveTypeFilter]);
+
+  const pagedRequests = useMemo(() => {
+    const start = (requestsPage - 1) * REQUESTS_PER_PAGE;
+    return filteredRequests.slice(start, start + REQUESTS_PER_PAGE);
+  }, [REQUESTS_PER_PAGE, filteredRequests, requestsPage]);
+
   const leaveTypeLabel = (type: LeaveType) => {
     const key = type.toLowerCase() as keyof typeof t;
     const value = t[key];
     return typeof value === 'string' ? value : String(type);
+  };
+
+  const statusLabel = (status: LeaveRequest['status']) => {
+    if (status === 'APPROVED') return t.approved;
+    if (status === 'REJECTED') return t.rejected;
+    return t.pending;
   };
 
   const resolvedHeaderTitle = headerTitle ?? (isIntern ? t.title : 'Approval Center');
@@ -287,6 +321,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
             <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{resolvedHeaderTitle}</h1>
             <p className="text-slate-500 text-sm font-medium pt-2">{resolvedHeaderSubtitle}</p>
           </div>
+
+          {topNav}
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
@@ -388,7 +424,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                   {!isLoading && !errorMessage && (
                     <>
-                      {filteredRequests.map((req) => (
+                      {pagedRequests.map((req) => (
                         <div key={req.id} className="p-8 bg-white border border-[#F1F5F9] rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl hover:border-blue-50 group">
                           <div className="flex items-center gap-6">
                             <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all flex-shrink-0 ${
@@ -450,12 +486,57 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                                 req.status === 'REJECTED' ? 'bg-[#FFF1F2] text-[#F43F5E] border-[#FFE4E6]' :
                                 'bg-[#F0F9FF] text-[#3B82F6] border-[#E0F2FE]'
                               }`}>
-                                {t[req.status.toLowerCase() as keyof typeof t.EN]}
+                                {statusLabel(req.status)}
                               </div>
                             )}
                           </div>
                         </div>
                       ))}
+
+                      {requestsPageCount > 1 ? (
+                        <div className="pt-2 flex justify-center">
+                          <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setRequestsPage((p) => Math.max(1, p - 1))}
+                              disabled={requestsPage <= 1}
+                              className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                              aria-label="Previous page"
+                            >
+                              <ChevronLeft size={18} />
+                            </button>
+
+                            {Array.from({ length: requestsPageCount }, (_, idx) => idx + 1).map((page) => {
+                              const isActive = page === requestsPage;
+                              return (
+                                <button
+                                  key={page}
+                                  type="button"
+                                  onClick={() => setRequestsPage(page)}
+                                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                    isActive
+                                      ? 'bg-slate-900 text-white border-slate-900'
+                                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                                  }`}
+                                  aria-current={isActive ? 'page' : undefined}
+                                >
+                                  {page}
+                                </button>
+                              );
+                            })}
+
+                            <button
+                              type="button"
+                              onClick={() => setRequestsPage((p) => Math.min(requestsPageCount, p + 1))}
+                              disabled={requestsPage >= requestsPageCount}
+                              className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                              aria-label="Next page"
+                            >
+                              <ChevronRight size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {filteredRequests.length === 0 && (
                         <div className="py-24 text-center flex flex-col items-center">
@@ -494,7 +575,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                                onClick={() => setNewRequest({...newRequest, type: type as LeaveType})}
                                className={`px-4 py-4 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all text-center border-2 ${newRequest.type === type ? 'bg-blue-600 border-blue-600 text-white shadow-2xl shadow-blue-500/30 scale-[1.02]' : 'bg-white/5 border-white/5 text-slate-500 hover:bg-white/10 hover:border-white/10'}`}
                              >
-                               {t[type.toLowerCase() as keyof typeof t.EN]}
+                               {leaveTypeLabel(type as LeaveType)}
                              </button>
                            ))}
                         </div>

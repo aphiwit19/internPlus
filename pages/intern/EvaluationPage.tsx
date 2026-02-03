@@ -22,7 +22,8 @@ import {
   MapPin,
   Save,
   Clock,
-  Bell
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
@@ -289,6 +290,31 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
   });
 
   const [appointmentHistory, setAppointmentHistory] = useState<AppointmentHistoryEntry[]>([]);
+  const [appointmentHistoryPage, setAppointmentHistoryPage] = useState(1);
+
+  const APPOINTMENT_HISTORY_PAGE_SIZE = 3;
+
+  const reversedAppointmentHistory = useMemo(() => {
+    return [...appointmentHistory].slice().reverse();
+  }, [appointmentHistory]);
+
+  const appointmentHistoryPageCount = useMemo(() => {
+    const count = Math.ceil(reversedAppointmentHistory.length / APPOINTMENT_HISTORY_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [reversedAppointmentHistory.length]);
+
+  useEffect(() => {
+    setAppointmentHistoryPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > appointmentHistoryPageCount) return appointmentHistoryPageCount;
+      return prev;
+    });
+  }, [appointmentHistoryPageCount]);
+
+  const displayedAppointmentHistory = useMemo(() => {
+    const start = (appointmentHistoryPage - 1) * APPOINTMENT_HISTORY_PAGE_SIZE;
+    return reversedAppointmentHistory.slice(start, start + APPOINTMENT_HISTORY_PAGE_SIZE);
+  }, [appointmentHistoryPage, reversedAppointmentHistory]);
 
   const appointmentStatusLabel = useMemo(() => {
     const s = String(appointmentRequest.status ?? 'DRAFT');
@@ -842,11 +868,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em] mb-3">
                     {lang === 'TH' ? 'ประวัติการขอเข้าพบ' : 'Appointment History'}
                   </div>
-                  <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
-                    {[...appointmentHistory]
-                      .slice()
-                      .reverse()
-                      .map((h) => (
+                  <div className="space-y-2">
+                    {displayedAppointmentHistory.map((h) => (
                         <div key={h.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
@@ -868,6 +891,45 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         </div>
                       ))}
                   </div>
+
+                  {appointmentHistoryPageCount > 1 && (
+                    <div className="pt-4 flex justify-center">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAppointmentHistoryPage((p) => Math.max(1, p - 1))}
+                          disabled={appointmentHistoryPage <= 1}
+                          className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+
+                        {Array.from({ length: appointmentHistoryPageCount }, (_, i) => i + 1).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setAppointmentHistoryPage(p)}
+                            className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                              p === appointmentHistoryPage
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setAppointmentHistoryPage((p) => Math.min(appointmentHistoryPageCount, p + 1))}
+                          disabled={appointmentHistoryPage >= appointmentHistoryPageCount}
+                          className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : null}
             </section>
@@ -1200,9 +1262,6 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                 <div className={`absolute left-0 top-0 bottom-0 w-2 ${supervisorRespondedBanner.accentClass}`} />
                 <div className="relative z-10">
                   <div className="flex items-start gap-4">
-                    <div className="w-14 h-14 rounded-3xl bg-rose-600 border border-rose-600 flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-rose-200">
-                      <Bell size={34} />
-                    </div>
                     <div className="min-w-0">
                       <div className="text-[10px] font-black uppercase tracking-[0.35em] opacity-70">
                         {lang === 'TH' ? 'แจ้งเตือน' : 'Notification'}

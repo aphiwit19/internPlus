@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Download, FileText, Link as LinkIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, FileText, Link as LinkIcon } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -93,6 +93,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
   const [items, setItems] = useState<Array<UniversityEvaluationDoc & { id: string }>>([]);
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [itemsPage, setItemsPage] = useState(1);
 
   useEffect(() => {
     setLoadError(null);
@@ -112,6 +113,30 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
       },
     );
   }, [user.id]);
+
+  const ITEMS_PAGE_SIZE = 6;
+
+  const itemsPageCount = useMemo(() => {
+    const count = Math.ceil(items.length / ITEMS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [items.length]);
+
+  useEffect(() => {
+    setItemsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > itemsPageCount) return itemsPageCount;
+      return prev;
+    });
+  }, [itemsPageCount]);
+
+  useEffect(() => {
+    setItemsPage(1);
+  }, [items.length]);
+
+  const pagedItems = useMemo(() => {
+    const start = (itemsPage - 1) * ITEMS_PAGE_SIZE;
+    return items.slice(start, start + ITEMS_PAGE_SIZE);
+  }, [items, itemsPage]);
 
   const active = useMemo(() => {
     if (!activeInternId) return null;
@@ -297,7 +322,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map((intern) => (
+              {pagedItems.map((intern) => (
                 <button
                   key={intern.id}
                   type="button"
@@ -337,6 +362,45 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                   </div>
                 </button>
               ))}
+
+              {itemsPageCount > 1 && (
+                <div className="pt-2 flex justify-center">
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setItemsPage((p) => Math.max(1, p - 1))}
+                      disabled={itemsPage <= 1}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    {Array.from({ length: itemsPageCount }, (_, i) => i + 1).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setItemsPage(p)}
+                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                          p === itemsPage
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setItemsPage((p) => Math.min(itemsPageCount, p + 1))}
+                      disabled={itemsPage >= itemsPageCount}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

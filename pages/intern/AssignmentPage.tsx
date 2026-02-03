@@ -1,4 +1,3 @@
-
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { 
   Layers, 
@@ -20,10 +19,11 @@ import {
   Square,
   AlertCircle,
   Timer,
-  ChevronRight,
   Edit2,
   Zap,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Language, SubTask, TaskLog } from '@/types';
 
@@ -104,7 +104,12 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const [handoffDocFiles, setHandoffDocFiles] = useState<File[]>([]);
   const [handoffVideoFiles, setHandoffVideoFiles] = useState<File[]>([]);
 
+  const [projectsPage, setProjectsPage] = useState(1);
+
   const [delayRemarkDrafts, setDelayRemarkDrafts] = useState<Record<string, string>>({});
+
+  const TASKS_PER_PAGE = 6;
+  const [tasksPage, setTasksPage] = useState(1);
 
   const openProjectAttachment = async (a: { fileName: string; storagePath: string }) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
@@ -130,6 +135,29 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     if (kind === 'personal') return allProjects.personal.find((p) => p.id === id) ?? null;
     return null;
   }, [allProjects.assigned, allProjects.personal, selectedProjectKey]);
+
+  const tasksPageCount = useMemo(() => {
+    const count = Math.ceil((selectedProject?.tasks?.length ?? 0) / TASKS_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [TASKS_PER_PAGE, selectedProject?.tasks?.length]);
+
+  useEffect(() => {
+    setTasksPage(1);
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    setTasksPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > tasksPageCount) return tasksPageCount;
+      return prev;
+    });
+  }, [tasksPageCount]);
+
+  const pagedTasks = useMemo(() => {
+    const tasks = selectedProject?.tasks ?? [];
+    const start = (tasksPage - 1) * TASKS_PER_PAGE;
+    return tasks.slice(start, start + TASKS_PER_PAGE);
+  }, [TASKS_PER_PAGE, selectedProject?.tasks, tasksPage]);
 
   const selectedKind = useMemo(() => {
     if (!selectedProjectKey) return null;
@@ -470,7 +498,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       return {
         ...t,
         status: finalStatus,
-        reviewStatus: 'SUBMITTED',
+        reviewStatus: 'SUBMITTED' as const,
         actualEnd: now.toISOString(),
         isSessionActive: false,
         attachments: mergedAttachments,
@@ -531,7 +559,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       return {
         ...t,
         status: finalStatus,
-        reviewStatus: 'SUBMITTED',
+        reviewStatus: 'SUBMITTED' as const,
         actualEnd: now.toISOString(),
         isSessionActive: false,
         timeLogs: t.isSessionActive
@@ -642,6 +670,31 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     setNewProject({ title: '', description: '' });
   };
 
+  const MAX_ASSIGNMENT_GRID_ITEMS = 9;
+  const MAX_PROJECT_CARDS = Math.max(0, MAX_ASSIGNMENT_GRID_ITEMS - 1);
+
+  const pagedProjects = useMemo(() => {
+    return [...assignedProjects.map((p) => ({ kind: 'assigned' as const, p })), ...personalProjects.map((p) => ({ kind: 'personal' as const, p }))];
+  }, [assignedProjects, personalProjects]);
+
+  const projectsPageCount = useMemo(() => {
+    const count = Math.ceil(pagedProjects.length / MAX_PROJECT_CARDS);
+    return count > 0 ? count : 1;
+  }, [MAX_PROJECT_CARDS, pagedProjects.length]);
+
+  useEffect(() => {
+    setProjectsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > projectsPageCount) return projectsPageCount;
+      return prev;
+    });
+  }, [projectsPageCount]);
+
+  const displayedProjectCards = useMemo(() => {
+    const start = (projectsPage - 1) * MAX_PROJECT_CARDS;
+    return pagedProjects.slice(start, start + MAX_PROJECT_CARDS);
+  }, [MAX_PROJECT_CARDS, pagedProjects, projectsPage]);
+
   return (
     <div className="h-full w-full flex flex-col bg-[#F8FAFC] p-4 md:p-8 lg:p-12 overflow-hidden relative">
       
@@ -664,10 +717,10 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
         <div className="space-y-10">
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {assignedProjects.map((project) => (
+              {displayedProjectCards.map(({ kind, p: project }) => (
                 <div
-                  key={project.id}
-                  onClick={() => setSelectedProjectKey(`assigned:${project.id}`)}
+                  key={`${kind}:${project.id}`}
+                  onClick={() => setSelectedProjectKey(`${kind}:${project.id}`)}
                   className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
                 >
                   <div className="flex justify-between items-start mb-8">
@@ -682,41 +735,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                         {project.status}
                       </span>
                       <span className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
-                        {t.assignedBadge}
-                      </span>
-                    </div>
-                    <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
-                  </div>
-                  <h3 className="text-xl font-black text-slate-900 mb-4 tracking-tight leading-tight">{project.title}</h3>
-                  <p className="text-sm text-slate-400 font-medium leading-relaxed mb-12 line-clamp-2">{project.description}</p>
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{project.date}</span>
-                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
-                      <ArrowRight size={18} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {personalProjects.map((project) => (
-                <div
-                  key={project.id}
-                  onClick={() => setSelectedProjectKey(`personal:${project.id}`)}
-                  className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
-                >
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                          project.status === 'IN PROGRESS'
-                            ? 'bg-amber-50 text-amber-600 border-amber-100'
-                            : 'bg-blue-50 text-blue-600 border-blue-100'
-                        }`}
-                      >
-                        {project.status}
-                      </span>
-                      <span className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border bg-slate-50 text-slate-600 border-slate-100">
-                        {t.personalBadge}
+                        {kind === 'assigned' ? t.assignedBadge : t.personalBadge}
                       </span>
                     </div>
                     <Layers className="text-slate-100 group-hover:text-blue-500 transition-colors" size={24} />
@@ -742,6 +761,45 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                 <span className="text-xs font-black uppercase tracking-widest">{t.createNew}</span>
               </button>
             </div>
+
+            {projectsPageCount > 1 && (
+              <div className="pt-10 flex justify-center">
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProjectsPage((p) => Math.max(1, p - 1))}
+                    disabled={projectsPage <= 1}
+                    className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+
+                  {Array.from({ length: projectsPageCount }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setProjectsPage(p)}
+                      className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                        p === projectsPage
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setProjectsPage((p) => Math.min(projectsPageCount, p + 1))}
+                    disabled={projectsPage >= projectsPageCount}
+                    className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>
@@ -826,7 +884,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {selectedProject.tasks.map((task) => {
+                      {pagedTasks.map((task) => {
                         const totalHours = calculateTotalWorkTime(task.timeLogs);
                         const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
                         const isDone = task.status === 'DONE' || task.status === 'DELAYED';
@@ -933,6 +991,49 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                       })}
                     </tbody>
                   </table>
+
+                  {tasksPageCount > 1 ? (
+                    <div className="px-10 py-6 flex items-center justify-center gap-2 border-t border-slate-50 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => setTasksPage((p) => Math.max(1, p - 1))}
+                        disabled={tasksPage <= 1}
+                        className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                        aria-label="Previous page"
+                      >
+                        {'<'}
+                      </button>
+
+                      {Array.from({ length: tasksPageCount }, (_, idx) => idx + 1).map((page) => {
+                        const isActive = page === tasksPage;
+                        return (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => setTasksPage(page)}
+                            className={`px-3 py-2 rounded-xl border text-[11px] font-black transition-all ${
+                              isActive
+                                ? 'bg-slate-900 border-slate-900 text-white'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                            aria-current={isActive ? 'page' : undefined}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => setTasksPage((p) => Math.min(tasksPageCount, p + 1))}
+                        disabled={tasksPage >= tasksPageCount}
+                        className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                        aria-label="Next page"
+                      >
+                        {'>'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </section>
             </div>

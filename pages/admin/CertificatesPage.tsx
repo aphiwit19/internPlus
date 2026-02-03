@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, ChevronLeft, Clock, Download, FileText, Settings2, Upload } from 'lucide-react';
+import { Award, ChevronLeft, ChevronRight, Clock, CreditCard, Download, FileText, Settings2, Upload, Users, UserX } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, query, serverTimestamp, updateDoc, doc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
@@ -49,6 +50,7 @@ interface AdminCertificatesPageProps {
 
 const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) => {
   const { user } = useAppContext();
+  const navigate = useNavigate();
 
   const t = useMemo(
     () =>
@@ -91,6 +93,8 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [mode, setMode] = useState<'requests' | 'templates'>('requests');
+  const [internsPage, setInternsPage] = useState(1);
+  const INTERNS_PAGE_SIZE = 5;
 
   useEffect(() => {
     setLoadError(null);
@@ -235,6 +239,20 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     return arr;
   }, [requests]);
 
+  const internsPageCount = useMemo(() => {
+    const count = Math.ceil(interns.length / INTERNS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [interns.length, INTERNS_PAGE_SIZE]);
+
+  const pagedInterns = useMemo(() => {
+    const start = (internsPage - 1) * INTERNS_PAGE_SIZE;
+    return interns.slice(start, start + INTERNS_PAGE_SIZE);
+  }, [interns, internsPage, INTERNS_PAGE_SIZE]);
+
+  useEffect(() => {
+    setInternsPage(1);
+  }, [interns.length]);
+
   const activeIntern = useMemo(() => {
     if (!activeInternId) return null;
     return interns.find((x) => x.internId === activeInternId) ?? null;
@@ -281,6 +299,31 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     return byType;
   }, [templates]);
 
+  const TabBtn = ({
+    active,
+    onClick,
+    icon,
+    label,
+  }: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+  }) => {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`flex items-center gap-2 px-6 py-3 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+          active ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
+        }`}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <input
@@ -305,10 +348,10 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
         ) : null}
 
         <div className="mb-10">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-              <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
+              <p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <div className="px-4 py-2 rounded-2xl bg-white border border-slate-100 text-[11px] font-black uppercase tracking-widest text-slate-600">
                   {lang === 'TH' ? 'ทั้งหมด' : 'Total'}: {requestStats.total}
@@ -322,6 +365,16 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
               </div>
             </div>
 
+            <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label="Roster" />
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label="Attendance" />
+              <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16} />} label="Absences" />
+              <TabBtn active onClick={() => void 0} icon={<Award size={16} />} label="Certs" />
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label="Payouts" />
+            </div>
+          </div>
+
+          <div className="mt-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-1 flex items-center gap-1 w-full lg:w-auto">
               <button
                 type="button"
@@ -482,7 +535,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
             </div>
           ) : (
             <div className="space-y-4">
-              {interns.map((intern) => {
+              {pagedInterns.map((intern) => {
                 const requestedCount = intern.requests.filter((r) => r.status === 'REQUESTED').length;
                 const issuedCount = intern.requests.filter((r) => r.status === 'ISSUED').length;
 
@@ -523,6 +576,48 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                   </button>
                 );
               })}
+
+              {internsPageCount > 1 && (
+                <div className="pt-6 flex justify-center">
+                  <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setInternsPage((p) => Math.max(1, p - 1))}
+                      disabled={internsPage <= 1}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    {Array.from({ length: internsPageCount }, (_, idx) => idx + 1).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setInternsPage(p)}
+                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                          p === internsPage
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                        }`}
+                        aria-current={p === internsPage ? 'page' : undefined}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setInternsPage((p) => Math.min(internsPageCount, p + 1))}
+                      disabled={internsPage >= internsPageCount}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -77,6 +77,57 @@ service cloud.firestore {
         );
     }
 
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if isHrAdmin();
+    }
+
+    function canReadAllowanceClaim() {
+      return signedIn() && (
+        isHrAdmin() ||
+        (resource.data.internId == request.auth.uid) ||
+        (
+          isSupervisor() &&
+          get(/databases/$(database)/documents/users/$(resource.data.internId)).data.supervisorId == request.auth.uid
+        )
+      );
+    }
+
+    match /allowanceClaims/{claimId} {
+      allow read: if canReadAllowanceClaim();
+      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
+      allow update: if signedIn() && (
+        isHrAdmin() ||
+        (
+          isSupervisor() &&
+          get(/databases/$(database)/documents/users/$(resource.data.internId)).data.supervisorId == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'amount',
+            'supervisorAdjustedAmount',
+            'supervisorAdjustmentNote',
+            'supervisorAdjustedBy',
+            'supervisorAdjustedAt',
+            'updatedAt'
+          ])
+        ) ||
+        (
+          resource.data.internId == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'breakdown',
+            'amount',
+            'monthKey',
+            'internId',
+            'internName',
+            'avatar',
+            'period',
+            'status',
+            'updatedAt'
+          ])
+        )
+      );
+      allow delete: if isHrAdmin();
+    }
+
     match /certificateTemplates/{templateId} {
       allow read: if signedIn();
       allow write: if isHrAdmin();

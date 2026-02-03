@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Clock, Edit2, Save, X } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Edit2, Save, X } from 'lucide-react';
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
 import { Language, UserProfile } from '@/types';
@@ -125,6 +125,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, EditDraft>>({});
+  const [historyPages, setHistoryPages] = useState<Record<string, number>>({});
+
+  const HISTORY_PAGE_SIZE = 3;
 
   const toastInitRef = useRef(false);
   const prevToastMapRef = useRef<Record<string, string>>({});
@@ -515,35 +518,98 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                     {Array.isArray(it.appointmentHistory) && it.appointmentHistory.length > 0 ? (
                       <div className="mt-5 p-5 rounded-[1.5rem] bg-slate-50 border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{t.history}</div>
-                        <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
-                          {[...it.appointmentHistory]
-                            .slice()
-                            .reverse()
-                            .map((h) => (
-                              <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                    {h.actor === 'SUPERVISOR' ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor') : lang === 'TH' ? 'นักศึกษา' : 'Intern'}
+                        {(() => {
+                          const page = historyPages[it.id] ?? 1;
+                          const all = [...it.appointmentHistory].slice().reverse();
+                          const pageCount = Math.ceil(all.length / HISTORY_PAGE_SIZE) || 1;
+                          const safePage = Math.max(1, Math.min(pageCount, page));
+                          const start = (safePage - 1) * HISTORY_PAGE_SIZE;
+                          const displayed = all.slice(start, start + HISTORY_PAGE_SIZE);
+
+                          return (
+                            <>
+                              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
+                                {displayed.map((h) => (
+                                  <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                        {h.actor === 'SUPERVISOR'
+                                          ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor')
+                                          : lang === 'TH'
+                                            ? 'นักศึกษา'
+                                            : 'Intern'}
+                                      </div>
+                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                        {statusLabel((String(h.status ?? 'REQUESTED') as AppointmentStatus) ?? 'REQUESTED')}
+                                      </div>
+                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                        {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
+                                      </div>
+                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                        {h.mode ? modeLabel(String(h.mode) as AppointmentMode) : '--'}
+                                      </div>
+                                    </div>
+                                    {String(h.supervisorNote ?? '').trim() ? (
+                                      <div className="mt-2 text-xs font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
+                                    ) : null}
+                                    {String(h.note ?? '').trim() ? (
+                                      <div className="mt-2 text-xs font-bold text-slate-600 whitespace-pre-wrap">{String(h.note)}</div>
+                                    ) : null}
                                   </div>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                    {statusLabel((String(h.status ?? 'REQUESTED') as AppointmentStatus) ?? 'REQUESTED')}
-                                  </div>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                    {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
-                                  </div>
-                                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                    {h.mode ? modeLabel(String(h.mode) as AppointmentMode) : '--'}
+                                ))}
+                              </div>
+
+                              {pageCount > 1 && (
+                                <div className="pt-4 flex justify-center">
+                                  <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setHistoryPages((prev) => ({
+                                          ...prev,
+                                          [it.id]: Math.max(1, (prev[it.id] ?? 1) - 1),
+                                        }))
+                                      }
+                                      disabled={safePage <= 1}
+                                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                    >
+                                      <ChevronLeft size={18} />
+                                    </button>
+
+                                    {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+                                      <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => setHistoryPages((prev) => ({ ...prev, [it.id]: p }))}
+                                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                          p === safePage
+                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                        }`}
+                                      >
+                                        {p}
+                                      </button>
+                                    ))}
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setHistoryPages((prev) => ({
+                                          ...prev,
+                                          [it.id]: Math.min(pageCount, (prev[it.id] ?? 1) + 1),
+                                        }))
+                                      }
+                                      disabled={safePage >= pageCount}
+                                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                    >
+                                      <ChevronRight size={18} />
+                                    </button>
                                   </div>
                                 </div>
-                                {String(h.supervisorNote ?? '').trim() ? (
-                                  <div className="mt-2 text-xs font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
-                                ) : null}
-                                {String(h.note ?? '').trim() ? (
-                                  <div className="mt-2 text-xs font-bold text-slate-600 whitespace-pre-wrap">{String(h.note)}</div>
-                                ) : null}
-                              </div>
-                            ))}
-                        </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     ) : null}
 
