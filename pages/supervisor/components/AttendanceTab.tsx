@@ -152,7 +152,7 @@ interface AttendanceTabProps {
 }
 
 const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewModeChange }) => {
-  const PAGE_SIZE = 8;
+  const PAGE_SIZE = 5;
   const [currentPage, setCurrentPage] = useState(1);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(logs.length / PAGE_SIZE)), [logs.length]);
@@ -259,7 +259,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 text-xs font-black disabled:opacity-40"
                 >
                   {'<'}
                 </button>
@@ -271,8 +271,8 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                     onClick={() => setCurrentPage(page)}
                     className={`w-10 h-10 rounded-xl border text-xs font-black transition-all ${
                       page === currentPage
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
                     {page}
@@ -283,7 +283,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black disabled:opacity-40"
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 text-xs font-black disabled:opacity-40"
                 >
                   {'>'}
                 </button>
