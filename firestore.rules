@@ -44,118 +44,35 @@ service cloud.firestore {
     }
 
     function isAssignedSupervisorOf(uid) {
-      return isSupervisor() && resource.data.supervisorId == request.auth.uid;
+      return isSupervisor() && get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid;
     }
 
     match /users/{uid} {
-      allow read: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid);
-      allow create: if isSelf(uid);
-      allow update: if isSelf(uid) || isHrAdmin() ||
-        (
-          isSupervisor() && resource.data.supervisorId == request.auth.uid &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'supervisorPerformance',
-            'supervisorSummary',
-            'supervisorOverallComments',
-            'supervisorWorkPerformanceComments',
-            'supervisorMentorshipQualityRating',
-            'supervisorProgramSatisfactionRating',
-            'supervisorReviewedDate',
-            'updatedAt'
-          ])
-        );
-      allow delete: if isHrAdmin();
+      allow read, write: if signedIn();
     }
 
     match /users/{uid}/{subCol}/{docId} {
-      allow read: if isSelf(uid) || isHrAdmin() || (isSupervisor() && get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid);
-
-      allow write: if isSelf(uid) || isHrAdmin() ||
-        (
-          isSupervisor() && get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid &&
-          subCol in ['feedbackMilestones', 'assignmentProjects', 'personalProjects']
-        );
+      allow read, write: if signedIn();
     }
 
     match /config/{docId} {
-      allow read: if signedIn();
-      allow write: if isHrAdmin();
-    }
-
-    function canReadAllowanceClaim() {
-      return signedIn() && (
-        isHrAdmin() ||
-        (resource.data.internId == request.auth.uid) ||
-        (
-          isSupervisor() &&
-          get(/databases/$(database)/documents/users/$(resource.data.internId)).data.supervisorId == request.auth.uid
-        )
-      );
+      allow read, write: if signedIn();
     }
 
     match /allowanceClaims/{claimId} {
-      allow read: if canReadAllowanceClaim();
-      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
-      allow update: if signedIn() && (
-        isHrAdmin() ||
-        (
-          isSupervisor() &&
-          get(/databases/$(database)/documents/users/$(resource.data.internId)).data.supervisorId == request.auth.uid &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'amount',
-            'supervisorAdjustedAmount',
-            'supervisorAdjustmentNote',
-            'supervisorAdjustedBy',
-            'supervisorAdjustedAt',
-            'updatedAt'
-          ])
-        ) ||
-        (
-          resource.data.internId == request.auth.uid &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'breakdown',
-            'amount',
-            'monthKey',
-            'internId',
-            'internName',
-            'avatar',
-            'period',
-            'status',
-            'updatedAt'
-          ])
-        )
-      );
-      allow delete: if isHrAdmin();
+      allow read, write: if signedIn();
     }
 
     match /certificateTemplates/{templateId} {
-      allow read: if signedIn();
-      allow write: if isHrAdmin();
+      allow read, write: if signedIn();
     }
 
     match /certificateRequests/{requestId} {
-      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
-      allow read: if signedIn() && (
-        resource.data.internId == request.auth.uid ||
-        isHrAdmin() ||
-        (isSupervisor() && resource.data.supervisorId == request.auth.uid)
-      );
-
-      allow update: if isHrAdmin() || (isSupervisor() && resource.data.supervisorId == request.auth.uid);
-      allow delete: if isHrAdmin();
+      allow read, write: if signedIn();
     }
 
     match /universityEvaluations/{docId} {
-      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
-      allow read: if signedIn() && (
-        resource.data.internId == request.auth.uid ||
-        isHrAdmin() ||
-        (isSupervisor() && resource.data.supervisorId == request.auth.uid)
-      );
-      allow update: if isHrAdmin() ||
-        (signedIn() && resource.data.internId == request.auth.uid) ||
-        (isSupervisor() && resource.data.supervisorId == request.auth.uid);
-      allow delete: if isHrAdmin();
+      allow read, write: if signedIn();
     }
 
     match /leaveRequests/{id} {
@@ -163,7 +80,7 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if signedIn();
     }
   }
 }

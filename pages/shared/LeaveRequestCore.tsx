@@ -33,6 +33,7 @@ interface LeaveRequestCoreProps {
   protocolTitle?: string;
   protocolSubtitle?: string;
   sidePanel?: React.ReactNode | null;
+  pendingLeaveCount?: number;
 }
 
 const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
@@ -48,6 +49,10 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const isIntern = role === 'INTERN';
   const { user } = useAppContext();
   const leaveRepo = useMemo(() => createLeaveRepository(), []);
+  const [lastVisit] = useState<number>(() => {
+    const stored = localStorage.getItem('lastLeavePageVisit');
+    return stored ? parseInt(stored, 10) : 0;
+  });
 
   const t = {
     EN: {
@@ -264,8 +269,21 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const REQUESTS_PER_PAGE = isIntern ? 3 : role === 'SUPERVISOR' ? 3 : role === 'HR_ADMIN' ? 3 : 10;
   const [requestsPage, setRequestsPage] = useState(1);
   const filteredRequests = useMemo(() => {
-    if (leaveTypeFilter === 'ALL') return requests;
-    return requests.filter((r) => r.type === leaveTypeFilter);
+    const filtered = leaveTypeFilter === 'ALL' ? requests : requests.filter((r) => r.type === leaveTypeFilter);
+    
+    return filtered.sort((a, b) => {
+      const getTimestamp = (req: LeaveRequest) => {
+        if (req.approvedAt) {
+          return new Date(req.approvedAt + 'T00:00:00').getTime();
+        }
+        if (req.requestedAt) {
+          return new Date(req.requestedAt + 'T00:00:00').getTime();
+        }
+        return 0;
+      };
+      
+      return getTimestamp(b) - getTimestamp(a);
+    });
   }, [leaveTypeFilter, requests]);
 
   const requestsPageCount = useMemo(() => {
@@ -424,8 +442,20 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                   {!isLoading && !errorMessage && (
                     <>
-                      {pagedRequests.map((req) => (
-                        <div key={req.id} className="p-8 bg-white border border-[#F1F5F9] rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl hover:border-blue-50 group">
+                      {pagedRequests.map((req) => {
+                        const isNew = req.status === 'APPROVED' && req.approvedAt && new Date(req.approvedAt).getTime() > lastVisit;
+                        return (
+                        <div key={req.id} className={`p-8 bg-white border rounded-[3rem] flex flex-col md:flex-row md:items-center justify-between gap-8 transition-all hover:shadow-2xl group relative ${
+                          isNew ? 'border-red-300 ring-2 ring-red-100' : 'border-[#F1F5F9] hover:border-blue-50'
+                        }`}>
+                          {isNew && (
+                            <div className="absolute -top-3 -right-3 z-10">
+                              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">
+                                <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+                                NEW
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-6">
                             <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all flex-shrink-0 ${
                               req.status === 'APPROVED' ? 'bg-[#ECFDF5] text-[#10B981]' :
@@ -491,7 +521,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                             )}
                           </div>
                         </div>
-                      ))}
+                      );
+                      })}
 
                       {requestsPageCount > 1 ? (
                         <div className="pt-2 flex justify-center">

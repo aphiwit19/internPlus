@@ -550,15 +550,35 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       return;
     }
 
-    await persist({
-      deliveryDetails,
-      submittedDeliveryDetails: deliveryDetails,
-      submittedLinks: links,
-      submittedFiles: files,
-      submissionStatus: 'SUBMITTED',
-      submittedAt: serverTimestamp(),
-      pendingChanges: false,
-    });
+    try {
+      await persist({
+        deliveryDetails,
+        submittedDeliveryDetails: deliveryDetails,
+        submittedLinks: links,
+        submittedFiles: files,
+        submissionStatus: 'SUBMITTED',
+        submittedAt: serverTimestamp(),
+        pendingChanges: false,
+      });
+      
+      // Update local state immediately for real-time UI update
+      setSubmissionStatus('SUBMITTED');
+      setPendingChanges(false);
+      setSubmittedAt(new Date());
+      
+      toast.success(
+        lang === 'TH' 
+          ? 'บันทึกรายละเอียดการจัดส่งเรียบร้อยแล้ว' 
+          : 'Delivery details saved successfully',
+        { duration: 3000 }
+      );
+    } catch (error) {
+      setDeliverySubmitError(
+        lang === 'TH'
+          ? 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่อีกครั้ง'
+          : 'Failed to save delivery details. Please try again.',
+      );
+    }
   };
 
   const normalizedNewLinkLabel = useMemo(() => newLinkLabel.trim(), [newLinkLabel]);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Rocket, 
@@ -83,6 +83,7 @@ type WithdrawalUserRow = {
   withdrawalDetail?: string;
   postProgramAccessLevel?: PostProgramAccessLevel;
   postProgramRetentionPeriod?: string;
+  updatedAt?: any;
 };
 
 type PendingUserOperation =
@@ -349,6 +350,48 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [offboardingUsers, setOffboardingUsers] = useState<any[]>([]);
   const [withdrawalUsers, setWithdrawalUsers] = useState<any[]>([]);
 
+  // Track last visit to Access Control tab
+  const [lastAccessControlTabVisit, setLastAccessControlTabVisit] = useState<number>(() => {
+    const stored = localStorage.getItem('lastAccessControlTabVisit');
+    return stored ? parseInt(stored, 10) : 0;
+  });
+
+  // Calculate notification count for Access Control tab - only count requests after last visit
+  const accessControlNotificationCount = useMemo(() => {
+    let count = 0;
+    
+    withdrawalRequests.forEach((req) => {
+      const updatedAt = req.updatedAt as any;
+      if (updatedAt?.toDate) {
+        const timestamp = updatedAt.toDate().getTime();
+        if (timestamp > lastAccessControlTabVisit) {
+          count++;
+        }
+      }
+    });
+    
+    offboardingRequests.forEach((req) => {
+      const updatedAt = req.updatedAt as any;
+      if (updatedAt?.toDate) {
+        const timestamp = updatedAt.toDate().getTime();
+        if (timestamp > lastAccessControlTabVisit) {
+          count++;
+        }
+      }
+    });
+    
+    return count;
+  }, [withdrawalRequests, offboardingRequests, lastAccessControlTabVisit]);
+
+  // Track when user visits Access Control tab
+  useEffect(() => {
+    if (activeTab === 'access') {
+      const now = Date.now();
+      setLastAccessControlTabVisit(now);
+      localStorage.setItem('lastAccessControlTabVisit', String(now));
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'WITHDRAWAL_REQUESTED'));
     return onSnapshot(q, (snap) => {
@@ -360,6 +403,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             email?: string;
             withdrawalReason?: string;
             withdrawalDetail?: string;
+            updatedAt?: any;
           };
           return {
             id: d.id,
@@ -368,6 +412,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             email: data.email,
             withdrawalReason: data.withdrawalReason,
             withdrawalDetail: data.withdrawalDetail,
+            updatedAt: data.updatedAt,
           };
         }),
       );
@@ -385,6 +430,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             email?: string;
             offboardingTasks?: any[];
             offboardingRequestedAt?: any;
+            updatedAt?: any;
           };
           return {
             id: d.id,
@@ -393,6 +439,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             email: data.email,
             offboardingTasks: data.offboardingTasks || [],
             offboardingRequestedAt: data.offboardingRequestedAt,
+            updatedAt: data.updatedAt,
           };
         }),
       );
@@ -871,7 +918,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
              <TabBtn active={activeTab === 'onboarding'} onClick={() => setActiveTab('onboarding')} icon={<Rocket size={14}/>} label={t.tabOnboarding} />
              <TabBtn active={activeTab === 'policy'} onClick={() => setActiveTab('policy')} icon={<ShieldCheck size={14}/>} label={t.tabPolicy} />
              <TabBtn active={activeTab === 'allowance'} onClick={() => setActiveTab('allowance')} icon={<CreditCard size={14}/>} label={t.tabAllowance} />
-             <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={14}/>} label={t.tabAccess} />
+             <TabBtn active={activeTab === 'access'} onClick={() => setActiveTab('access')} icon={<Lock size={14}/>} label={t.tabAccess} hasNotification={accessControlNotificationCount > 0} />
              <TabBtn active={activeTab === 'evaluation'} onClick={() => setActiveTab('evaluation')} icon={<ClipboardList size={14}/>} label={t.tabEvaluation} />
           </div>
         </div>
@@ -1903,9 +1950,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
 // --- SUB-COMPONENTS ---
 
-const TabBtn = ({ active, onClick, icon, label }: any) => (
-  <button onClick={onClick} className={`flex items-center gap-1.5 px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all whitespace-nowrap ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
+const TabBtn = ({ active, onClick, icon, label, hasNotification }: any) => (
+  <button onClick={onClick} className={`relative flex items-center gap-1.5 px-3 py-3 rounded-xl text-[10px] font-black uppercase tracking-wide transition-all whitespace-nowrap ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
     {icon} {label}
+    {hasNotification && (
+      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+    )}
   </button>
 );
 

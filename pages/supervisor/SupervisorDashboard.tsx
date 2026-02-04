@@ -165,6 +165,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>(() => (currentTab === 'manage-interns' ? 'assets' : 'overview'));
+  const [tabVisitTrigger, setTabVisitTrigger] = useState(0);
   const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<'LOG' | 'CALENDAR'>('LOG');
 
@@ -211,6 +212,11 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   useEffect(() => {
     if (currentTab !== 'manage-interns') return;
+    
+    // Track when supervisor enters manage-interns page to clear all badges
+    const now = Date.now();
+    localStorage.setItem('lastManageInternsPageVisit', String(now));
+    
     try {
       const raw = sessionStorage.getItem(SUP_MANAGE_INTERNS_NAV_KEY);
       if (!raw) return;
@@ -1111,6 +1117,35 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       candidates.sort((a, b) => String(b.ts).localeCompare(String(a.ts)) || String(b.x.id).localeCompare(String(a.x.id)));
       const latest = candidates[0]?.x ?? null;
 
+      // Calculate notification count for this intern
+      let notificationCount = 0;
+      
+      // Check when manage-interns page was last visited
+      const lastPageVisit = localStorage.getItem('lastManageInternsPageVisit');
+      const lastPageVisitTimestamp = lastPageVisit ? parseInt(lastPageVisit, 10) : 0;
+      
+      // Count unreviewed feedback submitted after last page visit
+      const unreviewedFeedback = intern.feedback?.filter(f => {
+        const status = (f as any)?.status;
+        const hasReview = (f as any)?.supervisorReviewedAt;
+        const submissionDate = (f as any)?.submissionDate;
+        if (status !== 'submitted' || hasReview) return false;
+        if (!submissionDate) return true; // If no date, show notification
+        const timestamp = new Date(submissionDate).getTime();
+        return timestamp > lastPageVisitTimestamp;
+      }).length || 0;
+      notificationCount += unreviewedFeedback;
+      
+      // Count in-progress or delayed tasks updated after last page visit
+      const pendingTasks = intern.tasks?.filter(t => {
+        if (t.status !== 'IN_PROGRESS' && t.status !== 'DELAYED') return false;
+        const updatedAt = (t as any)?.updatedAt;
+        if (!updatedAt) return true; // If no date, show notification
+        const timestamp = new Date(updatedAt).getTime();
+        return timestamp > lastPageVisitTimestamp;
+      }).length || 0;
+      notificationCount += pendingTasks;
+
       return {
         id: intern.id,
         name: intern.name,
@@ -1129,6 +1164,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 submissionDate: latest.submissionDate,
               }
             : undefined,
+        hasNotifications: notificationCount > 0,
+        notificationCount: notificationCount,
       };
     });
   }, [filteredInterns]);
@@ -1173,6 +1210,80 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const renderDeepDive = () => {
     if (!selectedIntern) return null;
 
+    // Calculate notification counts for each tab
+    const getLastVisit = (tabName: string) => {
+      const key = `lastInternTab_${selectedInternId}_${tabName}`;
+      const stored = localStorage.getItem(key);
+      return stored ? parseInt(stored, 10) : 0;
+    };
+
+    // Assets: count projects with submitted tasks (work assets)
+    const lastAssetsVisit = getLastVisit('assets');
+    console.log('🔍 Assets Debug:', {
+      internId: selectedInternId,
+      lastAssetsVisit,
+      totalTasks: selectedIntern.tasks?.length,
+      tasks: selectedIntern.tasks?.map(t => ({
+        id: t.id,
+        reviewStatus: t.reviewStatus,
+        actualEnd: t.actualEnd,
+        status: t.status
+      }))
+    });
+    const assetsNotificationCount = selectedIntern.tasks?.filter(t => {
+      if (t.reviewStatus !== 'SUBMITTED') return false;
+      const actualEnd = t.actualEnd;
+      if (!actualEnd) return false;
+      const timestamp = new Date(actualEnd).getTime();
+      return timestamp > lastAssetsVisit;
+    }).length || 0;
+    console.log('✅ Assets notification count:', assetsNotificationCount);
+
+    // Assignments: count in-progress or delayed tasks
+    const assignmentsNotificationCount = selectedIntern.tasks?.filter(t => 
+      t.status === 'IN_PROGRESS' || t.status === 'DELAYED'
+    ).length || 0;
+
+    // Attendance: count recent attendance logs (simplified - always 0 as attendance is continuous)
+    const attendanceNotificationCount = 0;
+
+    // Feedback: count submitted feedback milestones that haven't been reviewed
+    const lastFeedbackVisit = getLastVisit('feedback');
+    const feedbackNotificationCount = selectedIntern.feedback?.filter(f => {
+      const status = (f as any)?.status;
+      const hasReview = (f as any)?.supervisorReviewedAt;
+      const submissionDate = (f as any)?.submissionDate;
+      if (status !== 'submitted' || hasReview) return false;
+      if (!submissionDate) return true; // If no date, show notification
+      const timestamp = new Date(submissionDate).getTime();
+      return timestamp > lastFeedbackVisit;
+    }).length || 0;
+
+    // Documents: count feedback milestones with attachments that haven't been reviewed
+    const lastDocumentsVisit = getLastVisit('documents');
+    console.log('🔍 Documents Debug:', {
+      internId: selectedInternId,
+      lastDocumentsVisit,
+      totalFeedback: selectedIntern.feedback?.length,
+      feedback: selectedIntern.feedback?.map(f => ({
+        id: (f as any)?.id,
+        status: (f as any)?.status,
+        attachments: (f as any)?.attachments?.length || 0,
+        submissionDate: (f as any)?.submissionDate,
+        supervisorReviewedAt: (f as any)?.supervisorReviewedAt
+      }))
+    });
+    const documentsNotificationCount = selectedIntern.feedback?.filter(f => {
+      const attachments = (f as any)?.attachments;
+      const submissionDate = (f as any)?.submissionDate;
+      if (!attachments || attachments.length === 0) return false;
+      if (!submissionDate) return false;
+      const timestamp = new Date(submissionDate).getTime();
+      const hasReview = (f as any)?.supervisorReviewedAt;
+      return timestamp > lastDocumentsVisit && !hasReview;
+    }).length || 0;
+    console.log('✅ Documents notification count:', documentsNotificationCount);
+
     return (
       <InternDeepDiveLayout
         intern={{
@@ -1182,13 +1293,24 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           internPeriod: selectedIntern.internPeriod,
         }}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          // Update last visit timestamp when tab changes
+          const key = `lastInternTab_${selectedInternId}_${tab}`;
+          localStorage.setItem(key, String(Date.now()));
+          // Trigger re-render to update notification counts
+          setTabVisitTrigger(prev => prev + 1);
+        }}
         showAssignmentsTab
-        showDashboardTab={currentTab !== 'manage-interns'}
         onBack={() => {
           setSelectedInternId(null);
           setActiveTab(currentTab === 'manage-interns' ? 'assets' : 'overview');
         }}
+        assetsNotificationCount={assetsNotificationCount}
+        assignmentsNotificationCount={assignmentsNotificationCount}
+        attendanceNotificationCount={attendanceNotificationCount}
+        feedbackNotificationCount={feedbackNotificationCount}
+        documentsNotificationCount={documentsNotificationCount}
       >
             {activeTab === 'overview' && (
               <div className="space-y-10 animate-in slide-in-from-bottom-6 duration-500">
@@ -1738,7 +1860,12 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     onOpenAssignIntern={() => setIsAssigningIntern(true)}
                     showAssignButton={false}
                     showHeader={false}
-                    onSelectIntern={setSelectedInternId}
+                    onSelectIntern={(internId) => {
+                      setSelectedInternId(internId);
+                      // Mark this intern as viewed to clear notification badge
+                      const key = `lastInternViewed_${internId}`;
+                      localStorage.setItem(key, String(Date.now()));
+                    }}
                   />
                 </>
               )}

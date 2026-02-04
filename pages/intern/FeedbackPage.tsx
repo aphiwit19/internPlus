@@ -98,6 +98,10 @@ interface FeedbackPageProps {
 
 const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   const { user: authedUser } = useAppContext();
+  const [lastVisit] = useState<number>(() => {
+    const stored = localStorage.getItem('lastFeedbackPageVisit');
+    return stored ? parseInt(stored, 10) : 0;
+  });
   const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
   const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
   const t = {
@@ -575,12 +579,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     <div className="h-full w-full flex flex-col bg-[#F8FAFC] overflow-hidden relative">
       <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 scrollbar-hide pb-32">
         <div className="max-w-[1400px] mx-auto w-full">
-          <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-12">
-            <div className="space-y-3">
-              <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{t.title}</h1>
-              <p className="text-slate-500 text-base font-medium">{t.subtitle}</p>
-            </div>
-            <div className="flex flex-col gap-3 items-end">
+          <div className="space-y-8 mb-12">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+              <div className="space-y-3">
+                <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{t.title}</h1>
+                <p className="text-slate-500 text-base font-medium">{t.subtitle}</p>
+              </div>
               <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
                 <button
                   onClick={() => setViewMode('FORM')}
@@ -599,61 +603,56 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                   History
                 </button>
               </div>
-
-              {viewMode === 'FORM' && (
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pr-2 text-right">{t.milestone_label}</span>
-              )}
-
-              {viewMode === 'FORM' && (
-              <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
-                <button
-                  onClick={() => setActiveTrack('week')}
-                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
-                    activeTrack === 'week' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {t.week}
-                </button>
-                <button
-                  onClick={() => setActiveTrack('month')}
-                  className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
-                    activeTrack === 'month' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {t.month}
-                </button>
-              </div>
-              )}
-
-              {viewMode === 'FORM' && (
-              <div className="flex bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40 overflow-x-auto scrollbar-hide max-w-full ml-auto">
-                {milestones
-                  .filter((m) => m.id.startsWith(`${activeTrack}-`))
-                  .map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setActiveId(m.id)}
-                      className={`px-6 py-3.5 rounded-[1.25rem] text-xs font-black transition-all duration-300 flex-shrink-0 ${
-                        activeId === m.id ? 'bg-blue-600 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        {m.label[lang]}
-                        <span
-                          className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                            isFinalized(m.status)
-                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                              : 'bg-slate-50 text-slate-500 border border-slate-100'
-                          }`}
-                        >
-                          {isFinalized(m.status) ? t.submittedTag : t.pendingTag}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-              </div>
-              )}
             </div>
+
+            {viewMode === 'FORM' && (
+              <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide">
+                  {milestones
+                    .filter((m) => m.id.startsWith(`${activeTrack}-`))
+                    .map((m) => {
+                      const reviewedAt = (m as any).supervisorReviewedAt;
+                      const reviewedTimestamp = reviewedAt?.toDate ? reviewedAt.toDate().getTime() : 0;
+                      const hasNewEvaluation = m.status === 'reviewed' && reviewedTimestamp > lastVisit;
+                      
+                      console.log('🔍 Milestone Debug:', {
+                        id: m.id,
+                        status: m.status,
+                        supervisorReviewedDate: m.supervisorReviewedDate,
+                        reviewedTimestamp,
+                        lastVisit,
+                        hasNewEvaluation
+                      });
+                      
+                      return (
+                      <button
+                        key={m.id}
+                        onClick={() => setActiveId(m.id)}
+                        className={`px-8 py-4 rounded-[1.5rem] text-sm font-black transition-all duration-300 flex-shrink-0 flex items-center gap-3 relative ${
+                          activeId === m.id 
+                            ? 'bg-blue-600 text-white shadow-xl' 
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {hasNewEvaluation && (
+                          <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse z-10"></span>
+                        )}
+                        <span>{m.label[lang]}</span>
+                        {isFinalized(m.status) && (
+                          <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                            activeId === m.id
+                              ? 'bg-white/20 text-white border border-white/30'
+                              : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                          }`}>
+                            {t.submittedTag}
+                          </span>
+                        )}
+                      </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
 
           {viewMode === 'HISTORY' && (
@@ -1055,7 +1054,29 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
             </div>
 
             <div className="lg:col-span-4 space-y-8">
-              <div className="bg-[#0B0F19] rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col h-fit">
+              <div className={`bg-[#0B0F19] rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col h-fit ${
+                active.status === 'reviewed' && active.supervisorReviewedDate && (() => {
+                  const reviewedAt = (active as any).supervisorReviewedAt;
+                  if (reviewedAt?.toDate) {
+                    return reviewedAt.toDate().getTime() > lastVisit;
+                  }
+                  return false;
+                })() ? 'ring-[6px] ring-red-500' : ''
+              }`}>
+                {active.status === 'reviewed' && active.supervisorReviewedDate && (() => {
+                  const reviewedAt = (active as any).supervisorReviewedAt;
+                  if (reviewedAt?.toDate) {
+                    return reviewedAt.toDate().getTime() > lastVisit;
+                  }
+                  return false;
+                })() && (
+                  <div className="absolute -top-4 -right-4 z-20">
+                    <span className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-[11px] font-black uppercase tracking-widest rounded-full shadow-2xl animate-pulse">
+                      <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
+                      NEW
+                    </span>
+                  </div>
+                )}
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-10">
                     <h3 className="text-xl font-bold tracking-tight">{t.supervisorHeader}</h3>

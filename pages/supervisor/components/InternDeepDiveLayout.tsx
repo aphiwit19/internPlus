@@ -17,6 +17,11 @@ interface InternDeepDiveLayoutProps {
   onBack: () => void;
   showAssignmentsTab?: boolean;
   children: React.ReactNode;
+  assetsNotificationCount?: number;
+  assignmentsNotificationCount?: number;
+  attendanceNotificationCount?: number;
+  feedbackNotificationCount?: number;
+  documentsNotificationCount?: number;
 }
 
 const NavText = ({
@@ -24,20 +29,25 @@ const NavText = ({
   onClick,
   label,
   icon,
+  hasNotification,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   icon: React.ReactNode;
+  hasNotification?: boolean;
 }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-2 px-3 py-2 rounded-[1rem] text-[8px] font-black uppercase tracking-[0.12em] transition-all whitespace-nowrap ${
+    className={`relative flex items-center gap-2 px-3 py-2 rounded-[1rem] text-[8px] font-black uppercase tracking-[0.12em] transition-all whitespace-nowrap ${
       active ? 'bg-[#0B0F19] text-white shadow-2xl shadow-slate-900/30' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
     }`}
   >
     {icon}
     <span>{label}</span>
+    {hasNotification && (
+      <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse"></span>
+    )}
   </button>
 );
 
@@ -48,6 +58,11 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
   onBack,
   showAssignmentsTab = false,
   children,
+  assetsNotificationCount = 0,
+  assignmentsNotificationCount = 0,
+  attendanceNotificationCount = 0,
+  feedbackNotificationCount = 0,
+  documentsNotificationCount = 0,
 }) => {
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300">
@@ -76,23 +91,25 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
         </div>
 
         <div className="flex items-center gap-1 justify-end whitespace-nowrap flex-shrink-0">
-          <NavText active={activeTab === 'assets'} onClick={() => onTabChange('assets')} label="ASSETS" icon={<FolderOpen size={14} />} />
+          <NavText active={activeTab === 'assets'} onClick={() => onTabChange('assets')} label="ASSETS" icon={<FolderOpen size={14} />} hasNotification={assetsNotificationCount > 0} />
             {showAssignmentsTab && (
               <NavText
                 active={activeTab === 'assignments'}
                 onClick={() => onTabChange('assignments')}
                 label="ASSIGNMENTS"
                 icon={<Briefcase size={14} />}
+                hasNotification={assignmentsNotificationCount > 0}
               />
             )}
-          <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label="ATTENDANCE" icon={<Clock size={14} />} />
+          <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label="ATTENDANCE" icon={<Clock size={14} />} hasNotification={attendanceNotificationCount > 0} />
           <NavText
             active={activeTab === 'feedback'}
             onClick={() => onTabChange('feedback')}
             label="FEEDBACK & Self Evaluation"
             icon={<MessageCircle size={14} />}
+            hasNotification={feedbackNotificationCount > 0}
           />
-          <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label="DOCUMENT" icon={<ShieldCheck size={14} />} />
+          <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label="DOCUMENT" icon={<ShieldCheck size={14} />} hasNotification={documentsNotificationCount > 0} />
         </div>
       </div>
 

@@ -128,6 +128,34 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
+  
+  // Track pending leave notification count from AppLayout
+  const [pendingLeaveCount, setPendingLeaveCount] = useState(0);
+  
+  useEffect(() => {
+    // Listen to leave requests and check against last visit
+    const lastVisitKey = 'lastLeavePageVisit_admin';
+    const storedVisit = localStorage.getItem(lastVisitKey);
+    const lastVisit = storedVisit ? parseInt(storedVisit, 10) : 0;
+
+    const leaveRef = collection(firestoreDb, 'leaveRequests');
+    const q = query(leaveRef, where('status', '==', 'PENDING'));
+
+    return onSnapshot(q, (snap) => {
+      let count = 0;
+      snap.forEach((doc) => {
+        const data = doc.data();
+        const createdAt = data.createdAt as string | undefined;
+        if (createdAt) {
+          const timestamp = new Date(createdAt).getTime();
+          if (timestamp > lastVisit) {
+            count++;
+          }
+        }
+      });
+      setPendingLeaveCount(count);
+    });
+  }, []);
 
   // Modal States
   const [signingCert, setSigningCert] = useState<CertRequest | null>(null);
@@ -978,7 +1006,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
              <TabBtn active={activeTab === 'roster'} onClick={() => setActiveTab('roster')} icon={<Users size={16}/>} label="Roster" />
              <TabBtn active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} icon={<Clock size={16}/>} label="Attendance" />
-             <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16}/>} label="Absences" />
+             <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16}/>} label="Absences" hasNotification={pendingLeaveCount > 0} />
              <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16}/>} label="Certs" />
              <TabBtn active={activeTab === 'allowances'} onClick={() => setActiveTab('allowances')} icon={<CreditCard size={16}/>} label="Payouts" />
           </div>
@@ -1275,14 +1303,19 @@ const TabBtn = ({
   onClick,
   icon,
   label,
+  hasNotification,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  hasNotification?: boolean;
 }) => (
-  <button onClick={onClick} className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
+  <button onClick={onClick} className={`relative flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}>
     {icon} {label}
+    {hasNotification && (
+      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+    )}
   </button>
 );
 

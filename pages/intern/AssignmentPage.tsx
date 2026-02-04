@@ -63,6 +63,10 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
 
   const [assignedProjects, setAssignedProjects] = useState<Project[]>([]);
   const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
+  const [lastVisit] = useState<number>(() => {
+    const stored = localStorage.getItem('lastAssignmentPageVisit');
+    return stored ? parseInt(stored, 10) : 0;
+  });
 
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
   const [isPlanningTask, setIsPlanningTask] = useState(false);
@@ -447,7 +451,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   };
 
   const handleSubmitWithProof = async (taskId: string) => {
-    if (!user || !selectedProject || !selectedKind) return;
+    console.log('🚀 handleSubmitWithProof called', { taskId, user: !!user, selectedProject: !!selectedProject, selectedKind });
+    if (!user || !selectedProject || !selectedKind) {
+      console.error('❌ Missing required data:', { user: !!user, selectedProject: !!selectedProject, selectedKind });
+      return;
+    }
     const now = new Date();
     const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
 
@@ -476,8 +484,15 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
     for (const f of selectedProofFiles) {
       const safeName = f.name;
       const path = `users/${user.id}/${colName}/${selectedProject.id}/${taskId}/${Date.now()}_${safeName}`;
-      await uploadBytes(storageRef(firebaseStorage, path), f);
-      uploaded.push({ fileName: safeName, storagePath: path });
+      console.log('📤 Uploading file to Storage:', path);
+      try {
+        await uploadBytes(storageRef(firebaseStorage, path), f);
+        uploaded.push({ fileName: safeName, storagePath: path });
+        console.log('✅ File uploaded successfully:', safeName);
+      } catch (error) {
+        console.error('❌ Storage upload error:', error);
+        throw error;
+      }
     }
 
     const linkAttachments = selectedProofLinks
@@ -509,10 +524,17 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       };
     });
 
-    await updateDoc(doc(firestoreDb, 'users', user.id, colName, selectedProject.id), {
-      tasks: nextTasks,
-      updatedAt: serverTimestamp(),
-    });
+    console.log('💾 Updating Firestore document:', `users/${user.id}/${colName}/${selectedProject.id}`);
+    try {
+      await updateDoc(doc(firestoreDb, 'users', user.id, colName, selectedProject.id), {
+        tasks: nextTasks,
+        updatedAt: serverTimestamp(),
+      });
+      console.log('✅ Firestore document updated successfully');
+    } catch (error) {
+      console.error('❌ Firestore update error:', error);
+      throw error;
+    }
 
     setSelectedProofFiles([]);
     setSelectedProofLinks([]);
@@ -674,8 +696,38 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
   const MAX_PROJECT_CARDS = Math.max(0, MAX_ASSIGNMENT_GRID_ITEMS - 1);
 
   const pagedProjects = useMemo(() => {
-    return [...assignedProjects.map((p) => ({ kind: 'assigned' as const, p })), ...personalProjects.map((p) => ({ kind: 'personal' as const, p }))];
+    const allProjects = [...assignedProjects.map((p) => ({ kind: 'assigned' as const, p })), ...personalProjects.map((p) => ({ kind: 'personal' as const, p }))];
+    
+    return allProjects.sort((a, b) => {
+      const getTimestamp = (item: typeof allProjects[0]) => {
+        const updatedAtStr = (item.p as any).updatedAt;
+        const createdAtStr = (item.p as any).createdAt;
+        
+        if (updatedAtStr?.toDate) {
+          return updatedAtStr.toDate().getTime();
+        } else if (createdAtStr?.toDate) {
+          return createdAtStr.toDate().getTime();
+        }
+        return 0;
+      };
+      
+      return getTimestamp(b) - getTimestamp(a);
+    });
   }, [assignedProjects, personalProjects]);
+
+  const isProjectNew = (project: Project) => {
+    const createdAtStr = (project as any).createdAt;
+    const updatedAtStr = (project as any).updatedAt;
+    
+    let timestamp = 0;
+    if (updatedAtStr?.toDate) {
+      timestamp = updatedAtStr.toDate().getTime();
+    } else if (createdAtStr?.toDate) {
+      timestamp = createdAtStr.toDate().getTime();
+    }
+    
+    return timestamp > lastVisit;
+  };
 
   const projectsPageCount = useMemo(() => {
     const count = Math.ceil(pagedProjects.length / MAX_PROJECT_CARDS);
@@ -717,12 +769,24 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
         <div className="space-y-10">
           <section>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {displayedProjectCards.map(({ kind, p: project }) => (
+              {displayedProjectCards.map(({ kind, p: project }) => {
+                const isNew = isProjectNew(project);
+                return (
                 <div
                   key={`${kind}:${project.id}`}
                   onClick={() => setSelectedProjectKey(`${kind}:${project.id}`)}
-                  className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-pointer group relative"
+                  className={`bg-white rounded-[3rem] p-10 border shadow-sm hover:shadow-xl transition-all cursor-pointer group relative ${
+                    isNew ? 'border-red-300 ring-2 ring-red-100' : 'border-slate-100 hover:border-blue-100'
+                  }`}
                 >
+                  {isNew && (
+                    <div className="absolute -top-3 -right-3 z-10">
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">
+                        <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+                        NEW
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-start mb-8">
                     <div className="flex items-center gap-3">
                       <span
@@ -749,7 +813,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
 
               <button
                 onClick={() => setIsCreatingProject(true)}
@@ -1343,7 +1408,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang }) => {
       {/* --- FINALIZE UPLOAD MODAL --- */}
       {uploadTaskId && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-           <div className="bg-white w-full max-w-lg rounded-[3.5rem] p-12 shadow-2xl space-y-10 animate-in zoom-in-95 duration-300">
+           <div className="bg-white w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-[3.5rem] p-12 shadow-2xl space-y-10 animate-in zoom-in-95 duration-300">
               <div className="flex items-center gap-5">
                 <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-[2rem] flex items-center justify-center shadow-sm">
                    <Upload size={32} />

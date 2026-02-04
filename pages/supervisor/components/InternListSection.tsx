@@ -18,6 +18,8 @@ export interface InternListItem {
     summary?: string;
     submissionDate?: string;
   };
+  hasNotifications?: boolean;
+  notificationCount?: number;
 }
 
 interface InternListSectionProps {
@@ -182,11 +184,18 @@ const InternListSection: React.FC<InternListSectionProps> = ({
             className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm hover:shadow-2xl hover:border-blue-100 transition-all cursor-pointer group"
           >
             <div className="flex items-center gap-6 mb-10">
-              <img
-                src={intern.avatar}
-                className="w-20 h-20 rounded-[1.75rem] object-cover ring-6 ring-slate-50 group-hover:scale-110 transition-transform shadow-md"
-                alt=""
-              />
+              <div className="relative">
+                <img
+                  src={intern.avatar}
+                  className="w-20 h-20 rounded-[1.75rem] object-cover ring-6 ring-slate-50 group-hover:scale-110 transition-transform shadow-md"
+                  alt=""
+                />
+                {intern.hasNotifications && (
+                  <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center animate-pulse shadow-lg">
+                    {intern.notificationCount || '!'}
+                  </span>
+                )}
+              </div>
               <div>
                 <h4 className="text-2xl font-black text-slate-900 leading-none tracking-tight">{intern.name}</h4>
                 <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2">{intern.position}</p>

@@ -8,12 +8,21 @@ interface SidebarProps {
   activeId: PageId;
   activeRole: UserRole; // Current active role context
   onNavigate: (id: PageId) => void;
-  onRoleSwitch?: (role: UserRole) => void; // Callback to change role context
+  onRoleSwitch?: (newRole: UserRole) => void; // Callback to change role context
   isOpen?: boolean;
   onClose?: () => void;
   user: UserProfile;
   onLogout: () => void;
   lang: Language;
+  leaveNotificationCount?: number;
+  assignmentNotificationCount?: number;
+  feedbackNotificationCount?: number;
+  evaluationNotificationCount?: number;
+  certificatesNotificationCount?: number;
+  allowanceNotificationCount?: number;
+  appointmentRequestNotificationCount?: number;
+  systemSettingsNotificationCount?: number;
+  internManagementNotificationCount?: number;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -25,7 +34,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   onClose, 
   user, 
   onLogout, 
-  lang 
+  lang,
+  leaveNotificationCount = 0,
+  assignmentNotificationCount = 0,
+  feedbackNotificationCount = 0,
+  evaluationNotificationCount = 0,
+  certificatesNotificationCount = 0,
+  allowanceNotificationCount = 0,
+  appointmentRequestNotificationCount = 0,
+  systemSettingsNotificationCount = 0,
+  internManagementNotificationCount = 0
 }) => {
   // Use activeRole instead of user.role for filtering navigation
   let filteredNavItems = NAV_ITEMS.filter(item => item.roles.includes(activeRole));
@@ -149,6 +167,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           <nav className="space-y-1.5 pb-10">
             {filteredNavItems.map((item) => {
               const isActive = activeId === item.id;
+              const showLeaveNotification = item.id === 'leave' && leaveNotificationCount > 0;
+              const showAssignmentNotification = item.id === 'assignment' && assignmentNotificationCount > 0;
+              const showFeedbackNotification = item.id === 'feedback' && feedbackNotificationCount > 0;
+              const showEvaluationNotification = (item.id === 'evaluation' || item.id === 'university-evaluation') && evaluationNotificationCount > 0;
+              const showCertificatesNotification = item.id === 'certificates' && certificatesNotificationCount > 0;
+              const showAllowanceNotification = item.id === 'allowance' && allowanceNotificationCount > 0;
+              const showAppointmentRequestNotification = item.id === 'appointment-requests' && appointmentRequestNotificationCount > 0;
+              const showSystemSettingsNotification = item.id === 'system-settings' && systemSettingsNotificationCount > 0;
+              const showInternManagementNotification = item.id === 'manage-interns' && internManagementNotificationCount > 0;
+              const notificationCount = item.id === 'leave' ? leaveNotificationCount : item.id === 'assignment' ? assignmentNotificationCount : item.id === 'feedback' ? feedbackNotificationCount : (item.id === 'evaluation' || item.id === 'university-evaluation') ? evaluationNotificationCount : item.id === 'certificates' ? certificatesNotificationCount : item.id === 'allowance' ? allowanceNotificationCount : item.id === 'appointment-requests' ? appointmentRequestNotificationCount : item.id === 'system-settings' ? systemSettingsNotificationCount : item.id === 'manage-interns' ? internManagementNotificationCount : 0;
+              const showNotification = showLeaveNotification || showAssignmentNotification || showFeedbackNotification || showEvaluationNotification || showCertificatesNotification || showAllowanceNotification || showAppointmentRequestNotification || showSystemSettingsNotification || showInternManagementNotification;
               return (
                 <button
                   key={item.id}
@@ -168,7 +197,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                     </span>
                     <span className="truncate tracking-tight">{translations[item.id] || item.label}</span>
                   </div>
-                  {isActive && <ChevronRight size={14} strokeWidth={3} className="animate-in slide-in-from-left-2 duration-300" />}
+                  <div className="flex items-center gap-2">
+                    {showNotification && (
+                      <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-black rounded-full animate-in zoom-in duration-300">
+                        {notificationCount}
+                      </span>
+                    )}
+                    {isActive && <ChevronRight size={14} strokeWidth={3} className="animate-in slide-in-from-left-2 duration-300" />}
+                  </div>
                 </button>
               );
             })}

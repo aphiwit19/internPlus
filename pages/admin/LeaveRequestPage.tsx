@@ -27,22 +27,27 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
     onClick,
     icon,
     label,
+    hasNotification,
   }: {
     active: boolean;
     onClick: () => void;
     icon: React.ReactNode;
     label: string;
+    hasNotification?: boolean;
   }) => {
     return (
       <button
         type="button"
         onClick={onClick}
-        className={`flex items-center gap-2 px-6 py-3 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+        className={`relative flex items-center gap-2 px-6 py-3 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
           active ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-900'
         }`}
       >
         {icon}
         {label}
+        {hasNotification && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+        )}
       </button>
     );
   };
