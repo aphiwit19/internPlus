@@ -16,6 +16,8 @@ import TasksTab from '@/pages/supervisor/components/TasksTab';
 import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
 import AssignmentsTab from '@/pages/admin/components/AssignmentsTab';
 
+type HandoffMeta = { handoffCount: number; latestHandoffTsMs: number };
+
 interface AdminInternDetail {
   id: string;
   name: string;
@@ -101,6 +103,7 @@ const InternManagementPage: React.FC = () => {
   const [internsLoadError, setInternsLoadError] = useState<string | null>(null);
   const [selectedInternId, setSelectedInternId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SupervisorDeepDiveTab>('assets');
+  const [tabVisitTrigger, setTabVisitTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFeedbackId, setActiveFeedbackId] = useState('week-1');
   const [attendanceViewMode, setAttendanceViewMode] = useState<AttendanceViewMode>('LOG');
@@ -123,6 +126,7 @@ const InternManagementPage: React.FC = () => {
   const [handoffProjectOpen, setHandoffProjectOpen] = useState<HandoffProjectGroup | null>(null);
 
   const [feedbackByIntern, setFeedbackByIntern] = useState<Record<string, FeedbackItem[]>>({});
+  const [handoffMetaByIntern, setHandoffMetaByIntern] = useState<Record<string, HandoffMeta>>({});
 
   const selectedIntern = interns.find((i) => i.id === selectedInternId);
   const activeFeedback = selectedIntern?.feedback.find((f) => f.id === activeFeedbackId);
@@ -614,6 +618,104 @@ const InternManagementPage: React.FC = () => {
   }, [interns, searchQuery, statusFilter]);
 
   useEffect(() => {
+    const list = interns.map((i) => i.id).filter(Boolean);
+    if (list.length === 0) return;
+
+    const unsubs: Array<() => void> = [];
+
+    for (const internId of list) {
+      const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
+      const personalRef = collection(firestoreDb, 'users', internId, 'personalProjects');
+
+      let assignedMeta: HandoffMeta = { handoffCount: 0, latestHandoffTsMs: 0 };
+      let personalMeta: HandoffMeta = { handoffCount: 0, latestHandoffTsMs: 0 };
+
+      const recompute = () => {
+        setHandoffMetaByIntern((prev) => ({
+          ...prev,
+          [internId]: {
+            handoffCount: (assignedMeta.handoffCount ?? 0) + (personalMeta.handoffCount ?? 0),
+            latestHandoffTsMs: Math.max(assignedMeta.latestHandoffTsMs ?? 0, personalMeta.latestHandoffTsMs ?? 0),
+          },
+        }));
+      };
+
+      const computeMeta = (snap: any): HandoffMeta => {
+        let handoffCount = 0;
+        let latestHandoffTsMs = 0;
+        for (const d of snap.docs) {
+          const data = d.data() as any;
+          const status = String(data?.handoffLatest?.status ?? '');
+          if (status !== 'SUBMITTED') continue;
+
+          handoffCount += 1;
+          const submittedAt = data?.handoffLatest?.submittedAt as any;
+          const tsMs = typeof submittedAt?.toDate === 'function' ? Number(submittedAt.toDate().getTime()) : 0;
+          if (Number.isFinite(tsMs) && tsMs > latestHandoffTsMs) latestHandoffTsMs = tsMs;
+        }
+        return { handoffCount, latestHandoffTsMs };
+      };
+
+      const unsubAssigned = onSnapshot(
+        assignedRef,
+        (snap) => {
+          assignedMeta = computeMeta(snap);
+          recompute();
+        },
+        () => {
+          assignedMeta = { handoffCount: 0, latestHandoffTsMs: 0 };
+          recompute();
+        },
+      );
+
+      const unsubPersonal = onSnapshot(
+        personalRef,
+        (snap) => {
+          personalMeta = computeMeta(snap);
+          recompute();
+        },
+        () => {
+          personalMeta = { handoffCount: 0, latestHandoffTsMs: 0 };
+          recompute();
+        },
+      );
+
+      unsubs.push(unsubAssigned, unsubPersonal);
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [interns]);
+
+  const internListItems = useMemo(() => {
+    return filteredInterns.map((intern) => {
+      const lastViewedKey = `lastAdminInternViewed_${intern.id}`;
+      const storedLastViewed = localStorage.getItem(lastViewedKey);
+      const lastViewedTimestamp = storedLastViewed ? parseInt(storedLastViewed, 10) : 0;
+
+      const meta = handoffMetaByIntern[intern.id];
+      const handoffCount = meta?.handoffCount ?? 0;
+      const latestHandoffTsMs = meta?.latestHandoffTsMs ?? 0;
+
+      const notificationCount = handoffCount > 0 && latestHandoffTsMs > lastViewedTimestamp ? handoffCount : 0;
+
+      return {
+        id: intern.id,
+        name: intern.name,
+        avatar: intern.avatar,
+        position: intern.position,
+        progress: intern.progress,
+        attendance: intern.attendance,
+        status: intern.status,
+        performance: { overallRating: intern.performance?.overallRating ?? 0 },
+        hasNotifications: notificationCount > 0,
+        notificationCount,
+      };
+    });
+  }, [filteredInterns, handoffMetaByIntern, tabVisitTrigger]);
+
+  useEffect(() => {
     if (!selectedInternId) return;
     if (activeTab !== 'feedback') return;
     if (!selectedIntern?.feedback || selectedIntern.feedback.length === 0) return;
@@ -640,6 +742,17 @@ const InternManagementPage: React.FC = () => {
       attachments: t.attachments,
     }));
 
+    const getLastVisit = (tabName: string) => {
+      const key = `lastAdminInternTab_${selectedInternId}_${tabName}`;
+      const stored = localStorage.getItem(key);
+      return stored ? parseInt(stored, 10) : 0;
+    };
+
+    const lastAssetsVisit = getLastVisit('assets');
+    const meta = selectedInternId ? handoffMetaByIntern[selectedInternId] : undefined;
+    const assetsNotificationCount =
+      meta && (meta.handoffCount ?? 0) > 0 && (meta.latestHandoffTsMs ?? 0) > lastAssetsVisit ? (meta.handoffCount ?? 0) : 0;
+
     return (
       <InternDeepDiveLayout
         intern={{
@@ -649,12 +762,18 @@ const InternManagementPage: React.FC = () => {
           internPeriod: selectedIntern.internPeriod,
         }}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          const key = `lastAdminInternTab_${selectedInternId}_${tab}`;
+          localStorage.setItem(key, String(Date.now()));
+          setTabVisitTrigger((prev) => prev + 1);
+        }}
         showAssignmentsTab
         onBack={() => {
           setSelectedInternId(null);
           setActiveTab('assets');
         }}
+        assetsNotificationCount={assetsNotificationCount}
       >
         {activeTab === 'overview' && (
           <FeedbackTab
@@ -895,7 +1014,7 @@ const InternManagementPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12 scrollbar-hide animate-in fade-in duration-500">
           <div className="max-w-7xl mx-auto w-full">
             <InternListSection
-              interns={filteredInterns}
+              interns={internListItems}
               searchQuery={searchQuery}
               statusFilter={statusFilter}
               onSearchQueryChange={setSearchQuery}
@@ -904,6 +1023,9 @@ const InternManagementPage: React.FC = () => {
               onSelectIntern={(internId) => {
                 setSelectedInternId(internId);
                 setActiveTab('assets');
+                const key = `lastAdminInternViewed_${internId}`;
+                localStorage.setItem(key, String(Date.now()));
+                setTabVisitTrigger((prev) => prev + 1);
               }}
             />
           </div>

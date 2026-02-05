@@ -116,6 +116,8 @@ type FeedbackMilestoneDoc = {
   supervisorReviewedAt?: any;
   programRating?: number;
   submissionDate?: string;
+  submittedAt?: any;
+  updatedAt?: any;
   selfPerformance?: Partial<PerformanceMetrics>;
   selfSummary?: string;
 };
@@ -202,7 +204,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const [handoffPendingByIntern, setHandoffPendingByIntern] = useState<Record<
     string,
-    { count: number; next: PendingAssignmentNext | null }
+    { count: number; next: PendingAssignmentNext | null; handoffCount: number; latestHandoffTsMs: number }
   >>({});
 
   const feedbackInternIdsKey = useMemo(() => interns.map((i) => i.id).filter(Boolean).join('|'), [interns]);
@@ -782,50 +784,61 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
       let assignedCount = 0;
       let personalCount = 0;
+      let assignedHandoffCount = 0;
+      let personalHandoffCount = 0;
+      let assignedLatestHandoffTsMs = 0;
+      let personalLatestHandoffTsMs = 0;
       let assignedNext: PendingAssignmentNext | null = null;
       let personalNext: PendingAssignmentNext | null = null;
 
       const recomputePending = () => {
         const count = assignedCount + personalCount;
         const next = assignedNext ?? personalNext;
+        const handoffCount = assignedHandoffCount + personalHandoffCount;
+        const latestHandoffTsMs = Math.max(assignedLatestHandoffTsMs, personalLatestHandoffTsMs);
         setHandoffPendingByIntern((prev) => ({
           ...prev,
-          [internId]: { count, next },
+          [internId]: { count, next, handoffCount, latestHandoffTsMs },
         }));
       };
 
       const mapPending = (
         snap: any,
         colName: 'assignmentProjects' | 'personalProjects',
-      ): { count: number; next: PendingAssignmentNext | null } => {
-        const items: Array<{ kind: 'handoff' | 'task'; projectId: string; taskId?: string; ts: string }> = [];
+      ): { count: number; next: PendingAssignmentNext | null; handoffCount: number; latestHandoffTsMs: number } => {
+        const items: Array<{ kind: 'handoff' | 'task'; projectId: string; taskId?: string; ts: string; tsMs: number }> = [];
+        let handoffCount = 0;
+        let latestHandoffTsMs = 0;
 
         for (const d of snap.docs) {
           const data = d.data() as any;
 
           const handoffStatus = String(data?.handoffLatest?.status ?? '');
           if (handoffStatus === 'SUBMITTED') {
-            const iso = data?.handoffLatest?.submittedAt?.toDate
-              ? String(data.handoffLatest.submittedAt.toDate().toISOString())
-              : '';
-            items.push({ kind: 'handoff', projectId: d.id, ts: iso });
+            const hasTs = typeof data?.handoffLatest?.submittedAt?.toDate === 'function';
+            const tsMs = hasTs ? Number(data.handoffLatest.submittedAt.toDate().getTime()) : 0;
+            const iso = hasTs ? String(data.handoffLatest.submittedAt.toDate().toISOString()) : '';
+            items.push({ kind: 'handoff', projectId: d.id, ts: iso, tsMs: Number.isFinite(tsMs) ? tsMs : 0 });
+            handoffCount += 1;
+            if (Number.isFinite(tsMs) && tsMs > latestHandoffTsMs) latestHandoffTsMs = tsMs;
           }
 
           const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
           for (const t of tasks) {
             if (String(t?.reviewStatus ?? '') !== 'SUBMITTED') continue;
             const iso = typeof t?.actualEnd === 'string' ? t.actualEnd : '';
-            items.push({ kind: 'task', projectId: d.id, taskId: String(t?.id ?? ''), ts: iso });
+            const tsMs = iso ? new Date(iso).getTime() : 0;
+            items.push({ kind: 'task', projectId: d.id, taskId: String(t?.id ?? ''), ts: iso, tsMs: Number.isFinite(tsMs) ? tsMs : 0 });
           }
         }
 
         const count = items.length;
-        items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+        items.sort((a, b) => (b.tsMs - a.tsMs) || String(b.ts).localeCompare(String(a.ts)));
         const first = items[0];
-        if (!first) return { count: 0, next: null };
+        if (!first) return { count: 0, next: null, handoffCount: 0, latestHandoffTsMs: 0 };
 
         if (first.kind === 'handoff') {
-          return { count, next: { kind: 'handoff', colName, projectId: first.projectId } };
+          return { count, next: { kind: 'handoff', colName, projectId: first.projectId }, handoffCount, latestHandoffTsMs };
         }
 
         return {
@@ -836,6 +849,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             projectId: first.projectId,
             taskId: first.taskId || '',
           },
+          handoffCount,
+          latestHandoffTsMs,
         };
       };
 
@@ -845,11 +860,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           const res = mapPending(snap, 'assignmentProjects');
           assignedCount = res.count;
           assignedNext = res.next;
+          assignedHandoffCount = res.handoffCount;
+          assignedLatestHandoffTsMs = res.latestHandoffTsMs;
           recomputePending();
         },
         () => {
           assignedCount = 0;
           assignedNext = null;
+          assignedHandoffCount = 0;
+          assignedLatestHandoffTsMs = 0;
           recomputePending();
         },
       );
@@ -860,11 +879,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           const res = mapPending(snap, 'personalProjects');
           personalCount = res.count;
           personalNext = res.next;
+          personalHandoffCount = res.handoffCount;
+          personalLatestHandoffTsMs = res.latestHandoffTsMs;
           recomputePending();
         },
         () => {
           personalCount = 0;
           personalNext = null;
+          personalHandoffCount = 0;
+          personalLatestHandoffTsMs = 0;
           recomputePending();
         },
       );
@@ -1015,6 +1038,11 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
               ? String(supervisorReviewedAt.toDate().toISOString().split('T')[0])
               : undefined;
 
+          const submittedAt = (data as any)?.submittedAt;
+          const updatedAt = (data as any)?.updatedAt;
+          const submittedAtMs = typeof submittedAt?.toDate === 'function' ? submittedAt.toDate().getTime() : undefined;
+          const updatedAtMs = typeof updatedAt?.toDate === 'function' ? updatedAt.toDate().getTime() : undefined;
+
           return {
             ...b,
             status: typeof data.status === 'string' ? data.status : b.status,
@@ -1050,6 +1078,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             selfPerformance: normalizedSelfPerformance,
             selfSummary: typeof (data as any).selfSummary === 'string' ? (data as any).selfSummary : b.selfSummary,
             submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : b.submissionDate,
+            submittedAtMs,
+            updatedAtMs,
           };
         });
 
@@ -1119,32 +1149,42 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
       // Calculate notification count for this intern
       let notificationCount = 0;
-      
-      // Check when manage-interns page was last visited
-      const lastPageVisit = localStorage.getItem('lastManageInternsPageVisit');
-      const lastPageVisitTimestamp = lastPageVisit ? parseInt(lastPageVisit, 10) : 0;
-      
-      // Count unreviewed feedback submitted after last page visit
-      const unreviewedFeedback = intern.feedback?.filter(f => {
-        const status = (f as any)?.status;
-        const hasReview = (f as any)?.supervisorReviewedAt;
-        const submissionDate = (f as any)?.submissionDate;
-        if (status !== 'submitted' || hasReview) return false;
-        if (!submissionDate) return true; // If no date, show notification
-        const timestamp = new Date(submissionDate).getTime();
-        return timestamp > lastPageVisitTimestamp;
-      }).length || 0;
+
+      const lastViewedKey = `lastInternViewed_${intern.id}`;
+      const storedLastViewed = localStorage.getItem(lastViewedKey);
+      const lastViewedTimestamp = storedLastViewed ? parseInt(storedLastViewed, 10) : 0;
+
+      const unreviewedFeedback =
+        intern.feedback?.filter((f) => {
+          const status = (f as any)?.status;
+          if (status !== 'submitted') return false;
+
+          const submittedAtMs = (f as any)?.submittedAtMs;
+          const updatedAtMs = (f as any)?.updatedAtMs;
+          let timestamp = 0;
+          if (typeof submittedAtMs === 'number' && Number.isFinite(submittedAtMs)) {
+            timestamp = submittedAtMs;
+          } else if (typeof updatedAtMs === 'number' && Number.isFinite(updatedAtMs)) {
+            timestamp = updatedAtMs;
+          } else {
+            const submissionDate = (f as any)?.submissionDate;
+            if (!submissionDate) return true;
+            const parsed = new Date(`${submissionDate}T23:59:59.999`).getTime();
+            if (!Number.isFinite(parsed)) return true;
+            timestamp = parsed;
+          }
+
+          return timestamp > lastViewedTimestamp;
+        }).length || 0;
+
       notificationCount += unreviewedFeedback;
-      
-      // Count in-progress or delayed tasks updated after last page visit
-      const pendingTasks = intern.tasks?.filter(t => {
-        if (t.status !== 'IN_PROGRESS' && t.status !== 'DELAYED') return false;
-        const updatedAt = (t as any)?.updatedAt;
-        if (!updatedAt) return true; // If no date, show notification
-        const timestamp = new Date(updatedAt).getTime();
-        return timestamp > lastPageVisitTimestamp;
-      }).length || 0;
-      notificationCount += pendingTasks;
+
+      const handoffMeta = handoffPendingByIntern[intern.id];
+      const handoffCount = handoffMeta?.handoffCount ?? 0;
+      const latestHandoffTsMs = handoffMeta?.latestHandoffTsMs ?? 0;
+      if (handoffCount > 0 && latestHandoffTsMs > lastViewedTimestamp) {
+        notificationCount += handoffCount;
+      }
 
       return {
         id: intern.id,
@@ -1168,7 +1208,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         notificationCount: notificationCount,
       };
     });
-  }, [filteredInterns]);
+  }, [filteredInterns, tabVisitTrigger]);
 
   const handleUpdateTaskStatus = (taskId: string, status: 'DONE' | 'REVISION') => {
     if (!selectedInternId) return;
@@ -1230,13 +1270,21 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         status: t.status
       }))
     });
-    const assetsNotificationCount = selectedIntern.tasks?.filter(t => {
+    const assetsNotificationCountFromTasks = selectedIntern.tasks?.filter(t => {
       if (t.reviewStatus !== 'SUBMITTED') return false;
       const actualEnd = t.actualEnd;
       if (!actualEnd) return false;
       const timestamp = new Date(actualEnd).getTime();
       return timestamp > lastAssetsVisit;
     }).length || 0;
+
+    const handoffMeta = selectedInternId ? handoffPendingByIntern[selectedInternId] : undefined;
+    const assetsNotificationCountFromHandoff =
+      handoffMeta && (handoffMeta.handoffCount ?? 0) > 0 && (handoffMeta.latestHandoffTsMs ?? 0) > lastAssetsVisit
+        ? (handoffMeta.handoffCount ?? 0)
+        : 0;
+
+    const assetsNotificationCount = assetsNotificationCountFromTasks + assetsNotificationCountFromHandoff;
     console.log('✅ Assets notification count:', assetsNotificationCount);
 
     // Assignments: count in-progress or delayed tasks
@@ -1252,10 +1300,24 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     const feedbackNotificationCount = selectedIntern.feedback?.filter(f => {
       const status = (f as any)?.status;
       const hasReview = (f as any)?.supervisorReviewedAt;
-      const submissionDate = (f as any)?.submissionDate;
       if (status !== 'submitted' || hasReview) return false;
-      if (!submissionDate) return true; // If no date, show notification
-      const timestamp = new Date(submissionDate).getTime();
+
+      const submittedAtMs = (f as any)?.submittedAtMs;
+      const updatedAtMs = (f as any)?.updatedAtMs;
+      let timestamp = 0;
+
+      if (typeof submittedAtMs === 'number' && Number.isFinite(submittedAtMs)) {
+        timestamp = submittedAtMs;
+      } else if (typeof updatedAtMs === 'number' && Number.isFinite(updatedAtMs)) {
+        timestamp = updatedAtMs;
+      } else {
+        const submissionDate = (f as any)?.submissionDate;
+        if (!submissionDate) return true;
+        const parsed = new Date(`${submissionDate}T23:59:59.999`).getTime();
+        if (!Number.isFinite(parsed)) return true;
+        timestamp = parsed;
+      }
+
       return timestamp > lastFeedbackVisit;
     }).length || 0;
 
@@ -1865,6 +1927,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                       // Mark this intern as viewed to clear notification badge
                       const key = `lastInternViewed_${internId}`;
                       localStorage.setItem(key, String(Date.now()));
+                      setTabVisitTrigger((prev) => prev + 1);
                     }}
                   />
                 </>

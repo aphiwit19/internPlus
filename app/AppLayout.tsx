@@ -7,7 +7,7 @@ import { PageId } from '@/pageTypes';
 import { UserRole } from '@/types';
 
 import { signOut } from 'firebase/auth';
-import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, where, type DocumentData, type Query } from 'firebase/firestore';
 
 import { firebaseAuth, firestoreDb } from '@/firebase';
 
@@ -64,7 +64,15 @@ export default function AppLayout() {
   const [newInternManagementCount, setNewInternManagementCount] = useState(0);
   const [lastManageInternsPageVisit, setLastManageInternsPageVisit] = useState<number>(() => {
     const stored = localStorage.getItem('lastManageInternsPageVisit');
-    return stored ? parseInt(stored, 10) : 0;
+    if (!stored) return 0;
+    const parsed = parseInt(stored, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  });
+  const [lastManageInternsPageVisitAdmin, setLastManageInternsPageVisitAdmin] = useState<number>(() => {
+    const stored = localStorage.getItem('lastManageInternsPageVisit_admin');
+    if (!stored) return 0;
+    const parsed = parseInt(stored, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
   });
 
   useEffect(() => {
@@ -83,7 +91,7 @@ export default function AppLayout() {
     }
 
     const leaveRef = collection(firestoreDb, 'leaveRequests');
-    let q;
+    let q: Query<DocumentData>;
     let lastVisitKey = 'lastLeavePageVisit';
 
     if (activeRole === 'INTERN') {
@@ -438,7 +446,7 @@ export default function AppLayout() {
     }
 
     const certRef = collection(firestoreDb, 'certificateRequests');
-    let q;
+    let q: Query<DocumentData>;
     let lastVisitKey = 'lastCertificatesPageVisit';
 
     if (activeRole === 'INTERN') {
@@ -603,42 +611,171 @@ export default function AppLayout() {
   }, [user, activeRole, lastSystemSettingsPageVisit]);
 
   useEffect(() => {
-    if (!user || activeRole !== 'SUPERVISOR') {
+    if (!user || (activeRole !== 'SUPERVISOR' && activeRole !== 'HR_ADMIN')) {
       setNewInternManagementCount(0);
       return;
     }
 
-    // Simple approach: show badge if there are ANY pending items
-    // Badge will clear when supervisor visits manage-interns page
     const usersRef = collection(firestoreDb, 'users');
-    const q = query(usersRef, where('supervisorId', '==', user.id));
 
-    return onSnapshot(q, (snap) => {
-      let count = 0;
-      
-      snap.forEach((doc) => {
-        const data = doc.data();
-        
-        // Check for pending tasks
-        const tasks = data.tasks || [];
-        const hasPendingTasks = tasks.some((task: any) => 
-          task.status === 'IN_PROGRESS' || task.status === 'DELAYED'
-        );
-        
-        // Check for unreviewed feedback (stored in user doc)
-        const feedback = data.feedback || [];
-        const hasUnreviewedFeedback = feedback.some((f: any) => 
-          f.status === 'submitted' && !f.supervisorReviewedAt
-        );
-        
-        if (hasPendingTasks || hasUnreviewedFeedback) {
-          count++;
-        }
-      });
-      
-      setNewInternManagementCount(count > 0 ? count : 0);
-    });
-  }, [user, activeRole]);
+    const isSupervisor = activeRole === 'SUPERVISOR';
+    const lastPageAck = isSupervisor ? lastManageInternsPageVisit : lastManageInternsPageVisitAdmin;
+    const q = isSupervisor
+      ? query(usersRef, where('supervisorId', '==', user.id))
+      : query(usersRef, where('roles', 'array-contains', 'INTERN'));
+
+    let internUnsubs: Array<() => void> = [];
+
+    const clearInternListeners = () => {
+      internUnsubs.forEach((u) => u());
+      internUnsubs = [];
+    };
+
+    const unsubUsers = onSnapshot(
+      q,
+      (snap) => {
+        clearInternListeners();
+
+        const flagsByIntern = new Map<string, { feedback: boolean; handoffAssigned: boolean; handoffPersonal: boolean }>();
+
+        const setFlag = (internId: string, key: 'feedback' | 'handoffAssigned' | 'handoffPersonal', value: boolean) => {
+          const prev = flagsByIntern.get(internId) ?? { feedback: false, handoffAssigned: false, handoffPersonal: false };
+          flagsByIntern.set(internId, { ...prev, [key]: value });
+        };
+
+        const recomputeCount = () => {
+          let count = 0;
+          flagsByIntern.forEach((f) => {
+            if (f.feedback || f.handoffAssigned || f.handoffPersonal) count += 1;
+          });
+          setNewInternManagementCount(count);
+        };
+
+        const internIds = snap.docs.map((d) => d.id).filter(Boolean);
+        internIds.forEach((internId) => {
+          flagsByIntern.set(internId, { feedback: false, handoffAssigned: false, handoffPersonal: false });
+
+          const lastViewedKey = isSupervisor ? `lastInternViewed_${internId}` : `lastAdminInternViewed_${internId}`;
+          const storedLastViewed = localStorage.getItem(lastViewedKey);
+          const lastViewedTimestamp = storedLastViewed ? parseInt(storedLastViewed, 10) : 0;
+          const lastAck = Math.max(lastPageAck, Number.isFinite(lastViewedTimestamp) ? lastViewedTimestamp : 0);
+
+          let unsubFeedback: (() => void) | null = null;
+          if (isSupervisor) {
+            const feedbackRef = collection(firestoreDb, 'users', internId, 'feedbackMilestones');
+            unsubFeedback = onSnapshot(
+              feedbackRef,
+              (fsnap) => {
+                let hasNew = false;
+                fsnap.forEach((d) => {
+                  const data = d.data() as any;
+
+                  const status = String(data?.status ?? '');
+                  if (status !== 'submitted') return;
+                  if (data?.supervisorReviewedAt) return;
+
+                  let ts = 0;
+                  const submittedAt = data?.submittedAt as any;
+                  const updatedAt = data?.updatedAt as any;
+
+                  if (submittedAt?.toDate) {
+                    ts = submittedAt.toDate().getTime();
+                  } else if (updatedAt?.toDate) {
+                    ts = updatedAt.toDate().getTime();
+                  } else {
+                    const submissionDate = data?.submissionDate as string | undefined;
+                    if (!submissionDate) {
+                      hasNew = true;
+                      return;
+                    }
+                    const parsed = new Date(`${submissionDate}T23:59:59.999`).getTime();
+                    if (!Number.isFinite(parsed)) {
+                      hasNew = true;
+                      return;
+                    }
+                    ts = parsed;
+                  }
+
+                  if (ts > lastAck) hasNew = true;
+                });
+
+                setFlag(internId, 'feedback', hasNew);
+                recomputeCount();
+              },
+              () => {
+                setFlag(internId, 'feedback', false);
+                recomputeCount();
+              },
+            );
+          }
+
+          const computeHandoffHasNew = (psnap: any) => {
+            let hasNew = false;
+            psnap.forEach((d: any) => {
+              const data = d.data() as any;
+              const status = String(data?.handoffLatest?.status ?? '');
+              if (status !== 'SUBMITTED') return;
+
+              const submittedAt = data?.handoffLatest?.submittedAt as any;
+              if (!submittedAt?.toDate) {
+                hasNew = true;
+                return;
+              }
+              const ts = submittedAt.toDate().getTime();
+              if (!Number.isFinite(ts)) {
+                hasNew = true;
+                return;
+              }
+              if (ts > lastAck) hasNew = true;
+            });
+            return hasNew;
+          };
+
+          const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
+          const unsubAssigned = onSnapshot(
+            assignedRef,
+            (psnap) => {
+              const hasNew = computeHandoffHasNew(psnap);
+              setFlag(internId, 'handoffAssigned', hasNew);
+              recomputeCount();
+            },
+            () => {
+              setFlag(internId, 'handoffAssigned', false);
+              recomputeCount();
+            },
+          );
+
+          const personalRef = collection(firestoreDb, 'users', internId, 'personalProjects');
+          const unsubPersonal = onSnapshot(
+            personalRef,
+            (psnap) => {
+              const hasNew = computeHandoffHasNew(psnap);
+              setFlag(internId, 'handoffPersonal', hasNew);
+              recomputeCount();
+            },
+            () => {
+              setFlag(internId, 'handoffPersonal', false);
+              recomputeCount();
+            },
+          );
+
+          if (unsubFeedback) internUnsubs.push(unsubFeedback);
+          internUnsubs.push(unsubAssigned, unsubPersonal);
+        });
+
+        recomputeCount();
+      },
+      () => {
+        clearInternListeners();
+        setNewInternManagementCount(0);
+      },
+    );
+
+    return () => {
+      clearInternListeners();
+      unsubUsers();
+    };
+  }, [user, activeRole, lastManageInternsPageVisit, lastManageInternsPageVisitAdmin]);
 
   const activeId = useMemo<PageId>(() => {
     if (pageId && isPageId(pageId)) return pageId;
@@ -744,6 +881,16 @@ export default function AppLayout() {
         activeId={activeId}
         activeRole={activeRole}
         onNavigate={(id) => {
+          if (id === 'manage-interns' && activeRole === 'SUPERVISOR') {
+            const now = Date.now();
+            setLastManageInternsPageVisit(now);
+            localStorage.setItem('lastManageInternsPageVisit', String(now));
+          }
+          if (id === 'manage-interns' && activeRole === 'HR_ADMIN') {
+            const now = Date.now();
+            setLastManageInternsPageVisitAdmin(now);
+            localStorage.setItem('lastManageInternsPageVisit_admin', String(now));
+          }
           navigate(pageIdToPath(activeRole, id));
           if (window.innerWidth < 1024) setIsSidebarOpen(false);
         }}

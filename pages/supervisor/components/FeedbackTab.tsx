@@ -25,6 +25,8 @@ export interface FeedbackItem {
   selfPerformance?: PerformanceMetrics;
   selfSummary?: string;
   submissionDate?: string;
+  submittedAtMs?: number;
+  updatedAtMs?: number;
 
   supervisorOverallComments?: string;
   supervisorWorkPerformanceComments?: string;
