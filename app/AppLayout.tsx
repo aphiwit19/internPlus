@@ -7,7 +7,7 @@ import { PageId } from '@/pageTypes';
 import { UserRole } from '@/types';
 
 import { signOut } from 'firebase/auth';
-import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, where, type DocumentData, type Query } from 'firebase/firestore';
 
 import { firebaseAuth, firestoreDb } from '@/firebase';
 
@@ -83,7 +83,7 @@ export default function AppLayout() {
     }
 
     const leaveRef = collection(firestoreDb, 'leaveRequests');
-    let q;
+    let q: Query<DocumentData>;
     let lastVisitKey = 'lastLeavePageVisit';
 
     if (activeRole === 'INTERN') {
@@ -438,7 +438,7 @@ export default function AppLayout() {
     }
 
     const certRef = collection(firestoreDb, 'certificateRequests');
-    let q;
+    let q: Query<DocumentData>;
     let lastVisitKey = 'lastCertificatesPageVisit';
 
     if (activeRole === 'INTERN') {
