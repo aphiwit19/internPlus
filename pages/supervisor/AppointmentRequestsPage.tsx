@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Edit2, Save, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Edit2, Save, Search, X } from 'lucide-react';
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
 import { Language, UserProfile } from '@/types';
@@ -75,7 +75,11 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         EN: {
           title: 'Appointment Requests',
           subtitle: 'Review and manage appointment requests from your interns.',
+          loading: 'Loading...',
           empty: 'No appointment requests yet.',
+          searchPlaceholder: 'Search intern name...',
+          filterAll: 'All',
+          results: 'results',
           date: 'Date',
           time: 'Time',
           status: 'Status',
@@ -97,7 +101,11 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         TH: {
           title: 'นัดหมายขอเข้าพบ',
           subtitle: 'ตรวจสอบและจัดการการขอเข้าพบจากนักศึกษาที่คุณดูแล',
+          loading: 'กำลังโหลด...',
           empty: 'ยังไม่มีรายการขอเข้าพบ',
+          searchPlaceholder: 'ค้นหาชื่อนักศึกษา...',
+          filterAll: 'ทั้งหมด',
+          results: 'รายการ',
           date: 'วันที่',
           time: 'เวลา',
           status: 'สถานะ',
@@ -123,11 +131,17 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
   const [items, setItems] = useState<AppointmentItem[]>([]);
   const [internContacts, setInternContacts] = useState<Record<string, InternContact>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, EditDraft>>({});
   const [historyPages, setHistoryPages] = useState<Record<string, number>>({});
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'ALL'>('ALL');
+  const [listPage, setListPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const HISTORY_PAGE_SIZE = 3;
+  const LIST_PAGE_SIZE = 5;
 
   const toastInitRef = useRef(false);
   const prevToastMapRef = useRef<Record<string, string>>({});
@@ -135,6 +149,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
   useEffect(() => {
     setLoadError(null);
+    setIsLoading(true);
     const q = query(collection(firestoreDb, 'universityEvaluations'), where('supervisorId', '==', user.id));
     return onSnapshot(
       q,
@@ -145,6 +160,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
         arr.sort((a, b) => (a.internName || '').localeCompare(b.internName || ''));
         setItems(arr);
+        setIsLoading(false);
 
         const nextMap: Record<string, string> = {};
         arr.forEach((it) => {
@@ -190,6 +206,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
       (err) => {
         const e = err as { code?: string; message?: string };
         setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load'}`);
+        setIsLoading(false);
       },
     );
   }, [user.id]);
@@ -307,6 +324,28 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
     }
   };
 
+  const filteredItems = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    return items.filter((it) => {
+      const ar = it.appointmentRequest ?? {};
+      const s = (ar.status ?? 'REQUESTED') as AppointmentStatus;
+      if (statusFilter !== 'ALL' && s !== statusFilter) return false;
+      if (!q) return true;
+      return String(it.internName ?? '').toLowerCase().includes(q);
+    });
+  }, [items, searchText, statusFilter]);
+
+  useEffect(() => {
+    setListPage(1);
+  }, [searchText, statusFilter]);
+
+  const listPageCount = useMemo(() => Math.ceil(filteredItems.length / LIST_PAGE_SIZE) || 1, [filteredItems.length]);
+  const safeListPage = useMemo(() => Math.max(1, Math.min(listPageCount, listPage)), [listPageCount, listPage]);
+  const pagedItems = useMemo(() => {
+    const start = (safeListPage - 1) * LIST_PAGE_SIZE;
+    return filteredItems.slice(start, start + LIST_PAGE_SIZE);
+  }, [filteredItems, safeListPage]);
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
@@ -316,30 +355,69 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
           </div>
         ) : null}
 
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-              <CalendarDays size={20} />
+        <div className="mb-8">
+          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+                    <CalendarDays size={20} />
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{t.title}</h1>
+                </div>
+                <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="relative">
+                  <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder={t.searchPlaceholder}
+                    className="w-full sm:w-[260px] bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'ALL')}
+                  className="w-full sm:w-[200px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                >
+                  <option value="ALL">{t.filterAll}</option>
+                  <option value="REQUESTED">{t.statusRequested}</option>
+                  <option value="CONFIRMED">{t.statusConfirmed}</option>
+                  <option value="RESCHEDULED">{t.statusRescheduled}</option>
+                  <option value="CANCELLED">{t.statusCancelled}</option>
+                </select>
+
+                <div className="hidden lg:flex items-center px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-black text-slate-700">
+                  {filteredItems.length} {t.results}
+                </div>
+              </div>
             </div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t.title}</h1>
           </div>
-          <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
-          {items.length === 0 ? (
+          {isLoading ? (
+            <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.loading}</p>
+            </div>
+          ) : filteredItems.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
               <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map((it) => {
+              {pagedItems.map((it) => {
                 const ar = it.appointmentRequest ?? {};
                 const currentStatus = (ar.status ?? 'REQUESTED') as AppointmentStatus;
                 const currentMode = (ar.mode ?? 'ONLINE') as AppointmentMode;
                 const draft = drafts[it.id];
                 const contact = internContacts[it.internId] ?? internContacts[it.id] ?? null;
                 const isEditing = editingId === it.id;
+                const isExpanded = expandedId === it.id || isEditing;
 
                 const displayEmail = contact?.email ?? undefined;
                 const displayPhone = contact?.phone ?? undefined;
@@ -360,12 +438,22 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId((prev) => (prev === it.id ? null : it.id))}
+                          className="h-10 w-10 rounded-2xl bg-slate-50 text-slate-700 border border-slate-200 flex items-center justify-center hover:bg-white hover:border-slate-300 transition-all"
+                          title={lang === 'TH' ? (isExpanded ? 'ย่อ' : 'ดูรายละเอียด') : isExpanded ? 'Collapse' : 'Expand'}
+                        >
+                          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
+
                         {!isEditing ? (
                           <button
                             type="button"
                             onClick={() => {
                               resetDraftFromItem(it);
                               setEditingId(it.id);
+                              setExpandedId(it.id);
                             }}
                             className="h-10 px-5 rounded-2xl bg-blue-600 text-white border border-blue-600 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
                             title={lang === 'TH' ? 'แก้ไข' : 'Edit'}
@@ -390,22 +478,14 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                       </div>
                     </div>
 
-                    <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          {lang === 'TH' ? 'อีเมล' : 'Email'}
-                        </div>
-                        <div className="text-sm font-black text-slate-900 break-words">{displayEmail ?? '-'}</div>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <div
+                        className={`px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest text-slate-900 ${statusBadgeClass(
+                          currentStatus,
+                        )}`}
+                      >
+                        {statusLabel(currentStatus)}
                       </div>
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          {lang === 'TH' ? 'เบอร์โทร' : 'Phone'}
-                        </div>
-                        <div className="text-sm font-black text-slate-900">{displayPhone ?? '-'}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center gap-2">
                       <div className="px-4 py-2 rounded-xl bg-blue-50 text-slate-900 border border-blue-100 text-[10px] font-black uppercase tracking-widest">
                         {modeLabel(currentMode)}
                       </div>
@@ -414,6 +494,23 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                         {(ar.date ? String(ar.date) : '--') + ' ' + (ar.time ? String(ar.time) : '--')}
                       </div>
                     </div>
+
+                    {!isExpanded ? null : (
+                      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            {lang === 'TH' ? 'อีเมล' : 'Email'}
+                          </div>
+                          <div className="text-sm font-black text-slate-900 break-words">{displayEmail ?? '-'}</div>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                            {lang === 'TH' ? 'เบอร์โทร' : 'Phone'}
+                          </div>
+                          <div className="text-sm font-black text-slate-900">{displayPhone ?? '-'}</div>
+                        </div>
+                      </div>
+                    )}
 
                     {!isEditing ? null : (
                       <div className="mt-6">
@@ -491,7 +588,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               type="button"
                               onClick={() => void handleSave(it.id)}
                               disabled={savingId === it.id || !canSave(it.id)}
-                              className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl text-xs font-black disabled:opacity-50"
+                              className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {savingId === it.id ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}
                               {savingId === it.id ? t.saving : t.save}
@@ -515,7 +612,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                       </div>
                     )}
 
-                    {Array.isArray(it.appointmentHistory) && it.appointmentHistory.length > 0 ? (
+                    {isExpanded && Array.isArray(it.appointmentHistory) && it.appointmentHistory.length > 0 ? (
                       <div className="mt-5 p-5 rounded-[1.5rem] bg-slate-50 border border-slate-100">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{t.history}</div>
                         {(() => {
@@ -528,35 +625,71 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
                           return (
                             <>
-                              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
-                                {displayed.map((h) => (
-                                  <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                        {h.actor === 'SUPERVISOR'
-                                          ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor')
-                                          : lang === 'TH'
-                                            ? 'นักศึกษา'
-                                            : 'Intern'}
-                                      </div>
-                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                        {statusLabel((String(h.status ?? 'REQUESTED') as AppointmentStatus) ?? 'REQUESTED')}
-                                      </div>
-                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                        {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
-                                      </div>
-                                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                                        {h.mode ? modeLabel(String(h.mode) as AppointmentMode) : '--'}
+                              <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1 scrollbar-hide">
+                                {displayed.map((h) => {
+                                  const hs = (String(h.status ?? 'REQUESTED') as AppointmentStatus) ?? 'REQUESTED';
+                                  const hm = (String(h.mode ?? 'ONLINE') as AppointmentMode) ?? 'ONLINE';
+                                  const who =
+                                    h.actor === 'SUPERVISOR'
+                                      ? lang === 'TH'
+                                        ? 'พี่เลี้ยง'
+                                        : 'Supervisor'
+                                      : lang === 'TH'
+                                        ? 'นักศึกษา'
+                                        : 'Intern';
+
+                                  return (
+                                    <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+                                      <div className="flex items-start gap-3">
+                                        <div className="pt-1 flex flex-col items-center">
+                                          <div className="w-2.5 h-2.5 rounded-full bg-slate-900" />
+                                          <div className="w-px flex-1 bg-slate-200 mt-2" />
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <div className="text-sm font-black text-slate-900">{who}</div>
+                                              <div
+                                                className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-widest text-slate-900 ${statusBadgeClass(
+                                                  hs,
+                                                )}`}
+                                              >
+                                                {statusLabel(hs)}
+                                              </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                                              <div className="flex items-center gap-2">
+                                                <Clock size={14} className="text-slate-400" />
+                                                <span>{(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}</span>
+                                              </div>
+                                              <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                                {hm ? modeLabel(hm) : '--'}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {String(h.supervisorNote ?? '').trim() ? (
+                                            <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                                                {t.supervisorNote}
+                                              </div>
+                                              <div className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
+                                            </div>
+                                          ) : null}
+
+                                          {String(h.note ?? '').trim() ? (
+                                            <div className="mt-2 p-3 rounded-2xl bg-white border border-slate-100">
+                                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.note}</div>
+                                              <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap">{String(h.note)}</div>
+                                            </div>
+                                          ) : null}
+                                        </div>
                                       </div>
                                     </div>
-                                    {String(h.supervisorNote ?? '').trim() ? (
-                                      <div className="mt-2 text-xs font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
-                                    ) : null}
-                                    {String(h.note ?? '').trim() ? (
-                                      <div className="mt-2 text-xs font-bold text-slate-600 whitespace-pre-wrap">{String(h.note)}</div>
-                                    ) : null}
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
 
                               {pageCount > 1 && (
@@ -622,6 +755,69 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                   </div>
                 );
               })}
+
+              {listPageCount > 1 && (
+                <div className="pt-2 flex justify-center">
+                  <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                      disabled={safeListPage <= 1}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    {(() => {
+                      const pages = Array.from({ length: listPageCount }, (_, i) => i + 1);
+                      if (listPageCount <= 5) {
+                        return pages.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setListPage(p)}
+                            className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                              p === safeListPage
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ));
+                      }
+
+                      const groupStart = Math.floor((safeListPage - 1) / 3) * 3 + 1;
+                      const groupEnd = Math.min(listPageCount, groupStart + 2);
+                      const groupPages = pages.filter((p) => p >= groupStart && p <= groupEnd);
+
+                      return groupPages.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setListPage(p)}
+                          className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                            p === safeListPage
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ));
+                    })()}
+
+                    <button
+                      type="button"
+                      onClick={() => setListPage((p) => Math.min(listPageCount, p + 1))}
+                      disabled={safeListPage >= listPageCount}
+                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
