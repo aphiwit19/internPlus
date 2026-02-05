@@ -573,18 +573,18 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                       {d}
                     </div>
                   ))}
-                  {blanks.map(i => <div key={`b-${i}`} />)}
-                  {calendarDays.map(day => {
+                  {blanks.map((i) => (
+                    <div key={`b-${i}`} />
+                  ))}
+                  {calendarDays.map((day) => {
                     const today = new Date();
-                    const isToday =
-                      day === today.getDate() &&
-                      calendarMonth === today.getMonth() &&
-                      calendarYear === today.getFullYear();
+                    const isToday = day === today.getDate() && calendarMonth === today.getMonth() && calendarYear === today.getFullYear();
 
                     const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const hasLeave = markerMap.leave.has(dateKey);
                     const hasTask = markerMap.task.has(dateKey);
                     const isSelected = selectedDateKey === dateKey;
+
                     return (
                       <div
                         key={day}

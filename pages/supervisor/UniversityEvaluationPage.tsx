@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, FileText, Link as LinkIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Download, FileText, Link as LinkIcon } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -94,6 +94,13 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [itemsPage, setItemsPage] = useState(1);
+  const [downloadAllError, setDownloadAllError] = useState<string | null>(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+
+  const LINKS_PAGE_SIZE = 5;
+  const FILES_PAGE_SIZE = 5;
+  const [linksPage, setLinksPage] = useState(1);
+  const [filesPage, setFilesPage] = useState(1);
 
   useEffect(() => {
     setLoadError(null);
@@ -157,6 +164,47 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
     return Array.isArray(active.files) ? active.files : [];
   }, [active]);
 
+  const linksPageCount = useMemo(() => {
+    const count = Math.ceil(activeLinks.length / LINKS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [LINKS_PAGE_SIZE, activeLinks.length]);
+
+  const filesPageCount = useMemo(() => {
+    const count = Math.ceil(activeFiles.length / FILES_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [FILES_PAGE_SIZE, activeFiles.length]);
+
+  useEffect(() => {
+    setLinksPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > linksPageCount) return linksPageCount;
+      return prev;
+    });
+  }, [linksPageCount]);
+
+  useEffect(() => {
+    setFilesPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > filesPageCount) return filesPageCount;
+      return prev;
+    });
+  }, [filesPageCount]);
+
+  useEffect(() => {
+    setLinksPage(1);
+    setFilesPage(1);
+  }, [activeInternId]);
+
+  const displayedLinks = useMemo(() => {
+    const start = (linksPage - 1) * LINKS_PAGE_SIZE;
+    return activeLinks.slice(start, start + LINKS_PAGE_SIZE);
+  }, [LINKS_PAGE_SIZE, activeLinks, linksPage]);
+
+  const displayedFiles = useMemo(() => {
+    const start = (filesPage - 1) * FILES_PAGE_SIZE;
+    return activeFiles.slice(start, start + FILES_PAGE_SIZE);
+  }, [FILES_PAGE_SIZE, activeFiles, filesPage]);
+
   const activeDeliveryDetails = useMemo(() => {
     if (!active) return null;
     if (active.submittedDeliveryDetails) return active.submittedDeliveryDetails;
@@ -169,6 +217,32 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
     window.open(url, '_blank');
   };
 
+  const handleDownloadAll = async () => {
+    if (isDownloadingAll) return;
+    if (!active) return;
+    if (activeFiles.length === 0) return;
+
+    setIsDownloadingAll(true);
+    setDownloadAllError(null);
+    try {
+      const urls = await Promise.all(activeFiles.map((f) => getDownloadURL(storageRef(firebaseStorage, f.storagePath))));
+      urls.forEach((url) => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Download failed'}`);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
@@ -178,10 +252,32 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
           </div>
         ) : null}
 
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+        <div className="mb-10 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
+            <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+          </div>
+
+          {active ? (
+            <button
+              type="button"
+              onClick={() => void handleDownloadAll()}
+              disabled={isDownloadingAll || activeFiles.length === 0}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50"
+              aria-label="Download all documents"
+              title={lang === 'TH' ? 'ดาวน์โหลดเอกสารทั้งหมด' : 'Download all documents'}
+            >
+              {isDownloadingAll ? <Clock size={16} className="animate-spin" /> : <Download size={16} />}
+              {lang === 'TH' ? 'ดาวน์โหลดทั้งหมด' : 'Download all'}
+            </button>
+          ) : null}
         </div>
+
+        {downloadAllError ? (
+          <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
+            {downloadAllError}
+          </div>
+        ) : null}
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
           {items.length === 0 ? (
@@ -223,7 +319,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                       <p className="text-sm text-slate-400 font-bold">{t.noLinks}</p>
                     ) : (
                       <div className="space-y-3">
-                        {activeLinks.map((l) => (
+                        {displayedLinks.map((l) => (
                           <a
                             key={l.id}
                             href={l.url}
@@ -235,6 +331,48 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                             <p className="text-[11px] font-bold text-slate-400 truncate">{l.url}</p>
                           </a>
                         ))}
+
+                        {linksPageCount > 1 ? (
+                          <div className="pt-2 flex justify-center">
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setLinksPage((p) => Math.max(1, p - 1))}
+                                disabled={linksPage <= 1}
+                                className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                aria-label="Previous page"
+                              >
+                                <ChevronLeft size={18} />
+                              </button>
+
+                              {Array.from({ length: linksPageCount }, (_, i) => i + 1).map((p) => (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  onClick={() => setLinksPage(p)}
+                                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                    p === linksPage
+                                      ? 'bg-slate-900 text-white border-slate-900'
+                                      : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                  }`}
+                                  aria-current={p === linksPage ? 'page' : undefined}
+                                >
+                                  {p}
+                                </button>
+                              ))}
+
+                              <button
+                                type="button"
+                                onClick={() => setLinksPage((p) => Math.min(linksPageCount, p + 1))}
+                                disabled={linksPage >= linksPageCount}
+                                className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                aria-label="Next page"
+                              >
+                                <ChevronRight size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </section>
@@ -251,7 +389,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                       <p className="text-sm text-slate-400 font-bold">{t.noFiles}</p>
                     ) : (
                       <div className="space-y-3">
-                        {activeFiles.map((f) => (
+                        {displayedFiles.map((f) => (
                           <div
                             key={f.id}
                             className="p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-4"
@@ -273,6 +411,48 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                             </button>
                           </div>
                         ))}
+
+                        {filesPageCount > 1 ? (
+                          <div className="pt-2 flex justify-center">
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setFilesPage((p) => Math.max(1, p - 1))}
+                                disabled={filesPage <= 1}
+                                className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                aria-label="Previous page"
+                              >
+                                <ChevronLeft size={18} />
+                              </button>
+
+                              {Array.from({ length: filesPageCount }, (_, i) => i + 1).map((p) => (
+                                <button
+                                  key={p}
+                                  type="button"
+                                  onClick={() => setFilesPage(p)}
+                                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                    p === filesPage
+                                      ? 'bg-slate-900 text-white border-slate-900'
+                                      : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                  }`}
+                                  aria-current={p === filesPage ? 'page' : undefined}
+                                >
+                                  {p}
+                                </button>
+                              ))}
+
+                              <button
+                                type="button"
+                                onClick={() => setFilesPage((p) => Math.min(filesPageCount, p + 1))}
+                                disabled={filesPage >= filesPageCount}
+                                className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                aria-label="Next page"
+                              >
+                                <ChevronRight size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </section>

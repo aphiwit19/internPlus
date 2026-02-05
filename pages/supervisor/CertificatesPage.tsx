@@ -504,16 +504,14 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                               {uploadingId === req.id ? t.uploading : t.upload}
                             </button>
 
-                            {meta.type === 'RECOMMENDATION' ? (
-                              <button
-                                type="button"
-                                onClick={() => openAttachLink(req.id)}
-                                disabled={savingLinkId === req.id}
-                                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
-                              >
-                                Attach Link
-                              </button>
-                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => openAttachLink(req.id)}
+                              disabled={savingLinkId === req.id}
+                              className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              Attach Link
+                            </button>
                           </div>
                         ) : status === 'ISSUED' && req ? (
                           <button
@@ -528,7 +526,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                         ) : null}
                       </div>
 
-                      {pendingLink?.requestId === req?.id && meta.type === 'RECOMMENDATION' ? (
+                      {pendingLink?.requestId === req?.id ? (
                         <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                           <input
                             type="text"

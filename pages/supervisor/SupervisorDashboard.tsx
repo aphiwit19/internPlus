@@ -2111,7 +2111,7 @@ const AssetCard: React.FC<{ fileName: string; date?: string; taskTitle?: string;
        {taskTitle && (
          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
             <span className="text-[8px] font-bold text-slate-300 uppercase truncate max-w-[120px]">{taskTitle}</span>
-            <button className="w-8 h-8 bg-white border border-slate-100 rounded-lg flex items-center justify-center text-slate-400 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm">
+            <button className="w-8 h-8 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm">
                <Download size={14}/>
             </button>
          </div>

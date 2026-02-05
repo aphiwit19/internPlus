@@ -457,8 +457,8 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-2 text-center">
-                  {t.days.map((d) => (
-                    <div key={d} className="text-[10px] font-black text-slate-300 py-2">
+                  {t.days.map((d, i) => (
+                    <div key={`${d}-${i}`} className="text-[10px] font-black text-slate-300 py-2">
                       {d}
                     </div>
                   ))}

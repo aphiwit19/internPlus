@@ -28,6 +28,7 @@ interface CertificateItem {
   fileName?: string;
   storagePath?: string;
   issuedPdfPath?: string;
+  attachmentLink?: string;
 }
 
  type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
@@ -49,6 +50,7 @@ interface CertificateItem {
    fileName?: string;
    storagePath?: string;
    issuedPdfPath?: string;
+   attachmentLinks?: string[];
  };
 
 interface CertificatesPageProps {
@@ -189,6 +191,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
       const latest = byType.get(c.type) ?? null;
       if (!latest) return { ...c, status: 'requestable' as const };
       if (latest.status === 'ISSUED') {
+        const link = Array.isArray(latest.attachmentLinks) ? String(latest.attachmentLinks[0] ?? '') : '';
         return {
           ...c,
           status: 'ready' as const,
@@ -196,6 +199,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
           fileName: latest.fileName,
           storagePath: latest.issuedPdfPath ?? latest.storagePath,
           issuedPdfPath: latest.issuedPdfPath,
+          attachmentLink: link || undefined,
         };
       }
       return {
@@ -249,9 +253,19 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
 
   const handleDownload = async (cert: CertificateItem) => {
     const path = cert.issuedPdfPath ?? cert.storagePath;
-    if (!path) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, path));
-    window.open(url, '_blank');
+    if (path) {
+      const url = await getDownloadURL(storageRef(firebaseStorage, path));
+      window.open(url, '_blank');
+      return;
+    }
+
+    const link = (cert.attachmentLink ?? '').trim();
+    if (link) window.open(link, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleOpenLink = (cert: CertificateItem) => {
+    const link = (cert.attachmentLink ?? '').trim();
+    if (link) window.open(link, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -285,9 +299,33 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
                   <p className="text-slate-500 text-[13px] leading-relaxed mb-8 flex-1">{cert.description}</p>
                   <div className="pt-6 border-t border-slate-50">
                     {cert.status === 'ready' ? (
-                      <button onClick={() => void handleDownload(cert)} className="w-full bg-blue-600 text-white py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm shadow-xl hover:bg-blue-700 active:scale-95">
-                        {t.download}
-                      </button>
+                      <div className="space-y-2">
+                        {cert.issuedPdfPath ?? cert.storagePath ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(cert)}
+                            className="w-full bg-blue-600 text-white py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm shadow-xl hover:bg-blue-700 active:scale-95"
+                          >
+                            {t.download}
+                          </button>
+                        ) : null}
+
+                        {cert.attachmentLink ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenLink(cert)}
+                            className="w-full bg-white border border-slate-200 text-slate-700 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm hover:bg-slate-50 active:scale-95"
+                          >
+                            {lang === 'TH' ? 'เปิดลิ้งค์' : 'Open Link'}
+                          </button>
+                        ) : null}
+
+                        {!((cert.issuedPdfPath ?? cert.storagePath) || cert.attachmentLink) ? (
+                          <div className="w-full bg-slate-50 text-slate-400 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs border border-slate-100 italic">
+                            {lang === 'TH' ? 'ยังไม่มีไฟล์หรือลิ้งค์' : 'No file or link yet'}
+                          </div>
+                        ) : null}
+                      </div>
                     ) : cert.status === 'pending' ? (
                       <div className="w-full bg-slate-50 text-slate-400 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs border border-slate-100 italic"><Clock size={16} className="animate-spin" /> {t.hrReview}</div>
                     ) : (
