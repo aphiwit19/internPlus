@@ -1,5 +1,7 @@
 import { UserProfile } from '@/types';
 
+import { getDefaultAvatarUrl } from './avatar';
+
 const STORAGE_KEY = 'internPlus.auth.profiles';
 
 function getDefaultProfiles(): UserProfile[] {
@@ -33,7 +35,7 @@ function getDefaultProfiles(): UserProfile[] {
       id: 'u-3',
       name: 'HR Admin',
       roles: ['HR_ADMIN'],
-      avatar: 'https://picsum.photos/seed/admin/100/100',
+      avatar: getDefaultAvatarUrl(),
       systemId: 'ADM-001',
       department: 'Operations',
       email: 'admin@internplus.io',
@@ -97,7 +99,7 @@ export function createAuthRepository(): AuthRepository {
         id: 'u-invite-1',
         name: 'New Intern',
         roles: ['INTERN'],
-        avatar: 'https://picsum.photos/seed/intern/100/100',
+        avatar: getDefaultAvatarUrl(),
         systemId: 'USR-NEW',
         studentId: 'STD-NEW',
         department: 'Unknown',

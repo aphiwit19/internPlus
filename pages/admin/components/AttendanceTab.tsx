@@ -5,6 +5,7 @@ import { Building2, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 type UserDoc = {
   name?: string;
@@ -65,7 +66,7 @@ const AttendanceTab: React.FC = () => {
           return {
             id: d.id,
             name: data.name || 'Unknown',
-            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            avatar: normalizeAvatarUrl(data.avatar),
           };
         });
         list.sort((a, b) => a.name.localeCompare(b.name));

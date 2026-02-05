@@ -6,6 +6,7 @@ import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
 
@@ -27,6 +28,7 @@ type CertificateRequestDoc = {
   issuedByRole?: 'SUPERVISOR' | 'HR_ADMIN';
   fileName?: string;
   storagePath?: string;
+  attachmentLinks?: string[];
   templateId?: string;
   issuedPngPath?: string;
   issuedPdfPath?: string;
@@ -89,6 +91,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   const [internsPage, setInternsPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUpload, setPendingUpload] = useState<{ requestId: string } | null>(null);
+  const [pendingLink, setPendingLink] = useState<{ requestId: string } | null>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [savingLinkId, setSavingLinkId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoadError(null);
@@ -139,6 +144,13 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     fileInputRef.current?.click();
   };
 
+  const openAttachLink = (requestId: string) => {
+    setPendingLink({ requestId });
+    const req = requests.find((r) => r.id === requestId);
+    const existing = Array.isArray((req as any)?.attachmentLinks) ? String((req as any).attachmentLinks[0] ?? '') : '';
+    setLinkDraft(existing);
+  };
+
   const handleFileSelected = async (file: File | null) => {
     if (!pendingUpload || !file) return;
 
@@ -177,11 +189,57 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     }
   };
 
+  const handleSaveLink = async () => {
+    if (!pendingLink) return;
+    const requestId = pendingLink.requestId;
+    const req = requests.find((r) => r.id === requestId);
+    if (!req) return;
+
+    if (req.supervisorId !== user.id) {
+      alert(t.missingSupervisor);
+      return;
+    }
+
+    const url = linkDraft.trim();
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      setUploadError(
+        lang === 'TH'
+          ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://'
+          : 'Please enter a link that starts with http:// or https://',
+      );
+      return;
+    }
+
+    setSavingLinkId(requestId);
+    setUploadError(null);
+    try {
+      await updateDoc(doc(firestoreDb, 'certificateRequests', requestId), {
+        status: 'ISSUED',
+        attachmentLinks: [url],
+        issuedAt: serverTimestamp(),
+        issuedById: user.id,
+        issuedByName: user.name,
+        issuedByRole: 'SUPERVISOR',
+      });
+      setPendingLink(null);
+      setLinkDraft('');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save link failed'}`);
+    } finally {
+      setSavingLinkId(null);
+    }
+  };
+
   const handleDownload = async (req: CertificateRequestDoc & { id: string }) => {
     const path = req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath;
-    if (!path) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, path));
-    window.open(url, '_blank');
+    if (path) {
+      const url = await getDownloadURL(storageRef(firebaseStorage, path));
+      window.open(url, '_blank');
+      return;
+    }
+    const link = Array.isArray(req.attachmentLinks) ? String(req.attachmentLinks[0] ?? '') : '';
+    if (link) window.open(link, '_blank', 'noopener,noreferrer');
   };
 
   const templatesByType = useMemo(() => {
@@ -247,7 +305,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
         byIntern[safeInternId] = {
           internId: safeInternId,
           internName: r.internName || 'Unknown',
-          internAvatar: r.internAvatar || `https://picsum.photos/seed/${encodeURIComponent(safeInternId)}/100/100`,
+          internAvatar: normalizeAvatarUrl(r.internAvatar),
           internPosition: r.internPosition,
           internDepartment: r.internDepartment,
           requests: [],
@@ -381,7 +439,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-900 truncate">{meta.label}</p>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                              {req?.fileName ?? (lang === 'TH' ? 'ยังไม่มีคำขอ' : 'No request yet')}
+                              {req?.fileName ?? (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ?? (lang === 'TH' ? 'ยังไม่มีคำขอ' : 'No request yet')}
                             </p>
                           </div>
                         </div>
@@ -441,12 +499,23 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                               {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
                               {uploadingId === req.id ? t.uploading : t.upload}
                             </button>
+
+                            {meta.type === 'RECOMMENDATION' ? (
+                              <button
+                                type="button"
+                                onClick={() => openAttachLink(req.id)}
+                                disabled={savingLinkId === req.id}
+                                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Attach Link
+                              </button>
+                            ) : null}
                           </div>
                         ) : status === 'ISSUED' && req ? (
                           <button
                             type="button"
                             onClick={() => void handleDownload(req)}
-                            disabled={!(req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath)}
+                            disabled={!(req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath) && !(Array.isArray(req.attachmentLinks) && req.attachmentLinks.length > 0)}
                             className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
                             title={t.download}
                           >
@@ -454,6 +523,36 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                           </button>
                         ) : null}
                       </div>
+
+                      {pendingLink?.requestId === req?.id && meta.type === 'RECOMMENDATION' ? (
+                        <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
+                          <input
+                            type="text"
+                            value={linkDraft}
+                            onChange={(e) => setLinkDraft(e.target.value)}
+                            placeholder={lang === 'TH' ? 'วางลิ้งค์ (Drive/URL)' : 'Paste link (Drive/URL)'}
+                            className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveLink()}
+                            disabled={savingLinkId === req.id}
+                            className="px-5 py-3 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingLinkId === req.id ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingLink(null);
+                              setLinkDraft('');
+                            }}
+                            className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

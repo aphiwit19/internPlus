@@ -55,8 +55,10 @@ import {
 } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
 import { Language, PostProgramAccessLevel, UserRole } from '@/types';
+import { useAppContext } from '@/app/AppContext';
+import { firestoreDb, firebaseStorage } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 import { PageId } from '@/pageTypes';
-import { firestoreDb } from '@/firebase';
 import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
@@ -408,7 +410,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           return {
             id: d.id,
             name: data.name || 'Unknown',
-            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            avatar: normalizeAvatarUrl(data.avatar),
             email: data.email,
             withdrawalReason: data.withdrawalReason,
             withdrawalDetail: data.withdrawalDetail,
@@ -435,7 +437,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           return {
             id: d.id,
             name: data.name || 'Unknown',
-            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            avatar: normalizeAvatarUrl(data.avatar),
             email: data.email,
             offboardingTasks: data.offboardingTasks || [],
             offboardingRequestedAt: data.offboardingRequestedAt,
@@ -465,7 +467,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         return {
           id: d.id,
           name: data.name || 'Unknown',
-          avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+          avatar: normalizeAvatarUrl(data.avatar),
           email: data.email,
           withdrawalReason: data.withdrawalReason,
           withdrawalDetail: data.withdrawalDetail,

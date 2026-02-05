@@ -60,11 +60,12 @@ import { AllowanceClaim, CertRequest, InternRecord, Mentor } from './adminDashbo
 import { firestoreDb } from '@/firebase';
 import { firebaseAuth } from '@/firebase';
 import { UserRole } from '@/types';
+import { getDefaultAvatarUrl, normalizeAvatarUrl } from '@/app/avatar';
 
 const MOCK_MENTORS: Mentor[] = [
   { id: 'm-1', name: 'Sarah Connor', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop', dept: 'Design' },
-  { id: 'm-2', name: 'Marcus Miller', avatar: 'https://picsum.photos/seed/marcus/100/100', dept: 'Engineering' },
-  { id: 'm-3', name: 'Emma Watson', avatar: 'https://picsum.photos/seed/emma/100/100', dept: 'Product' },
+  { id: 'm-2', name: 'Marcus Miller', avatar: getDefaultAvatarUrl(), dept: 'Engineering' },
+  { id: 'm-3', name: 'Emma Watson', avatar: getDefaultAvatarUrl(), dept: 'Product' },
 ];
 
 type MentorOption = Mentor & {
@@ -110,7 +111,7 @@ function toInternRecord(id: string, data: UserDoc): InternRecord {
   return {
     id,
     name: data.name || 'Unknown',
-    avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
+    avatar: normalizeAvatarUrl(data.avatar),
     position: data.position || 'Intern',
     dept: data.department || 'Unknown',
     status,
@@ -173,7 +174,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   // Mock Data
   const [certRequests, setCertRequests] = useState<CertRequest[]>([
     { id: 'cr-1', internName: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', type: 'Completion', date: 'Nov 18, 2024', status: 'ISSUED' },
-    { id: 'cr-2', internName: 'James Wilson', avatar: 'https://picsum.photos/seed/james/100/100', type: 'Recommendation', date: 'Nov 17, 2024', status: 'PENDING' },
+    { id: 'cr-2', internName: 'James Wilson', avatar: getDefaultAvatarUrl(), type: 'Recommendation', date: 'Nov 17, 2024', status: 'PENDING' },
   ]);
 
   const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([]);
@@ -690,7 +691,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             const supervisorRecord = {
               id: docSnap.id,
               name: data.name || 'Unknown',
-              avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(docSnap.id)}/100/100`,
+              avatar: normalizeAvatarUrl(data.avatar),
               assignedInterns: Array.isArray(data.assignedInterns) ? data.assignedInterns : [],
             };
 
@@ -700,7 +701,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             nextMentors.push({
               id: docSnap.id,
               name: data.name || 'Unknown',
-              avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(docSnap.id)}/100/100`,
+              avatar: normalizeAvatarUrl(data.avatar),
               dept: data.department || 'Unknown',
               position: data.position || 'Supervisor',
               isCoAdmin: roles.includes('HR_ADMIN'),

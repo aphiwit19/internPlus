@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { firestoreDb } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 import { PostProgramAccessLevel } from '@/types';
 import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 
@@ -78,7 +79,7 @@ const WithdrawnOffboardingUsersPage: React.FC<WithdrawnOffboardingUsersPageProps
           return {
             id: d.id,
             name: data.name || 'Unknown',
-            avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+            avatar: normalizeAvatarUrl(data.avatar),
             email: data.email,
             postProgramAccessLevel: data.postProgramAccessLevel,
             postProgramRetentionPeriod: data.postProgramRetentionPeriod,

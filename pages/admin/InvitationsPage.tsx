@@ -19,6 +19,7 @@ import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, wh
 import { firestoreDb, secondaryAuth } from '@/firebase';
 
 import { useAppContext } from '@/app/AppContext';
+import { getDefaultAvatarUrl } from '@/app/avatar';
 
 const InvitationsPage: React.FC = () => {
   const { user } = useAppContext();
@@ -50,10 +51,6 @@ const InvitationsPage: React.FC = () => {
   const buildSystemId = (uid: string): string => {
     const short = uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
     return `USR-${short || 'USER'}`;
-  };
-
-  const randomAvatar = (seed: string): string => {
-    return `https://picsum.photos/seed/${encodeURIComponent(seed)}/100/100`;
   };
 
   const normalizeUniqueList = (values: string[]) => {
@@ -232,11 +229,12 @@ const InvitationsPage: React.FC = () => {
       const profileDoc: Record<string, unknown> = {
         name,
         roles,
-        avatar: randomAvatar(uid),
+        avatar: getDefaultAvatarUrl(),
         systemId: buildSystemId(uid),
         email,
         phone: '',
-        position: inviteRole === 'SUPERVISOR' ? 'Supervisor' : 'Intern',
+        lineId: '',
+        position: inviteRole === 'INTERN' ? 'Intern' : inviteRole === 'SUPERVISOR' ? 'Supervisor' : 'Admin',
         isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN'),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
