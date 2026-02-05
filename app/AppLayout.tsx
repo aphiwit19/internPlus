@@ -651,7 +651,10 @@ export default function AppLayout() {
           setNewInternManagementCount(count);
         };
 
-        const internIds = snap.docs.map((d) => d.id).filter(Boolean);
+        const internIds = snap.docs
+          .filter((d) => (d.data() as any)?.hasLoggedIn !== false)
+          .map((d) => d.id)
+          .filter(Boolean);
         internIds.forEach((internId) => {
           flagsByIntern.set(internId, { feedback: false, handoffAssigned: false, handoffPersonal: false });
 

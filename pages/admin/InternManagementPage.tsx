@@ -213,7 +213,7 @@ const InternManagementPage: React.FC = () => {
       q,
       (snap) => {
         setInternsLoadError(null);
-        const list = snap.docs.map((d) => {
+        const list = snap.docs.flatMap((d) => {
         const data = d.data() as {
           name?: string;
           avatar?: string;
@@ -222,6 +222,7 @@ const InternManagementPage: React.FC = () => {
           department?: string;
           email?: string;
           lifecycleStatus?: string;
+          hasLoggedIn?: boolean;
           performance?: Partial<PerformanceMetrics>;
           adminSummary?: string;
           selfPerformance?: Partial<PerformanceMetrics>;
@@ -229,6 +230,8 @@ const InternManagementPage: React.FC = () => {
           supervisorPerformance?: Partial<PerformanceMetrics>;
           supervisorSummary?: string;
         };
+
+        if (data.hasLoggedIn === false) return [];
 
         // Map lifecycleStatus to display status
         let status: AdminInternDetail['status'] = 'Active';

@@ -765,8 +765,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   useEffect(() => {
     const assignedQ = query(collection(firestoreDb, 'users'), where('supervisorId', '==', user.id));
     const unsubAssigned = onSnapshot(assignedQ, (snap) => {
-      setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
-      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+      const docs = snap.docs.filter((d) => (d.data() as any)?.hasLoggedIn !== false);
+      setInterns(docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+      setAllInterns(docs.map((d) => mapUserToInternDetail(d.id, d.data())));
     });
     return () => {
       unsubAssigned();

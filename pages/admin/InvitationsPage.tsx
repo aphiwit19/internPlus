@@ -236,6 +236,8 @@ const InvitationsPage: React.FC = () => {
         lineId: '',
         position: inviteRole === 'INTERN' ? 'Intern' : inviteRole === 'SUPERVISOR' ? 'Supervisor' : 'Admin',
         isDualRole: roles.includes('SUPERVISOR') && roles.includes('HR_ADMIN'),
+        hasLoggedIn: false,
+        invitedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };

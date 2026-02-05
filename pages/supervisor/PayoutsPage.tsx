@@ -101,7 +101,11 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           query(collection(firestoreDb, 'users'), where('supervisorId', '==', user.id)),
         );
         const nextIds: string[] = [];
-        snap.forEach((d) => nextIds.push(d.id));
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          if (data?.hasLoggedIn === false) return;
+          nextIds.push(d.id);
+        });
         if (!cancelled) setAssignedInternIds(nextIds);
       } catch {
         if (!cancelled) setAssignedInternIds([]);

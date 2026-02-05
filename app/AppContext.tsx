@@ -2,8 +2,10 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { Language, UserProfile, UserRole } from '@/types';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { firebaseAuth } from '@/firebase';
+import { firestoreDb } from '@/firebase';
 import { createUserProfileIfMissing, getUserProfileByUid, subscribeUserProfileByUid } from './firestoreUserRepository';
 
 interface AppContextValue {
@@ -87,6 +89,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         let profile = await getUserProfileByUid(uid);
         if (!profile) profile = await createUserProfileIfMissing({ uid, email, name });
+
+        if (profile.hasLoggedIn === false) {
+          try {
+            await updateDoc(doc(firestoreDb, 'users', uid), {
+              hasLoggedIn: true,
+              firstLoginAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } catch {
+            // ignore
+          }
+        }
 
         setUserState(profile);
         if (typeof window !== 'undefined') {

@@ -11,6 +11,7 @@ type UserDoc = {
   name?: string;
   avatar?: string;
   roles?: string[];
+  hasLoggedIn?: boolean;
 };
 
 type AttendanceDoc = {
@@ -61,8 +62,9 @@ const AttendanceTab: React.FC = () => {
     return onSnapshot(
       q,
       (snap) => {
-        const list = snap.docs.map((d) => {
+        const list = snap.docs.flatMap((d) => {
           const data = d.data() as UserDoc;
+          if (data.hasLoggedIn === false) return [];
           return {
             id: d.id,
             name: data.name || 'Unknown',

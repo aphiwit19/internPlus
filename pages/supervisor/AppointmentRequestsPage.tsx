@@ -234,7 +234,15 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
       (snap) => {
         const map: Record<string, InternContact> = {};
         snap.docs.forEach((d) => {
-          const data = d.data() as Partial<InternContact> & { email?: string; phone?: string; position?: string; department?: string };
+          const data = d.data() as Partial<InternContact> & {
+            email?: string;
+            phone?: string;
+            position?: string;
+            department?: string;
+            hasLoggedIn?: boolean;
+          };
+
+          if (data.hasLoggedIn === false) return;
           map[d.id] = {
             id: d.id,
             email: typeof data.email === 'string' ? data.email : undefined,
