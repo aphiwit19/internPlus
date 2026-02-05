@@ -1,13 +1,56 @@
 import React from 'react';
 import { Camera, Mail, GraduationCap, Phone, MapPin } from 'lucide-react';
 import { UserProfile, Language } from '@/types';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 
 interface ProfileCardProps {
   user: UserProfile;
   lang: Language;
+  enableAvatarUpload?: boolean;
 }
 
-const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang }) => {
+const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUpload }) => {
+  const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
+  const [avatarUploadError, setAvatarUploadError] = React.useState<string | null>(null);
+
+  const handleAvatarSelected = async (file: File | null) => {
+    if (!enableAvatarUpload || !file) return;
+
+    setAvatarUploadError(null);
+
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      setAvatarUploadError(lang === 'TH' ? 'กรุณาเลือกไฟล์รูปภาพเท่านั้น' : 'Please select an image file.');
+      return;
+    }
+
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      setAvatarUploadError(lang === 'TH' ? 'ไฟล์รูปต้องมีขนาดไม่เกิน 5MB' : 'Image must be 5MB or smaller.');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `avatars/${user.id}/${Date.now()}_${safeName}`;
+      const ref = storageRef(firebaseStorage, path);
+      await uploadBytes(ref, file);
+      const url = await getDownloadURL(ref);
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        avatar: url,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const t = {
     EN: {
       position: 'Current Position',
@@ -29,6 +72,22 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang }) => {
 
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col items-center relative h-full transition-all group">
+      {enableAvatarUpload ? (
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          id={`profile-card-avatar-upload-${user.id}`}
+          onChange={(e) => void handleAvatarSelected(e.target.files?.[0] ?? null)}
+        />
+      ) : null}
+
+      {avatarUploadError ? (
+        <div className="w-full mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+          {avatarUploadError}
+        </div>
+      ) : null}
+
       {/* Profile Image with Camera overlay */}
       <div className="relative mb-8">
         <div className="w-36 h-36 rounded-[3.5rem] overflow-hidden ring-8 ring-slate-50 shadow-2xl transition-transform group-hover:scale-[1.02] duration-500">
@@ -38,7 +97,16 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang }) => {
             className="w-full h-full object-cover"
           />
         </div>
-        <button className="absolute bottom-1 right-1 bg-blue-600 text-white p-3 rounded-2xl shadow-xl border-4 border-white hover:bg-blue-700 transition-all hover:rotate-12">
+        <button
+          type="button"
+          disabled={!enableAvatarUpload || isUploadingAvatar}
+          onClick={() => {
+            if (!enableAvatarUpload) return;
+            const input = document.getElementById(`profile-card-avatar-upload-${user.id}`) as HTMLInputElement | null;
+            if (input) input.click();
+          }}
+          className="absolute bottom-1 right-1 bg-blue-600 text-white p-3 rounded-2xl shadow-xl border-4 border-white hover:bg-blue-700 transition-all hover:rotate-12 disabled:opacity-50"
+        >
           <Camera size={18} />
         </button>
       </div>

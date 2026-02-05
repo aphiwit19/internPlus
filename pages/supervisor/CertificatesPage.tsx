@@ -6,6 +6,7 @@ import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 type CertificateRequestStatus = 'REQUESTED' | 'ISSUED';
 
@@ -304,7 +305,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
         byIntern[safeInternId] = {
           internId: safeInternId,
           internName: r.internName || 'Unknown',
-          internAvatar: r.internAvatar || `https://picsum.photos/seed/${encodeURIComponent(safeInternId)}/100/100`,
+          internAvatar: normalizeAvatarUrl(r.internAvatar),
           internPosition: r.internPosition,
           internDepartment: r.internDepartment,
           requests: [],

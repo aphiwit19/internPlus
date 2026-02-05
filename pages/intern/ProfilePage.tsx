@@ -30,11 +30,12 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { UserProfile, Supervisor, DocumentStatus, Language } from '@/types';
 import SupervisorCard from '@/components/SupervisorCard';
 import { useAppContext } from '@/app/AppContext';
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 import { getUserProfileByUid } from '@/app/firestoreUserRepository';
 import { pageIdToPath } from '@/app/routeUtils';
 
@@ -62,6 +63,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
   const navigate = useNavigate();
   const [docList, setDocList] = useState<DocumentStatus[]>(INITIAL_DOCUMENTS);
   const [summary] = useState(`Dedicated Junior UI/UX Designer with a focus on creating intuitive digital experiences. Currently undergoing intensive training in the Product Design department at internPlus, focusing on user-centered methodologies and scalable design systems.`);
+
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
 
   const [extra, setExtra] = useState<InternProfileExtraDoc>({});
   const [supervisorProfile, setSupervisorProfile] = useState<UserProfile | null>(null);
@@ -200,10 +204,53 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
     setIsEditing(false);
   };
 
+  const handleAvatarSelected = async (file: File | null) => {
+    if (!user || !file) return;
+
+    setAvatarUploadError(null);
+
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      setAvatarUploadError(lang === 'TH' ? 'กรุณาเลือกไฟล์รูปภาพเท่านั้น' : 'Please select an image file.');
+      return;
+    }
+
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      setAvatarUploadError(lang === 'TH' ? 'ไฟล์รูปต้องมีขนาดไม่เกิน 5MB' : 'Image must be 5MB or smaller.');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `avatars/${user.id}/${Date.now()}_${safeName}`;
+      const ref = storageRef(firebaseStorage, path);
+      await uploadBytes(ref, file);
+      const url = await getDownloadURL(ref);
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        avatar: url,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
     <div className="h-full w-full flex flex-col p-4 md:p-6 lg:p-10 bg-[#F8FAFC]">
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        id="intern-avatar-upload"
+        onChange={(e) => void handleAvatarSelected(e.target.files?.[0] ?? null)}
+      />
       {isEditing && (
         <EditProfileModal
           lang={lang}
@@ -213,6 +260,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
           onSave={() => void handleSaveProfile()}
         />
       )}
+
+      {avatarUploadError ? (
+        <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
+          {avatarUploadError}
+        </div>
+      ) : null}
       
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
@@ -232,7 +285,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                   <div className="w-40 h-40 rounded-[4rem] overflow-hidden ring-8 ring-slate-50 shadow-xl">
                      <img src={user.avatar} className="w-full h-full object-cover" alt="" />
                   </div>
-                  <button className="absolute bottom-2 right-2 p-3 bg-blue-600 text-white rounded-2xl border-4 border-white shadow-lg hover:bg-blue-700 transition-all">
+                  <button
+                    type="button"
+                    disabled={isUploadingAvatar}
+                    onClick={() => {
+                      const input = document.getElementById('intern-avatar-upload') as HTMLInputElement | null;
+                      if (input) input.click();
+                    }}
+                    className="absolute bottom-2 right-2 p-3 bg-blue-600 text-white rounded-2xl border-4 border-white shadow-lg hover:bg-blue-700 transition-all disabled:opacity-50"
+                  >
                      <Camera size={18} />
                   </button>
                </div>

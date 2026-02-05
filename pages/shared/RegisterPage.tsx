@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getDefaultAvatarUrl } from '@/app/avatar';
 
 interface RegisterPageProps {
   isLoading?: boolean;
@@ -65,8 +65,8 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
           
           <div className="flex items-center gap-6 mt-12 pt-12 border-t border-white/5">
              <div className="flex -space-x-3">
-               {[1,2,3,4].map(i => (
-                 <img key={i} src={`https://picsum.photos/seed/user-${i}/100/100`} className="w-10 h-10 rounded-full border-2 border-slate-900 object-cover" alt="" />
+               {[1,2,3,4].map((i) => (
+                 <img key={i} src={getDefaultAvatarUrl()} className="w-10 h-10 rounded-full border-2 border-slate-900 object-cover" alt="" />
                ))}
                <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-900 flex items-center justify-center text-[10px] font-black text-slate-400">+500</div>
              </div>

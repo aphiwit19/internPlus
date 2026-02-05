@@ -3,9 +3,7 @@ import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/fires
 
 import { firestoreDb } from '@/firebase';
 
-function randomAvatar(seed: string): string {
-  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/100/100`;
-}
+import { getDefaultAvatarUrl, normalizeAvatarUrl } from './avatar';
 
 function buildSystemId(uid: string): string {
   const short = uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
@@ -43,7 +41,7 @@ export async function getUserProfileByUid(uid: string): Promise<UserProfile | nu
     id: uid,
     name: data.name,
     roles,
-    avatar: data.avatar,
+    avatar: normalizeAvatarUrl(data.avatar),
     systemId: data.systemId,
     studentId: data.studentId,
     department: data.department,
@@ -87,7 +85,7 @@ export function subscribeUserProfileByUid(
         id: uid,
         name: data.name,
         roles,
-        avatar: data.avatar,
+        avatar: normalizeAvatarUrl(data.avatar),
         systemId: data.systemId,
         studentId: data.studentId,
         department: data.department,
@@ -140,7 +138,7 @@ export async function createUserProfileIfMissing(input: CreateUserProfileInput):
   const docData: UserProfileDoc = {
     name,
     roles,
-    avatar: randomAvatar(uid),
+    avatar: getDefaultAvatarUrl(),
     systemId: buildSystemId(uid),
     studentId: '',
     department: 'Unknown',

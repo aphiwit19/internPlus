@@ -48,6 +48,16 @@ service firebase.storage {
       allow write: if isHrAdmin() || isSupervisorOf(internId);
     }
 
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if
+        signedIn() &&
+        (request.auth.uid == userId || isHrAdmin()) &&
+        request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
     match /universityEvaluations/{internId}/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
       allow write: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));

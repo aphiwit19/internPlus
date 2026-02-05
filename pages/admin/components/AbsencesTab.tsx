@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { CheckCircle2, UserX } from 'lucide-react';
+import { getDefaultAvatarUrl } from '@/app/avatar';
 
 const AbsencesTab: React.FC = () => {
   return (
@@ -17,7 +18,7 @@ const AbsencesTab: React.FC = () => {
           <div className="p-8 bg-rose-50 border border-rose-100 rounded-[2.5rem] flex items-center justify-between group hover:shadow-xl transition-all">
             <div className="flex items-center gap-6">
               <div className="relative">
-                <img src="https://picsum.photos/seed/james/100/100" className="w-16 h-16 rounded-[1.25rem] object-cover ring-4 ring-white" alt="" />
+                <img src={getDefaultAvatarUrl()} className="w-16 h-16 rounded-[1.25rem] object-cover ring-4 ring-white" alt="" />
                 <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-rose-500 text-white rounded-full border-2 border-white flex items-center justify-center">
                   <UserX size={12} strokeWidth={3} />
                 </div>

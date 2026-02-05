@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { PerformanceMetrics, SubTask, TaskAttachment } from '@/types';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { pageIdToPath } from '@/app/routeUtils';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 import InternListSection from '@/pages/supervisor/components/InternListSection';
 import InternDeepDiveLayout, { SupervisorDeepDiveTab } from '@/pages/supervisor/components/InternDeepDiveLayout';
@@ -270,7 +271,7 @@ const InternManagementPage: React.FC = () => {
         return {
           id: d.id,
           name: data.name || 'Unknown',
-          avatar: data.avatar || `https://picsum.photos/seed/${encodeURIComponent(d.id)}/100/100`,
+          avatar: normalizeAvatarUrl(data.avatar),
           position: data.position || 'Intern',
           internPeriod: data.internPeriod || 'TBD',
           department: data.department || 'Unknown',

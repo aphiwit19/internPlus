@@ -72,6 +72,7 @@ import TasksTab from '@/pages/supervisor/components/TasksTab';
 import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
 import AssignmentsTab from '@/pages/admin/components/AssignmentsTab';
 import { firestoreDb, firebaseStorage } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 interface InternDetail {
   id: string;
@@ -638,7 +639,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       return {
         id,
         name: data?.name || 'Unknown',
-        avatar: data?.avatar || `https://picsum.photos/seed/${encodeURIComponent(id)}/100/100`,
+        avatar: normalizeAvatarUrl(data?.avatar),
         position: data?.position || 'Intern',
         internPeriod: data?.internPeriod || 'TBD',
         supervisorId: typeof data?.supervisorId === 'string' ? data.supervisorId : undefined,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { MapPin, Menu } from 'lucide-react';
 import { Language } from '@/types';
+import { getDefaultAvatarUrl } from '@/app/avatar';
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -49,7 +50,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle }) => 
               </div>
             </div>
             <img 
-              src="https://picsum.photos/seed/vanness/100/100" 
+              src={getDefaultAvatarUrl()} 
               alt="Admin" 
               className="w-9 h-9 rounded-[0.75rem] object-cover ring-2 ring-slate-100 group-hover:ring-blue-100 transition-all shadow-sm"
             />

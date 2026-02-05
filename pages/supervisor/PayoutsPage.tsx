@@ -14,6 +14,7 @@ import {
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 import AllowancesTab from '@/pages/admin/components/AllowancesTab';
 import { AllowanceClaim } from '@/pages/admin/adminDashboardTypes';
@@ -195,7 +196,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               id: d.id,
               internId,
               internName: typeof raw?.internName === 'string' ? raw.internName : 'Unknown',
-              avatar: typeof raw?.avatar === 'string' ? raw.avatar : `https://picsum.photos/seed/${encodeURIComponent(internId)}/100/100`,
+              avatar: normalizeAvatarUrl(raw?.avatar),
               bankName: bank?.bankName,
               bankAccountNumber: bank?.bankAccountNumber,
               monthKey: typeof raw?.monthKey === 'string' ? raw.monthKey : selectedMonthKey,
