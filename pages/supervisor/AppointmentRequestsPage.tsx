@@ -319,6 +319,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         'appointmentRequest.updatedAt': serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      setEditingId(null);
+      setExpandedId((prev) => (prev === id ? null : prev));
     } finally {
       setSavingId(null);
     }

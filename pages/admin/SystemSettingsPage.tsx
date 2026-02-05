@@ -158,6 +158,14 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [newStepTargetPage, setNewStepTargetPage] = useState<PageId | undefined>(undefined);
   const [newStepExternalUrl, setNewStepExternalUrl] = useState('');
 
+  const [dialog, setDialog] = useState<{
+    open: boolean;
+    mode: 'alert' | 'confirm';
+    title?: string;
+    message: string;
+  } | null>(null);
+  const dialogResolveRef = useRef<((v: boolean) => void) | null>(null);
+
   const t = {
     EN: {
       title: "System Settings",
@@ -606,12 +614,32 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     });
   };
 
-  const handleCancelWithdrawnEdit = (userId: string) => {
-    if (
-      withdrawnDirty[userId] === true &&
-      !window.confirm(lang === 'EN' ? 'Discard unsaved changes?' : 'ยกเลิกการเปลี่ยนแปลงที่ยังไม่บันทึกใช่ไหม?')
-    )
-      return;
+  const openAlert = (message: string, title?: string) => {
+    setDialog({ open: true, mode: 'alert', title, message });
+  };
+
+  const openConfirm = (message: string, title?: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      dialogResolveRef.current = resolve;
+      setDialog({ open: true, mode: 'confirm', title, message });
+    });
+  };
+
+  const closeDialog = (result: boolean) => {
+    const r = dialogResolveRef.current;
+    dialogResolveRef.current = null;
+    setDialog(null);
+    if (r) r(result);
+  };
+
+  const handleCancelWithdrawnEdit = async (userId: string) => {
+    if (withdrawnDirty[userId] === true) {
+      const ok = await openConfirm(
+        lang === 'EN' ? 'Discard unsaved changes?' : 'ยกเลิกการเปลี่ยนแปลงที่ยังไม่บันทึกใช่ไหม?',
+        lang === 'EN' ? 'Confirm' : 'ยืนยัน',
+      );
+      if (!ok) return;
+    }
     setWithdrawnAccessOverrides((prev) => {
       if (!prev[userId]) return prev;
       const next = { ...prev };
@@ -631,7 +659,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     const u = withdrawnUsers.find((x) => x.id === userId);
     if (!u) return;
 
-    if (!window.confirm(lang === 'EN' ? 'Save changes?' : 'บันทึกการเปลี่ยนแปลงใช่ไหม?')) return;
+    const ok = await openConfirm(lang === 'EN' ? 'Save changes?' : 'บันทึกการเปลี่ยนแปลงใช่ไหม?', lang === 'EN' ? 'Confirm' : 'ยืนยัน');
+    if (!ok) return;
 
     const nextLevel = withdrawnAccessOverrides[userId] ?? u.postProgramAccessLevel;
     const nextRetention = withdrawnRetentionOverrides[userId] ?? u.postProgramRetentionPeriod;
@@ -644,12 +673,16 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       });
       setWithdrawnDirty((prev) => ({ ...prev, [userId]: false }));
     } catch {
-      alert(lang === 'EN' ? 'Failed to save changes.' : 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+      openAlert(lang === 'EN' ? 'Failed to save changes.' : 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
     }
   };
 
   const handleRestoreWithdrawnImmediate = async (userId: string) => {
-    if (!window.confirm(lang === 'EN' ? 'Restore this user to ACTIVE?' : 'ต้องการคืนสถานะผู้ใช้นี้เป็น ACTIVE ใช่ไหม?')) return;
+    const ok = await openConfirm(
+      lang === 'EN' ? 'Restore this user to ACTIVE?' : 'ต้องการคืนสถานะผู้ใช้นี้เป็น ACTIVE ใช่ไหม?',
+      lang === 'EN' ? 'Confirm' : 'ยืนยัน',
+    );
+    if (!ok) return;
 
     try {
       await updateDoc(doc(firestoreDb, 'users', userId), {
@@ -663,7 +696,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       });
       handleCancelWithdrawnEdit(userId);
     } catch {
-      alert(lang === 'EN' ? 'Failed to restore user.' : 'ไม่สามารถคืนสถานะผู้ใช้ได้');
+      openAlert(lang === 'EN' ? 'Failed to restore user.' : 'ไม่สามารถคืนสถานะผู้ใช้ได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
     }
   };
 
@@ -815,16 +848,20 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       setPayPeriodError(null);
     } catch (err) {
       console.error(err);
-      alert(lang === 'EN' ? 'Failed to save settings.' : 'ไม่สามารถบันทึกการตั้งค่าได้');
+      openAlert(lang === 'EN' ? 'Failed to save settings.' : 'ไม่สามารถบันทึกการตั้งค่าได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleReset = () => {
-    if (window.confirm(lang === 'EN' ? 'Are you sure you want to reset all settings to default?' : 'คุณแน่ใจหรือไม่ว่าต้องการล้างการตั้งค่าทั้งหมดเป็นค่าเริ่มต้น?')) {
-      setOnboardingSteps(DEFAULT_ONBOARDING_STEPS);
-    }
+  const handleReset = async () => {
+    const ok = await openConfirm(
+      lang === 'EN'
+        ? 'Are you sure you want to reset all settings to default?'
+        : 'คุณแน่ใจหรือไม่ว่าต้องการล้างการตั้งค่าทั้งหมดเป็นค่าเริ่มต้น?',
+      lang === 'EN' ? 'Confirm' : 'ยืนยัน',
+    );
+    if (ok) setOnboardingSteps(DEFAULT_ONBOARDING_STEPS);
   };
 
   const handleToggleStep = (id: string) => {
@@ -838,15 +875,15 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const handleCreateNewStep = () => {
     const title = newStepTitle.trim();
     if (!title) {
-      alert(lang === 'EN' ? 'Please enter Step Title.' : 'กรุณากรอกชื่อขั้นตอน');
+      openAlert(lang === 'EN' ? 'Please enter Step Title.' : 'กรุณากรอกชื่อขั้นตอน', lang === 'EN' ? 'Missing information' : 'ข้อมูลไม่ครบ');
       return;
     }
     if (newStepType === 'EXTERNAL_URL' && !newStepExternalUrl.trim()) {
-      alert(lang === 'EN' ? 'Please enter External URL.' : 'กรุณากรอกลิงก์ภายนอก');
+      openAlert(lang === 'EN' ? 'Please enter External URL.' : 'กรุณากรอกลิงก์ภายนอก', lang === 'EN' ? 'Missing information' : 'ข้อมูลไม่ครบ');
       return;
     }
     if (newStepType !== 'EXTERNAL_URL' && !newStepTargetPage) {
-      alert(lang === 'EN' ? 'Please select Target Module.' : 'กรุณาเลือกโมดูลเป้าหมาย');
+      openAlert(lang === 'EN' ? 'Please select Target Module.' : 'กรุณาเลือกโมดูลเป้าหมาย', lang === 'EN' ? 'Missing information' : 'ข้อมูลไม่ครบ');
       return;
     }
 
@@ -909,6 +946,49 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
       <div className="max-w-[1700px] mx-auto w-full flex flex-col h-full">
+        {dialog?.open ? (
+          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white w-full sm:max-w-lg sm:rounded-[2rem] overflow-hidden shadow-2xl border border-slate-100">
+              <div className="p-6 sm:p-7 border-b border-slate-100 bg-slate-50/50 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center flex-shrink-0">
+                  <AlertCircle size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black text-slate-900 truncate">
+                    {dialog.title ?? (lang === 'EN' ? 'Notification' : 'แจ้งเตือน')}
+                  </div>
+                  <div className="mt-2 text-sm font-bold text-slate-600 whitespace-pre-wrap break-words">{dialog.message}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => closeDialog(false)}
+                  className="p-2 rounded-2xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                  aria-label={lang === 'EN' ? 'Close' : 'ปิด'}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 sm:p-7 flex items-center justify-end gap-3">
+                {dialog.mode === 'confirm' ? (
+                  <button
+                    type="button"
+                    onClick={() => closeDialog(false)}
+                    className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                  >
+                    {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => closeDialog(true)}
+                  className="px-7 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
+                >
+                  {lang === 'EN' ? 'OK' : 'ตกลง'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">

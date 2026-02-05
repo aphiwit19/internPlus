@@ -59,9 +59,11 @@ const InternListSection: React.FC<InternListSectionProps> = ({
 
   const filteredInterns = useMemo(() => {
     return interns.filter((intern) => {
-      const matchesSearch =
-        intern.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        intern.position.toLowerCase().includes(searchQuery.toLowerCase());
+      const normalize = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ');
+      const query = normalize(searchQuery);
+      const tokens = query ? query.split(' ').filter(Boolean) : [];
+      const name = normalize(intern.name);
+      const matchesSearch = tokens.length === 0 ? true : tokens.every((t) => name.includes(t));
       const matchesStatus = statusFilter === 'all' || intern.status === statusFilter;
       return matchesSearch && matchesStatus;
     });

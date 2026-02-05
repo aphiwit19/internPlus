@@ -143,6 +143,9 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [downloadAllError, setDownloadAllError] = useState<string | null>(null);
 
+  const [assetCountByTopicId, setAssetCountByTopicId] = useState<Record<string, number>>({});
+  const [isLoadingAssetCounts, setIsLoadingAssetCounts] = useState(false);
+
   const [selectedAssets, setSelectedAssets] = useState<Array<PolicyAsset & { id: string }>>([]);
   const [isLoadingSelectedAssets, setIsLoadingSelectedAssets] = useState(false);
 
@@ -166,6 +169,40 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
     })();
   };
 
+  useEffect(() => {
+    if (trainingItems.length === 0) {
+      setAssetCountByTopicId({});
+      return;
+    }
+
+    let alive = true;
+    setIsLoadingAssetCounts(true);
+    void (async () => {
+      try {
+        const entries = await Promise.all(
+          trainingItems.map(async (it) => {
+            try {
+              const snap = await getDocs(collection(firestoreDb, 'policyTrainingContents', it.id, 'assets'));
+              return [it.id, snap.size] as const;
+            } catch {
+              return [it.id, 0] as const;
+            }
+          }),
+        );
+        if (!alive) return;
+        const next: Record<string, number> = {};
+        for (const [id, count] of entries) next[id] = count;
+        setAssetCountByTopicId(next);
+      } finally {
+        if (alive) setIsLoadingAssetCounts(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [trainingItems]);
+
   const triggerDownload = (url: string, filename?: string) => {
     const a = document.createElement('a');
     a.href = url;
@@ -175,6 +212,43 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
     document.body.appendChild(a);
     a.click();
     a.remove();
+  };
+
+  const handleDownloadTopic = async (item: TrainingItem) => {
+    setDownloadAllError(null);
+    setIsDownloadingAll(true);
+    try {
+      const urlsToDownload: Array<{ url: string; filename?: string }> = [];
+      const urlsToOpen: string[] = [];
+
+      if (item.videoMode === 'LINK' && item.videoUrl) {
+        urlsToOpen.push(item.videoUrl);
+      }
+      if (item.videoMode === 'UPLOAD' && item.videoStoragePath) {
+        const url = await getDownloadURL(storageRef(firebaseStorage, item.videoStoragePath));
+        urlsToDownload.push({ url, filename: item.videoFileName ?? `${item.title}.mp4` });
+      }
+
+      const assetsSnap = await getDocs(collection(firestoreDb, 'policyTrainingContents', item.id, 'assets'));
+      for (const d of assetsSnap.docs) {
+        const a = d.data() as PolicyAsset;
+        if (!a?.storagePath) continue;
+        const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+        urlsToDownload.push({ url, filename: a.fileName });
+      }
+
+      for (const entry of urlsToDownload) {
+        triggerDownload(entry.url, entry.filename);
+      }
+      for (const u of urlsToOpen) {
+        window.open(u, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? (lang === 'TH' ? 'ดาวน์โหลดไม่สำเร็จ' : 'Download failed')}`);
+    } finally {
+      setIsDownloadingAll(false);
+    }
   };
 
   const handleDownloadAll = async () => {
@@ -359,12 +433,12 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
   const isCurrentDocSigned = selectedItem && signedDocs.has(selectedItem.id);
 
   return (
-    <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
+    <div className="h-full w-full flex flex-col bg-slate-50 overflow-y-auto overscroll-contain relative p-4 md:p-8 lg:p-10">
       <div className="max-w-6xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8 md:mb-10">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-            <p className="text-slate-500 text-xs md:text-sm mt-1">{t.subtitle}</p>
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">{t.title}</h1>
+            <p className="text-slate-500 text-sm md:text-base font-medium mt-2">{t.subtitle}</p>
           </div>
           <button
             onClick={() => void handleDownloadAll()}
@@ -389,6 +463,29 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
               onClick={() => handleOpenDoc(item)}
               className="group bg-white rounded-3xl p-4 md:p-5 border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col relative"
             >
+              {(() => {
+                const hasVideo = item.videoMode && item.videoMode !== 'NONE';
+                const assetCount = assetCountByTopicId[item.id] ?? 0;
+                const hasAssets = assetCount > 0;
+                const showDownload = hasVideo || hasAssets;
+                if (!showDownload) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDownloadTopic(item);
+                    }}
+                    disabled={isDownloadingAll || isLoadingAssetCounts}
+                    className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur border border-slate-200 text-slate-700 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-white hover:border-slate-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                    title={lang === 'TH' ? 'ดาวน์โหลดไฟล์ในหัวข้อนี้' : 'Download this topic'}
+                  >
+                    <Download size={14} />
+                    {lang === 'TH' ? 'ดาวน์โหลด' : 'Download'}
+                  </button>
+                );
+              })()}
+
               {signedDocs.has(item.id) && (
                 <div className="absolute top-4 right-4 z-10 bg-emerald-500 text-white p-1 rounded-full border-2 border-white shadow-sm">
                   <CheckCircle2 size={12} strokeWidth={3} />

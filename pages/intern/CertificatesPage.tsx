@@ -185,13 +185,13 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
       if (!byType.has(r.type)) byType.set(r.type, r);
     }
 
-    return certs.map((c) => {
+    return certs.map<CertificateItem>((c) => {
       const latest = byType.get(c.type) ?? null;
-      if (!latest) return { ...c, status: 'requestable' };
+      if (!latest) return { ...c, status: 'requestable' as const };
       if (latest.status === 'ISSUED') {
         return {
           ...c,
-          status: 'ready',
+          status: 'ready' as const,
           requestId: latest.id,
           fileName: latest.fileName,
           storagePath: latest.issuedPdfPath ?? latest.storagePath,
@@ -200,7 +200,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
       }
       return {
         ...c,
-        status: 'pending',
+        status: 'pending' as const,
         requestId: latest.id,
       };
     });
@@ -320,10 +320,9 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><ShieldCheck size={24} /></div>
                 <div><h3 className="text-lg font-bold text-slate-900">{t.verification}</h3><p className="text-xs text-slate-500">{t.verificationSub}</p></div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><Stamp className="mx-auto mb-2 text-blue-400" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.seal}</p><p className="text-[11px] font-bold text-slate-800">{t.authentic}</p></div>
                 <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><CheckCircle2 className="mx-auto mb-2 text-emerald-500" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.authorized}</p><p className="text-[11px] font-bold text-slate-800">{t.signatures}</p></div>
-                <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><ExternalLink className="mx-auto mb-2 text-slate-300" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">Validator</p><p className="text-[11px] font-bold text-slate-800">{t.validator}</p></div>
               </div>
             </div>
           </div>

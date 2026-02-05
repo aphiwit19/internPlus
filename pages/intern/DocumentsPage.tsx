@@ -36,8 +36,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const { user } = useAppContext();
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
 
-  const DOCS_PER_PAGE = 6;
+  const DOCS_PER_PAGE = 5;
   const [otherDocsPage, setOtherDocsPage] = useState(1);
+
+  const REQUIRED_PER_PAGE = 4;
+  const [requiredPage, setRequiredPage] = useState(1);
 
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
 
@@ -155,6 +158,24 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     const start = (otherDocsPage - 1) * DOCS_PER_PAGE;
     return visibleDocuments.slice(start, start + DOCS_PER_PAGE);
   }, [DOCS_PER_PAGE, otherDocsPage, visibleDocuments]);
+
+  const requiredPageCount = useMemo(() => {
+    const count = Math.ceil(activeRequiredLabels.length / REQUIRED_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [REQUIRED_PER_PAGE, activeRequiredLabels.length]);
+
+  useEffect(() => {
+    setRequiredPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > requiredPageCount) return requiredPageCount;
+      return prev;
+    });
+  }, [requiredPageCount]);
+
+  const visibleRequiredLabels = useMemo(() => {
+    const start = (requiredPage - 1) * REQUIRED_PER_PAGE;
+    return activeRequiredLabels.slice(start, start + REQUIRED_PER_PAGE);
+  }, [REQUIRED_PER_PAGE, activeRequiredLabels, requiredPage]);
 
   const normalizedNewLabel = useMemo(() => newLabel.trim(), [newLabel]);
   const isBlockedNewLabel = useMemo(() => {
@@ -379,11 +400,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
                     {lang === 'EN' ? 'REQUIRED DOCUMENTS' : 'เอกสารที่ต้องแนบ'}
                   </div>
-                  <div className="text-sm font-black text-slate-900 mt-2">
-                    {lang === 'EN'
-                      ? 'These document slots are controlled by Admin Onboarding Flow Engine.'
-                      : 'ช่องเอกสารเหล่านี้ถูกควบคุมโดยแอดมินใน Onboarding Flow Engine'}
-                  </div>
                 </div>
                 <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
                   {activeRequiredLabels.length} {lang === 'EN' ? 'ITEMS' : 'รายการ'}
@@ -391,7 +407,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
               </div>
 
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {activeRequiredLabels.map((label) => {
+                {visibleRequiredLabels.map((label) => {
                   const item = documents.find((d) => d.label === label) ?? null;
                   const isUploaded = Boolean(item);
                   const fileName = item?.fileName;
@@ -406,28 +422,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                           <FileText size={18} />
                         </div>
                         <div className="overflow-hidden">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">
-                            {lang === 'EN' ? 'REQUIRED' : 'จำเป็น'}
-                          </p>
                           <p className="text-[12px] font-black truncate text-slate-800" title={label}>
                             {label}
                           </p>
                           <div className="text-[11px] font-bold text-slate-500">
                             {lang === 'TH'
-                              ? 'ขนาดไฟล์สูงสุด 20MB (ถ้าเกินให้แนบลิงก์แทน)'
-                              : 'Max 20MB file size (if larger, attach a link instead).'}
+                              ? `ขนาดไฟล์สูงสุด ${Math.round(MAX_DOC_BYTES / (1024 * 1024))}MB`
+                              : `Max ${Math.round(MAX_DOC_BYTES / (1024 * 1024))}MB file size`}
                           </div>
-                          {isUploaded ? (
-                            <button
-                              onClick={() => void handleDownloadDocument(item!.id)}
-                              className="text-[11px] font-black truncate text-blue-600 hover:underline text-left"
-                              title={t.download}
-                            >
-                              {fileName}
-                            </button>
-                          ) : (
-                            <p className="text-[12px] font-black truncate text-slate-400">Not Uploaded</p>
-                          )}
 
                           <div className="mt-3 flex items-center gap-2">
                             <input
@@ -490,6 +492,49 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                   );
                 })}
               </div>
+
+              {requiredPageCount > 1 ? (
+                <div className="pt-4 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRequiredPage((p) => Math.max(1, p - 1))}
+                    disabled={requiredPage <= 1}
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                    aria-label="Previous page"
+                  >
+                    {'<'}
+                  </button>
+
+                  {Array.from({ length: requiredPageCount }, (_, idx) => idx + 1).map((page) => {
+                    const isActive = page === requiredPage;
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setRequiredPage(page)}
+                        className={`px-3 py-2 rounded-xl border text-[11px] font-black transition-all ${
+                          isActive
+                            ? 'bg-slate-900 border-slate-900 text-white'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                        aria-current={isActive ? 'page' : undefined}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() => setRequiredPage((p) => Math.min(requiredPageCount, p + 1))}
+                    disabled={requiredPage >= requiredPageCount}
+                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                    aria-label="Next page"
+                  >
+                    {'>'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
 

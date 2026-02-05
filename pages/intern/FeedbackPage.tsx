@@ -239,9 +239,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
   const videoInputRef = useRef<HTMLInputElement>(null);
   const attachmentsInputRef = useRef<HTMLInputElement>(null);
+  const videoUrlInputRef = useRef<HTMLInputElement>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
   const [pendingVideoUrl, setPendingVideoUrl] = useState('');
+  const [videoSizeError, setVideoSizeError] = useState<string | null>(null);
   const [attachmentLinkDraft, setAttachmentLinkDraft] = useState('');
   const [pendingAttachmentLinks, setPendingAttachmentLinks] = useState<string[]>([]);
 
@@ -473,12 +475,18 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       let nextVideoUrl: string | undefined;
       if (pendingVideo) {
         if (pendingVideo.size > MAX_VIDEO_BYTES) {
-          setSubmitError(
+          const msg =
             lang === 'TH'
               ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-              : 'Video exceeds 50MB. Please attach a Drive/URL link instead.',
-          );
+              : 'Video exceeds 50MB. Please attach a Drive/URL link instead.';
+          setSubmitError(msg);
+          setVideoSizeError(msg);
           setIsSubmitting(false);
+          try {
+            videoUrlInputRef.current?.focus();
+          } catch {
+            // ignore
+          }
           return;
         }
         const p = `users/${effectiveUser.id}/feedbackMilestones/${milestoneId}/video/${Date.now()}_${pendingVideo.name}`;
@@ -827,15 +835,21 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                                 return;
                               }
                               if (f.size > MAX_VIDEO_BYTES) {
-                                window.alert(
+                                const msg =
                                   lang === 'TH'
                                     ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-                                    : 'Video exceeds 50MB. Please attach a Drive/URL link instead.',
-                                );
+                                    : 'Video exceeds 50MB. Please attach a Drive/URL link instead.';
+                                setVideoSizeError(msg);
                                 if (videoInputRef.current) videoInputRef.current.value = '';
                                 setPendingVideo(null);
+                                try {
+                                  videoUrlInputRef.current?.focus();
+                                } catch {
+                                  // ignore
+                                }
                                 return;
                               }
+                              setVideoSizeError(null);
                               setPendingVideoUrl('');
                               setPendingVideo(f);
                             }}
@@ -845,12 +859,44 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         </div>
                       )}
 
+                      {videoSizeError ? (
+                        <div className="mt-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-[2rem] p-5">
+                          <div className="text-[10px] font-black uppercase tracking-widest">{lang === 'TH' ? 'วิดีโอใหญ่เกินไป' : 'Video too large'}</div>
+                          <div className="mt-2 text-sm font-bold break-words">{videoSizeError}</div>
+                          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingVideo(null);
+                                if (videoInputRef.current) videoInputRef.current.value = '';
+                                try {
+                                  videoUrlInputRef.current?.focus();
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              className="px-5 py-3 rounded-2xl bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-all"
+                            >
+                              {lang === 'TH' ? 'แนบลิงก์แทน' : 'Attach link instead'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setVideoSizeError(null)}
+                              className="px-5 py-3 rounded-2xl bg-white border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all"
+                            >
+                              {lang === 'TH' ? 'ปิด' : 'Dismiss'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                           {lang === 'TH' ? 'หรือแนบลิงก์วิดีโอ (Drive/URL)' : 'Or attach video link (Drive/URL)'}
                         </div>
                         <div className="flex gap-3">
                           <input
+                            ref={videoUrlInputRef}
                             value={pendingVideoUrl}
                             onChange={(e) => {
                               setPendingVideoUrl(e.target.value);
@@ -867,6 +913,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                                 window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
                                 return;
                               }
+                              setVideoSizeError(null);
                               setPendingVideo(null);
                               if (videoInputRef.current) videoInputRef.current.value = '';
                             }}

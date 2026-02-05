@@ -13,7 +13,8 @@ import {
   Send, 
   Lock,
   ArrowLeft,
-  Info
+  Info,
+  X
 } from 'lucide-react';
 import { Language } from '@/types';
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
@@ -101,6 +102,16 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const [dialog, setDialog] = useState<{ open: boolean; title?: string; message: string } | null>(null);
+
+  const openAlert = (message: string, title?: string) => {
+    setDialog({ open: true, title, message });
+  };
+
+  const closeDialog = () => {
+    setDialog(null);
+  };
+
   const alreadyRequested =
     user?.lifecycleStatus === 'WITHDRAWAL_REQUESTED' || Boolean((user as any)?.withdrawalRequestedAt);
 
@@ -185,7 +196,10 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
 
       setIsSubmitted(true);
     } catch {
-      alert(lang === 'EN' ? 'Failed to submit withdrawal request.' : 'ไม่สามารถส่งคำขอถอนตัวได้');
+      openAlert(
+        lang === 'EN' ? 'Failed to submit withdrawal request.' : 'ไม่สามารถส่งคำขอถอนตัวได้',
+        lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด',
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -208,6 +222,40 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang }) => {
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
       <div className="max-w-7xl mx-auto w-full h-full flex flex-col">
+        {dialog?.open ? (
+          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white w-full sm:max-w-lg sm:rounded-[2rem] overflow-hidden shadow-2xl border border-slate-100">
+              <div className="p-6 sm:p-7 border-b border-slate-100 bg-slate-50/50 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center flex-shrink-0">
+                  <Info size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black text-slate-900 truncate">
+                    {dialog.title ?? (lang === 'EN' ? 'Notification' : 'แจ้งเตือน')}
+                  </div>
+                  <div className="mt-2 text-sm font-bold text-slate-600 whitespace-pre-wrap break-words">{dialog.message}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDialog}
+                  className="p-2 rounded-2xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                  aria-label={lang === 'EN' ? 'Close' : 'ปิด'}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 sm:p-7 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeDialog}
+                  className="px-7 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all"
+                >
+                  {lang === 'EN' ? 'OK' : 'ตกลง'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div><h1 className="text-4xl font-black text-slate-900 tracking-tight">{t.title}</h1><p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p></div>
           <div className="flex items-center gap-3 bg-white px-6 py-3 rounded-2xl border border-slate-100 shadow-sm">

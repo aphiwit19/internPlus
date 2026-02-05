@@ -63,12 +63,32 @@ service firebase.storage {
       allow write: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
     }
 
+    match /policyTrainingContents/{contentId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isHrAdmin();
+    }
+
+    match /users/{userId}/feedbackMilestones/{milestoneId}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+      allow write: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+    }
+
+    match /users/{userId}/withdrawal/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+      allow write: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+    }
+
     match /users/{userId}/assignmentProjects/{projectId}/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
       allow write: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
     }
 
     match /users/{userId}/personalProjects/{projectId}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+      allow write: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
+    }
+
+    match /users/{userId}/documents/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
       allow write: if signedIn() && (request.auth.uid == userId || isHrAdmin() || isSupervisorOf(userId));
     }

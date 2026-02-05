@@ -22,6 +22,7 @@ import {
   MapPin,
   Save,
   Clock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -264,6 +265,12 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
   const [newDocCategory, setNewDocCategory] = useState<UniDocument['category']>('Other');
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
 
+  const LINKS_PAGE_SIZE = 3;
+  const [linksPage, setLinksPage] = useState(1);
+
+  const DOCS_PAGE_SIZE = 4;
+  const [docsPage, setDocsPage] = useState(1);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingUpload, setPendingUpload] = useState<{
     docId: string;
@@ -291,12 +298,33 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
 
   const [appointmentHistory, setAppointmentHistory] = useState<AppointmentHistoryEntry[]>([]);
   const [appointmentHistoryPage, setAppointmentHistoryPage] = useState(1);
+  const [showAppointmentHistory, setShowAppointmentHistory] = useState(false);
 
   const APPOINTMENT_HISTORY_PAGE_SIZE = 3;
+
+  const [openSection, setOpenSection] = useState<'appointment' | 'links' | 'docs' | 'delivery' | 'final' | 'none'>(() => 'appointment');
 
   const reversedAppointmentHistory = useMemo(() => {
     return [...appointmentHistory].slice().reverse();
   }, [appointmentHistory]);
+
+  const linksPageCount = useMemo(() => {
+    const count = Math.ceil(links.length / LINKS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [LINKS_PAGE_SIZE, links.length]);
+
+  useEffect(() => {
+    setLinksPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > linksPageCount) return linksPageCount;
+      return prev;
+    });
+  }, [linksPageCount]);
+
+  const displayedLinks = useMemo(() => {
+    const start = (linksPage - 1) * LINKS_PAGE_SIZE;
+    return links.slice(start, start + LINKS_PAGE_SIZE);
+  }, [LINKS_PAGE_SIZE, links, linksPage]);
 
   const appointmentHistoryPageCount = useMemo(() => {
     const count = Math.ceil(reversedAppointmentHistory.length / APPOINTMENT_HISTORY_PAGE_SIZE);
@@ -742,6 +770,24 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     return files.filter((f) => !baseIds.has(f.id));
   }, [baseDocs, files]);
 
+  const docsPageCount = useMemo(() => {
+    const count = Math.ceil(customFiles.length / DOCS_PAGE_SIZE);
+    return count > 0 ? count : 1;
+  }, [DOCS_PAGE_SIZE, customFiles.length]);
+
+  useEffect(() => {
+    setDocsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > docsPageCount) return docsPageCount;
+      return prev;
+    });
+  }, [docsPageCount]);
+
+  const displayedCustomFiles = useMemo(() => {
+    const start = (docsPage - 1) * DOCS_PAGE_SIZE;
+    return customFiles.slice(start, start + DOCS_PAGE_SIZE);
+  }, [DOCS_PAGE_SIZE, customFiles, docsPage]);
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <input
@@ -793,147 +839,336 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   </div>
                 </div>
 
-                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                  {appointmentStatusLabel}
+                <div className="flex items-center gap-3">
+                  <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                    {appointmentStatusLabel}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenSection((s) => (s === 'appointment' ? 'none' : 'appointment'))}
+                    className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
+                    aria-label="Toggle appointment section"
+                    title={openSection === 'appointment' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                  >
+                    <ChevronDown size={18} className={`transition-transform ${openSection === 'appointment' ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
               </div>
+              {openSection === 'appointment' ? (
+                <>
+                  <div className="mb-6 flex flex-wrap items-center gap-2">
+                    <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                      {appointmentRequest.date ? appointmentRequest.date : '--'}
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                      {appointmentRequest.time ? appointmentRequest.time : '--'}
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-blue-50 border border-blue-100 text-[10px] font-black uppercase tracking-widest text-slate-900">
+                      {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
+                    </div>
+                    <div className="ml-auto hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <Clock size={14} />
+                      {lang === 'TH' ? 'พร้อมส่งเมื่อกรอกวันและเวลา' : 'Ready when date & time are set'}
+                    </div>
+                  </div>
 
-              <div className="mb-6 flex flex-wrap items-center gap-2">
-                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                  {appointmentRequest.date ? appointmentRequest.date : '--'}
-                </div>
-                <div className="px-4 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                  {appointmentRequest.time ? appointmentRequest.time : '--'}
-                </div>
-                <div className="px-4 py-2 rounded-2xl bg-blue-50 border border-blue-100 text-[10px] font-black uppercase tracking-widest text-slate-900">
-                  {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
-                </div>
-                <div className="ml-auto hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  <Clock size={14} />
-                  {lang === 'TH' ? 'พร้อมส่งเมื่อกรอกวันและเวลา' : 'Ready when date & time are set'}
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptDate}</label>
+                      <input
+                        type="date"
+                        value={appointmentRequest.date ?? ''}
+                        onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, date: e.target.value }))}
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptTime}</label>
+                      <input
+                        type="time"
+                        value={appointmentRequest.time ?? ''}
+                        onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, time: e.target.value }))}
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptMode}</label>
+                      <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'ONLINE' }))}
+                          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            (appointmentRequest.mode ?? 'ONLINE') === 'ONLINE'
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {t.apptModeOnline}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'COMPANY' }))}
+                          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            (appointmentRequest.mode ?? 'ONLINE') === 'COMPANY'
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {t.apptModeCompany}
+                        </button>
+                      </div>
+                    </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptDate}</label>
-                  <input
-                    type="date"
-                    value={appointmentRequest.date ?? ''}
-                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, date: e.target.value }))}
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptTime}</label>
-                  <input
-                    type="time"
-                    value={appointmentRequest.time ?? ''}
-                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, time: e.target.value }))}
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptMode}</label>
-                  <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-200">
+                    <div className="md:col-span-3">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptNote}</label>
+                      <textarea
+                        value={appointmentRequest.note ?? ''}
+                        onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, note: e.target.value }))}
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 h-[96px] resize-none focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'ONLINE' }))}
-                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                        (appointmentRequest.mode ?? 'ONLINE') === 'ONLINE'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
+                      onClick={() => void sendAppointment()}
+                      disabled={!user || isSaving || !canSendAppointment}
+                      className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 md:col-span-2"
                     >
-                      {t.apptModeOnline}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAppointmentRequest((prev) => ({ ...prev, mode: 'COMPANY' }))}
-                      className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                        (appointmentRequest.mode ?? 'ONLINE') === 'COMPANY'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      {t.apptModeCompany}
+                      <CalendarDays size={16} />
+                      {t.apptSend}
                     </button>
                   </div>
-                </div>
 
-                <div className="md:col-span-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptNote}</label>
-                  <textarea
-                    value={appointmentRequest.note ?? ''}
-                    onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, note: e.target.value }))}
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 h-[96px] resize-none focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-200"
-                  />
-                </div>
-              </div>
+                  {appointmentHistory.length > 0 ? (
+                    <div className="mt-8">
+                      <div className="flex items-center justify-between gap-4 mb-3">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em]">
+                          {lang === 'TH' ? 'ประวัติการขอเข้าพบ' : 'Appointment History'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAppointmentHistory((v) => !v)}
+                          className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline"
+                        >
+                          {showAppointmentHistory
+                            ? lang === 'TH'
+                              ? 'ซ่อนประวัติ'
+                              : 'Hide history'
+                            : lang === 'TH'
+                              ? `ดูประวัติ (${appointmentHistory.length})`
+                              : `View history (${appointmentHistory.length})`}
+                        </button>
+                      </div>
 
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {showAppointmentHistory ? (
+                        <>
+                          <div className="space-y-2">
+                            {displayedAppointmentHistory.map((h) => (
+                              <div key={h.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
+                                        {h.actor === 'SUPERVISOR'
+                                          ? lang === 'TH'
+                                            ? 'พี่เลี้ยง'
+                                            : 'Supervisor'
+                                          : lang === 'TH'
+                                            ? 'นักศึกษา'
+                                            : 'Intern'}
+                                      </div>
+                                      <div className="text-[11px] font-black text-slate-700">
+                                        {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div className="px-3 py-2 rounded-xl bg-white border border-slate-200">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                          {lang === 'TH' ? 'สถานะ' : 'Status'}
+                                        </div>
+                                        <div className="text-[11px] font-black text-slate-800 mt-1">{String(h.status ?? '—')}</div>
+                                      </div>
+                                      <div className="px-3 py-2 rounded-xl bg-white border border-slate-200">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                          {lang === 'TH' ? 'รูปแบบ' : 'Mode'}
+                                        </div>
+                                        <div className="text-[11px] font-black text-slate-800 mt-1">{String(h.mode ?? '--')}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                {String(h.supervisorNote ?? '').trim() ? (
+                                  <div className="mt-3 p-3 rounded-xl bg-white border border-slate-200">
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                      {lang === 'TH' ? 'หมายเหตุจากพี่เลี้ยง' : 'Supervisor note'}
+                                    </div>
+                                    <div className="mt-1 text-xs font-bold text-slate-700 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+
+                          {appointmentHistoryPageCount > 1 && (
+                            <div className="pt-4 flex justify-center">
+                              <div className="max-w-full overflow-x-auto">
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex flex-wrap items-center justify-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAppointmentHistoryPage((p) => Math.max(1, p - 1))}
+                                    disabled={appointmentHistoryPage <= 1}
+                                    className="w-10 h-10 shrink-0 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                  >
+                                    <ChevronLeft size={18} />
+                                  </button>
+
+                                  {Array.from({ length: appointmentHistoryPageCount }, (_, i) => i + 1).map((p) => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => setAppointmentHistoryPage(p)}
+                                      className={`w-10 h-10 shrink-0 rounded-xl border text-[12px] font-black transition-all ${
+                                        p === appointmentHistoryPage
+                                          ? 'bg-slate-900 text-white border-slate-900'
+                                          : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                      }`}
+                                    >
+                                      {p}
+                                    </button>
+                                  ))}
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setAppointmentHistoryPage((p) => Math.min(appointmentHistoryPageCount, p + 1))
+                                    }
+                                    disabled={appointmentHistoryPage >= appointmentHistoryPageCount}
+                                    className="w-10 h-10 shrink-0 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                                  >
+                                    <ChevronRight size={18} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </section>
+
+            <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
+              <div className="flex items-start justify-between gap-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
+                    <LinkIcon size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{t.linksTitle}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{t.linksSub}</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => void sendAppointment()}
-                  disabled={!user || isSaving || !canSendAppointment}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 md:col-span-2"
+                  onClick={() => setOpenSection((s) => (s === 'links' ? 'none' : 'links'))}
+                  className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
+                  aria-label="Toggle links section"
+                  title={openSection === 'links' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
                 >
-                  <CalendarDays size={16} />
-                  {t.apptSend}
+                  <ChevronDown size={18} className={`transition-transform ${openSection === 'links' ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
-              {appointmentHistory.length > 0 ? (
-                <div className="mt-8">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em] mb-3">
-                    {lang === 'TH' ? 'ประวัติการขอเข้าพบ' : 'Appointment History'}
-                  </div>
-                  <div className="space-y-2">
-                    {displayedAppointmentHistory.map((h) => (
-                        <div key={h.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                              {h.actor === 'SUPERVISOR' ? (lang === 'TH' ? 'พี่เลี้ยง' : 'Supervisor') : lang === 'TH' ? 'นักศึกษา' : 'Intern'}
-                            </div>
-                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                              {String(h.status ?? '—')}
-                            </div>
-                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                              {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
-                            </div>
-                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
-                              {String(h.mode ?? '--')}
-                            </div>
-                          </div>
-                          {String(h.supervisorNote ?? '').trim() ? (
-                            <div className="mt-2 text-xs font-bold text-slate-700 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
-                          ) : null}
-                        </div>
-                      ))}
+              {openSection === 'links' ? (
+                <>
+                  <div className="bg-blue-50/30 p-6 rounded-[1.5rem] border border-blue-100/50">
+                    <h4 className="text-[10px] font-black text-blue-400 uppercase mb-4">{t.addLink}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <input
+                        type="text"
+                        value={newLinkLabel}
+                        onChange={(e) => setNewLinkLabel(e.target.value)}
+                        placeholder={t.linkLabel}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
+                      />
+                      <input
+                        type="url"
+                        value={newLinkUrl}
+                        onChange={(e) => setNewLinkUrl(e.target.value)}
+                        placeholder={t.linkUrl}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleAddLink()}
+                      disabled={!user || !canAddLink || isSaving}
+                      className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSaving ? <Clock size={16} className="animate-spin" /> : <Plus size={16} />} {t.saveLink}
+                    </button>
                   </div>
 
-                  {appointmentHistoryPageCount > 1 && (
+                  {links.length > 0 ? (
+                    <div className="mt-6 space-y-3">
+                      {displayedLinks.map((l) => (
+                        <div key={l.id} className="p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
+                          <a href={l.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1">
+                            <p className="text-xs font-black text-slate-900 truncate">{l.label}</p>
+                            <p className="text-[11px] font-bold text-slate-400 truncate">{l.url}</p>
+                          </a>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <a
+                              href={l.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
+                              title="Open"
+                            >
+                              <ExternalLink size={16} />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteLink(l.id)}
+                              className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {linksPageCount > 1 ? (
                     <div className="pt-4 flex justify-center">
                       <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setAppointmentHistoryPage((p) => Math.max(1, p - 1))}
-                          disabled={appointmentHistoryPage <= 1}
+                          onClick={() => setLinksPage((p) => Math.max(1, p - 1))}
+                          disabled={linksPage <= 1}
                           className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          aria-label="Previous page"
                         >
                           <ChevronLeft size={18} />
                         </button>
 
-                        {Array.from({ length: appointmentHistoryPageCount }, (_, i) => i + 1).map((p) => (
+                        {Array.from({ length: linksPageCount }, (_, i) => i + 1).map((p) => (
                           <button
                             key={p}
                             type="button"
-                            onClick={() => setAppointmentHistoryPage(p)}
+                            onClick={() => setLinksPage(p)}
                             className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
-                              p === appointmentHistoryPage
+                              p === linksPage
                                 ? 'bg-slate-900 text-white border-slate-900'
                                 : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
                             }`}
+                            aria-current={p === linksPage ? 'page' : undefined}
                           >
                             {p}
                           </button>
@@ -941,336 +1176,378 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
 
                         <button
                           type="button"
-                          onClick={() => setAppointmentHistoryPage((p) => Math.min(appointmentHistoryPageCount, p + 1))}
-                          disabled={appointmentHistoryPage >= appointmentHistoryPageCount}
+                          onClick={() => setLinksPage((p) => Math.min(linksPageCount, p + 1))}
+                          disabled={linksPage >= linksPageCount}
                           className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          aria-label="Next page"
                         >
                           <ChevronRight size={18} />
                         </button>
                       </div>
                     </div>
-                  )}
-                </div>
+                  ) : null}
+                </>
               ) : null}
             </section>
 
             <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
-              <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><LinkIcon size={20} /></div><div><h2 className="text-xl font-bold text-slate-900">{t.linksTitle}</h2><p className="text-xs text-slate-400 mt-1">{t.linksSub}</p></div></div>
-              <div className="bg-blue-50/30 p-6 rounded-[1.5rem] border border-blue-100/50">
-                <h4 className="text-[10px] font-black text-blue-400 uppercase mb-4">{t.addLink}</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <input
-                    type="text"
-                    value={newLinkLabel}
-                    onChange={(e) => setNewLinkLabel(e.target.value)}
-                    placeholder={t.linkLabel}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
-                  />
-                  <input
-                    type="url"
-                    value={newLinkUrl}
-                    onChange={(e) => setNewLinkUrl(e.target.value)}
-                    placeholder={t.linkUrl}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
-                  />
+              <div className="flex items-start justify-between gap-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{t.docsTitle}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{t.docsSub}</p>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => void handleAddLink()}
-                  disabled={!user || !canAddLink || isSaving}
-                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                  onClick={() => setOpenSection((s) => (s === 'docs' ? 'none' : 'docs'))}
+                  className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
+                  aria-label="Toggle documents section"
+                  title={openSection === 'docs' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
                 >
-                  {isSaving ? <Clock size={16} className="animate-spin" /> : <Plus size={16} />} {t.saveLink}
+                  <ChevronDown size={18} className={`transition-transform ${openSection === 'docs' ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
-              {links.length > 0 ? (
-                <div className="mt-6 space-y-3">
-                  {links.map((l) => (
-                    <div key={l.id} className="p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-3">
-                      <a href={l.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1">
-                        <p className="text-xs font-black text-slate-900 truncate">{l.label}</p>
-                        <p className="text-[11px] font-bold text-slate-400 truncate">{l.url}</p>
-                      </a>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <a
-                          href={l.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                          title="Open"
+              {openSection === 'docs' ? (
+                <>
+                  <div className="mb-6">
+                    {!isAddingDoc ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingDoc(true)}
+                        className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2"
+                      >
+                        <Plus size={16} /> {lang === 'TH' ? 'เพิ่มเอกสารเพิ่มเติม' : 'Add Additional Document'}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {isAddingDoc ? (
+                    <div className="mb-6 bg-slate-50 p-6 rounded-[1.5rem] border border-slate-100">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <input
+                          type="text"
+                          value={newDocLabel}
+                          onChange={(e) => setNewDocLabel(e.target.value)}
+                          placeholder={lang === 'TH' ? 'ชื่อเอกสาร' : 'Document name'}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
+                        />
+                        <select
+                          value={newDocCategory}
+                          onChange={(e) => setNewDocCategory(e.target.value as UniDocument['category'])}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
                         >
-                          <ExternalLink size={16} />
-                        </a>
+                          <option value="Sending">{t.catSending}</option>
+                          <option value="Evaluation">{t.catEval}</option>
+                          <option value="Requirement">{t.catReq}</option>
+                          <option value="Other">{t.catOther}</option>
+                        </select>
+                        <input
+                          type="file"
+                          onChange={(e) => setNewDocFile(e.target.files?.[0] ?? null)}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold md:col-span-2"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <button
                           type="button"
-                          onClick={() => void handleDeleteLink(l.id)}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                          title="Delete"
+                          onClick={() => {
+                            setIsAddingDoc(false);
+                            setNewDocLabel('');
+                            setNewDocCategory('Other');
+                            setNewDocFile(null);
+                          }}
+                          className="w-full py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs"
                         >
-                          <Trash2 size={16} />
+                          {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleAddCustomDocument()}
+                          disabled={!user || !newDocLabel.trim() || !newDocFile || Boolean(uploadingDocId)}
+                          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {uploadingDocId ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}{' '}
+                          {lang === 'TH' ? 'อัปโหลด' : 'Upload'}
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-            <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
-              <div className="flex items-center justify-between mb-8"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><FileText size={20} /></div><div><h2 className="text-xl font-bold text-slate-900">{t.docsTitle}</h2><p className="text-xs text-slate-400 mt-1">{t.docsSub}</p></div></div></div>
+                  ) : null}
 
-              <div className="mb-6">
-                {!isAddingDoc ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingDoc(true)}
-                    className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2"
-                  >
-                    <Plus size={16} /> {lang === 'TH' ? 'เพิ่มเอกสารเพิ่มเติม' : 'Add Additional Document'}
-                  </button>
-                ) : (
-                  <div className="bg-slate-50 p-6 rounded-[1.5rem] border border-slate-100">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4">
-                      {lang === 'TH' ? 'เอกสารเพิ่มเติม' : 'Additional Document'}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <input
-                        type="text"
-                        value={newDocLabel}
-                        onChange={(e) => setNewDocLabel(e.target.value)}
-                        placeholder={lang === 'TH' ? 'ชื่อเอกสาร' : 'Document name'}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
-                      />
-                      <select
-                        value={newDocCategory}
-                        onChange={(e) => setNewDocCategory(e.target.value as UniDocument['category'])}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
-                      >
-                        <option value="Sending">{t.catSending}</option>
-                        <option value="Evaluation">{t.catEval}</option>
-                        <option value="Requirement">{t.catReq}</option>
-                        <option value="Other">{t.catOther}</option>
-                      </select>
-                      <input
-                        type="file"
-                        onChange={(e) => setNewDocFile(e.target.files?.[0] ?? null)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold md:col-span-2"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddingDoc(false);
-                          setNewDocLabel('');
-                          setNewDocCategory('Other');
-                          setNewDocFile(null);
-                        }}
-                        className="w-full py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs"
-                      >
-                        {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleAddCustomDocument()}
-                        disabled={!user || !newDocLabel.trim() || !newDocFile || Boolean(uploadingDocId)}
-                        className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
-                      >
-                        {uploadingDocId ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}{' '}
-                        {lang === 'TH' ? 'อัปโหลด' : 'Upload'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {uniDocs.map(doc => (
-                  <div key={doc.id} className="p-5 bg-white border border-slate-100 rounded-2xl flex items-center justify-between group hover:border-blue-200 transition-all">
-                    <div className="flex items-center gap-4 overflow-hidden"><div className={`w-12 h-12 rounded-xl flex items-center justify-center ${doc.status === 'uploaded' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300'}`}>{doc.status === 'uploaded' ? <FileCheck size={24} /> : <FileText size={24} />}</div><div className="overflow-hidden"><p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">{doc.category}</p><p className="text-sm font-bold text-slate-800 truncate">{doc.name}</p></div></div>
-                    {doc.status === 'uploaded' ? (
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => void handleDownload(doc.id)}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                          title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
-                        >
-                          <Download size={18} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteFile(doc.id)}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                          title={lang === 'TH' ? 'ลบ' : 'Delete'}
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => openUpload(doc)}
-                        disabled={!user || uploadingDocId === doc.id}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-600 text-white shadow-lg disabled:opacity-50"
-                        title={lang === 'TH' ? 'อัปโหลด' : 'Upload'}
-                      >
-                        {uploadingDocId === doc.id ? <Clock size={18} className="animate-spin" /> : <Upload size={18} />}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {customFiles.length > 0 ? (
-                <div className="mt-6 space-y-3">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                    {lang === 'TH' ? 'เอกสารเพิ่มเติมที่อัปโหลดแล้ว' : 'Additional Uploaded Documents'}
-                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {customFiles.map((f) => (
+                    {uniDocs.map((doc) => (
                       <div
-                        key={f.id}
+                        key={doc.id}
                         className="p-5 bg-white border border-slate-100 rounded-2xl flex items-center justify-between group hover:border-blue-200 transition-all"
                       >
-                        <div className="flex items-center gap-4 overflow-hidden min-w-0">
-                          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                            <FileCheck size={22} />
+                        <div className="flex items-center gap-4 overflow-hidden">
+                          <div
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                              doc.status === 'uploaded' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-300'
+                            }`}
+                          >
+                            {doc.status === 'uploaded' ? <FileCheck size={24} /> : <FileText size={24} />}
                           </div>
-                          <div className="overflow-hidden min-w-0">
-                            <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5 truncate">{f.category ?? 'Other'}</p>
-                            <p className="text-sm font-bold text-slate-800 truncate">{f.label}</p>
-                            <p className="text-[11px] font-bold text-slate-400 truncate">{f.fileName}</p>
+                          <div className="overflow-hidden">
+                            <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">{doc.category}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate">{doc.name}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        {doc.status === 'uploaded' ? (
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => void handleDownload(doc.id)}
+                              className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
+                              title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
+                            >
+                              <Download size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteFile(doc.id)}
+                              className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
+                              title={lang === 'TH' ? 'ลบ' : 'Delete'}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => void handleDownload(f.id)}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                            title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
+                            onClick={() => openUpload(doc)}
+                            disabled={!user || uploadingDocId === doc.id}
+                            className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-600 text-white shadow-lg disabled:opacity-50"
+                            title={lang === 'TH' ? 'อัปโหลด' : 'Upload'}
                           >
-                            <Download size={18} />
+                            {uploadingDocId === doc.id ? <Clock size={18} className="animate-spin" /> : <Upload size={18} />}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteFile(f.id)}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                            title={lang === 'TH' ? 'ลบ' : 'Delete'}
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
-                </div>
+
+                  {customFiles.length > 0 ? (
+                    <div className="mt-6 space-y-3">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                        {lang === 'TH' ? 'เอกสารเพิ่มเติมที่อัปโหลดแล้ว' : 'Additional Uploaded Documents'}
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {displayedCustomFiles.map((f) => (
+                          <div
+                            key={f.id}
+                            className="p-5 bg-white border border-slate-100 rounded-2xl flex items-center justify-between group hover:border-blue-200 transition-all"
+                          >
+                            <div className="flex items-center gap-4 overflow-hidden min-w-0">
+                              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                                <FileCheck size={22} />
+                              </div>
+                              <div className="overflow-hidden min-w-0">
+                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5 truncate">{f.category ?? 'Other'}</p>
+                                <p className="text-sm font-bold text-slate-800 truncate">{f.label}</p>
+                                <p className="text-[11px] font-bold text-slate-400 truncate">{f.fileName}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => void handleDownload(f.id)}
+                                className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
+                                title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
+                              >
+                                <Download size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteFile(f.id)}
+                                className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
+                                title={lang === 'TH' ? 'ลบ' : 'Delete'}
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {customFiles.length > DOCS_PAGE_SIZE ? (
+                        <div className="pt-4 flex justify-center">
+                          <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDocsPage((p) => Math.max(1, p - 1))}
+                              disabled={docsPage <= 1}
+                              className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                              aria-label="Previous page"
+                            >
+                              <ChevronLeft size={18} />
+                            </button>
+
+                            {Array.from({ length: docsPageCount }, (_, i) => i + 1).map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setDocsPage(p)}
+                                className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                  p === docsPage
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
+                                }`}
+                                aria-current={p === docsPage ? 'page' : undefined}
+                              >
+                                {p}
+                              </button>
+                            ))}
+
+                            <button
+                              type="button"
+                              onClick={() => setDocsPage((p) => Math.min(docsPageCount, p + 1))}
+                              disabled={docsPage >= docsPageCount}
+                              className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                              aria-label="Next page"
+                            >
+                              <ChevronRight size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </section>
 
             <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
-              <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Truck size={20} /></div><div><h2 className="text-xl font-bold text-slate-900">{t.deliveryTitle}</h2><p className="text-xs text-slate-400 mt-1">{t.deliverySub}</p></div></div>
-
-              {isSubmitted ? (
-                <div className="mb-6 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-[1.5rem] px-6 py-4 text-sm font-black flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <Check size={18} />
-                    </div>
-                    <div>
-                      <p>{lang === 'TH' ? 'ส่งข้อมูลเรียบร้อยแล้ว' : 'Submitted successfully'}</p>
-                      {submittedAtLabel ? (
-                        <p className="text-[11px] font-black text-emerald-600/80">{submittedAtLabel}</p>
-                      ) : null}
-                    </div>
+              <div className="flex items-start justify-between gap-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                    <Truck size={20} />
                   </div>
-                  <div className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest">
-                    {pendingChanges ? (lang === 'TH' ? 'มีการแก้ไข รอยืนยันส่ง' : 'changes pending') : 'submitted'}
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{t.deliveryTitle}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{t.deliverySub}</p>
                   </div>
                 </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.recipient}</label>
-                    <input
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
-                      value={deliveryDetails.recipientName}
-                      disabled={isFinalSubmitted}
-                      onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, recipientName: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.dept}</label>
-                    <input
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
-                      value={deliveryDetails.department}
-                      disabled={isFinalSubmitted}
-                      onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, department: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.method}</label>
-                    <select
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
-                      value={deliveryDetails.method}
-                      disabled={isFinalSubmitted}
-                      onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, method: e.target.value }))}
-                    >
-                      <option value="Email">{t.methodEmail}</option>
-                      <option value="Postal Mail">{t.methodPost}</option>
-                      <option value="Hand-carry">{t.methodCarry}</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {deliveryDetails.method === 'Email' ? (
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.emailLabel}</label>
-                      <input
-                        type="email"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
-                        value={deliveryDetails.email}
-                        disabled={isFinalSubmitted}
-                        onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, email: e.target.value }))}
-                      />
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.addressLabel}</label>
-                      <textarea
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[112px] resize-none"
-                        value={deliveryDetails.address}
-                        disabled={isFinalSubmitted}
-                        onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, address: e.target.value }))}
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.instLabel}</label>
-                    <textarea
-                      placeholder="..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[52px] resize-none"
-                      value={deliveryDetails.instructions}
-                      disabled={isFinalSubmitted}
-                      onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, instructions: e.target.value }))}
-                    />
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpenSection((s) => (s === 'delivery' ? 'none' : 'delivery'))}
+                  className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
+                  aria-label="Toggle delivery section"
+                  title={openSection === 'delivery' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                >
+                  <ChevronDown size={18} className={`transition-transform ${openSection === 'delivery' ? 'rotate-180' : ''}`} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void submitDeliveryDetails()}
-                disabled={!user || isSaving || !canSubmitDeliveryDetails || isFinalSubmitted}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-2xl text-xs font-bold shadow-xl disabled:opacity-50"
-              >
-                {isFinalSubmitted ? <Check size={16} /> : isSaving ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}{' '}
-                {isFinalSubmitted ? (lang === 'TH' ? 'ส่งแล้ว' : 'Submitted') : t.saveInst}
-              </button>
+
+              {openSection === 'delivery' ? (
+                <>
+                  {isSubmitted ? (
+                    <div className="mb-6 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-[1.5rem] px-6 py-4 text-sm font-black flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Check size={18} />
+                        </div>
+                        <div>
+                          <p>{lang === 'TH' ? 'ส่งข้อมูลเรียบร้อยแล้ว' : 'Submitted successfully'}</p>
+                          {submittedAtLabel ? (
+                            <p className="text-[11px] font-black text-emerald-600/80">{submittedAtLabel}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest">
+                        {pendingChanges ? (lang === 'TH' ? 'มีการแก้ไข รอยืนยันส่ง' : 'changes pending') : 'submitted'}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.recipient}</label>
+                        <input
+                          type="text"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
+                          value={deliveryDetails.recipientName}
+                          disabled={isFinalSubmitted}
+                          onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, recipientName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.dept}</label>
+                        <input
+                          type="text"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
+                          value={deliveryDetails.department}
+                          disabled={isFinalSubmitted}
+                          onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, department: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.method}</label>
+                        <select
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
+                          value={deliveryDetails.method}
+                          disabled={isFinalSubmitted}
+                          onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, method: e.target.value }))}
+                        >
+                          <option value="Email">{t.methodEmail}</option>
+                          <option value="Postal Mail">{t.methodPost}</option>
+                          <option value="Hand-carry">{t.methodCarry}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      {deliveryDetails.method === 'Email' ? (
+                        <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.emailLabel}</label>
+                          <input
+                            type="email"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
+                            value={deliveryDetails.email}
+                            disabled={isFinalSubmitted}
+                            onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, email: e.target.value }))}
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.addressLabel}</label>
+                          <textarea
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[112px] resize-none"
+                            value={deliveryDetails.address}
+                            disabled={isFinalSubmitted}
+                            onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, address: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.instLabel}</label>
+                        <textarea
+                          placeholder="..."
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[52px] resize-none"
+                          value={deliveryDetails.instructions}
+                          disabled={isFinalSubmitted}
+                          onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, instructions: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void submitDeliveryDetails()}
+                    disabled={!user || isSaving || !canSubmitDeliveryDetails || isFinalSubmitted}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-2xl text-xs font-bold shadow-xl disabled:opacity-50"
+                  >
+                    {isFinalSubmitted ? <Check size={16} /> : isSaving ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}{' '}
+                    {isFinalSubmitted ? (lang === 'TH' ? 'ส่งแล้ว' : 'Submitted') : t.saveInst}
+                  </button>
+                </>
+              ) : null}
             </section>
           </div>
           <div className="lg:col-span-4 space-y-8">

@@ -568,7 +568,11 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-2 text-center">
-                  {t.days.map(d => (<div key={d} className="text-[10px] font-black text-slate-300 py-2">{d}</div>))}
+                  {t.days.map((d, i) => (
+                    <div key={`${d}-${i}`} className="text-[10px] font-black text-slate-300 py-2">
+                      {d}
+                    </div>
+                  ))}
                   {blanks.map(i => <div key={`b-${i}`} />)}
                   {calendarDays.map(day => {
                     const today = new Date();

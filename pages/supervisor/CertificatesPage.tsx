@@ -462,33 +462,37 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
                           <div className="flex items-center gap-3">
-                            <select
-                              value={selectedTemplateByType[meta.type]}
-                              onChange={(e) =>
-                                setSelectedTemplateByType((prev) => ({
-                                  ...prev,
-                                  [meta.type]: e.target.value,
-                                }))
-                              }
-                              className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
-                            >
-                              <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
-                              {templatesByType[meta.type].map((tpl) => (
-                                <option key={tpl.id} value={tpl.id}>
-                                  {tpl.name || tpl.id}
-                                </option>
-                              ))}
-                            </select>
+                            {meta.type !== 'RECOMMENDATION' ? (
+                              <>
+                                <select
+                                  value={selectedTemplateByType[meta.type]}
+                                  onChange={(e) =>
+                                    setSelectedTemplateByType((prev) => ({
+                                      ...prev,
+                                      [meta.type]: e.target.value,
+                                    }))
+                                  }
+                                  className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                                >
+                                  <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                                  {templatesByType[meta.type].map((tpl) => (
+                                    <option key={tpl.id} value={tpl.id}>
+                                      {tpl.name || tpl.id}
+                                    </option>
+                                  ))}
+                                </select>
 
-                            <button
-                              type="button"
-                              onClick={() => void handleGenerate(req)}
-                              disabled={generatingId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : 'Generate'}
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGenerate(req)}
+                                  disabled={generatingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : 'Generate'}
+                                </button>
+                              </>
+                            ) : null}
 
                             <button
                               type="button"
