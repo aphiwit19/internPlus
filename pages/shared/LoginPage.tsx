@@ -45,16 +45,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
             A unified ecosystem for modern trainees, mentors, and administrators. 
             Onboarding, tracking, and certification simplified.
           </p>
-          
-          <div className="flex items-center gap-6 mt-12 pt-12 border-t border-white/5">
-             <div className="flex -space-x-3">
-               {[1,2,3,4].map((i) => (
-                 <img key={i} src={getDefaultAvatarUrl()} className="w-10 h-10 rounded-full border-2 border-slate-900 object-cover" alt="" />
-               ))}
-               <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-900 flex items-center justify-center text-[10px] font-black text-slate-400">+500</div>
-             </div>
-             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Joined by leading innovators</p>
-          </div>
         </div>
 
         {/* Right Side: Login Card */}

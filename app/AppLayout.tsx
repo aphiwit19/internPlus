@@ -916,6 +916,7 @@ export default function AppLayout() {
           onMenuToggle={() => setIsSidebarOpen(!isSidebarOpen)}
           lang={lang}
           onLangToggle={toggleLang}
+          user={user}
         />
 
         <main className="flex-1 overflow-hidden">

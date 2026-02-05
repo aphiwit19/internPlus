@@ -1,15 +1,16 @@
 import React from 'react';
 import { MapPin, Menu } from 'lucide-react';
-import { Language } from '@/types';
-import { getDefaultAvatarUrl } from '@/app/avatar';
+import { Language, UserProfile } from '@/types';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 interface HeaderProps {
   onMenuToggle?: () => void;
   lang: Language;
   onLangToggle: () => void;
+  user: UserProfile;
 }
 
-const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle }) => {
+const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle, user }) => {
   return (
     <header className="h-16 bg-white border-b border-slate-100 flex items-center sticky top-0 z-40 px-4 md:px-6">
       <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between gap-4">
@@ -43,15 +44,15 @@ const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle }) => 
 
           <div className="flex items-center gap-3 group cursor-pointer p-0.5 rounded-xl transition-colors">
             <div className="text-right hidden sm:block">
-              <h4 className="text-xs font-black text-slate-900 group-hover:text-blue-600 transition-colors tracking-tight">Vanness Plus</h4>
+              <h4 className="text-xs font-black text-slate-900 group-hover:text-blue-600 transition-colors tracking-tight">{user.name}</h4>
               <div className="flex items-center gap-1 text-[8px] text-slate-400 font-black uppercase tracking-[0.2em] justify-end mt-0.5">
                 <MapPin size={8} className="text-blue-500" />
-                HQ UNIT
+                {user.department || 'HQ UNIT'}
               </div>
             </div>
             <img 
-              src={getDefaultAvatarUrl()} 
-              alt="Admin" 
+              src={normalizeAvatarUrl(user.avatar)} 
+              alt={user.name} 
               className="w-9 h-9 rounded-[0.75rem] object-cover ring-2 ring-slate-100 group-hover:ring-blue-100 transition-all shadow-sm"
             />
           </div>

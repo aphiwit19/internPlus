@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getDefaultAvatarUrl } from '@/app/avatar';
 
 interface RegisterPageProps {
   isLoading?: boolean;
@@ -13,6 +12,8 @@ interface RegisterPageProps {
 const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, onRegister, onContinue }) => {
   const [isInitializing, setIsInitializing] = useState(false);
   const [isVerifyingDetails, setIsVerifyingDetails] = useState(false);
+
+  const isSelfRegistrationDisabled = true;
 
   const [joinName, setJoinName] = useState('');
   const [joinEmail, setJoinEmail] = useState('');
@@ -62,16 +63,6 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
             A unified ecosystem for modern trainees, mentors, and administrators. 
             Onboarding, tracking, and certification simplified.
           </p>
-          
-          <div className="flex items-center gap-6 mt-12 pt-12 border-t border-white/5">
-             <div className="flex -space-x-3">
-               {[1,2,3,4].map((i) => (
-                 <img key={i} src={getDefaultAvatarUrl()} className="w-10 h-10 rounded-full border-2 border-slate-900 object-cover" alt="" />
-               ))}
-               <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-900 flex items-center justify-center text-[10px] font-black text-slate-400">+500</div>
-             </div>
-             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Joined by leading innovators</p>
-          </div>
         </div>
 
         {/* Right Side: Login/Join Card */}
@@ -83,7 +74,32 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
             </div>
           )}
           
-          {isVerifyingDetails ? (
+          {isSelfRegistrationDisabled ? (
+            <div className="animate-in fade-in slide-in-from-right-12 duration-500 flex flex-col h-full">
+              <Link
+                to="/login"
+                className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-10 hover:text-slate-900 transition-colors w-fit group"
+              >
+                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> BACK TO LOGIN
+              </Link>
+
+              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Registration Disabled</h3>
+              <p className="text-slate-400 text-[15px] mb-10 font-medium">
+                Accounts are created by administrators. Please contact your admin to be invited, then set your password via email.
+              </p>
+
+              <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-600 text-sm font-bold mb-10">
+                If you already have an account, please sign in from the login page.
+              </div>
+
+              <Link
+                to="/login"
+                className="w-full py-6 bg-[#111827] text-white rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all hover:bg-blue-600 shadow-2xl flex items-center justify-center gap-3 active:scale-95"
+              >
+                GO TO LOGIN <ChevronRight size={20} />
+              </Link>
+            </div>
+          ) : isVerifyingDetails ? (
             /* NEXT STEP: Confirm Details View */
             <div className="animate-in fade-in slide-in-from-bottom-8 duration-500 flex flex-col items-center text-center h-full">
               <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[1.75rem] flex items-center justify-center mb-8 shadow-xl shadow-emerald-100 border border-emerald-100">
