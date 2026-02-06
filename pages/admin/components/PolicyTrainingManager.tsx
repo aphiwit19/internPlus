@@ -517,7 +517,7 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
               <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.topicTitle}</div>
                 <div className="text-sm font-black text-slate-900 mt-2">{selected.title}</div>
-                {selected.body && <div className="text-xs text-slate-500 mt-2">{selected.body}</div>}
+                {selected.body && <div className="text-xs text-slate-500 mt-2 break-all">{selected.body}</div>}
               </div>
 
               <div className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100">
@@ -590,7 +590,7 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
                     <Video size={16} /> {t.open}
                   </button>
                 </div>
-                <div className="text-xs text-slate-500 mt-3">
+                <div className="text-xs text-slate-500 mt-3 break-all">
                   {selected.videoMode === 'LINK' && selected.videoUrl ? selected.videoUrl : selected.videoMode === 'UPLOAD' && selected.videoFileName ? selected.videoFileName : (lang === 'EN' ? 'No video' : 'ไม่มีวิดีโอ')}
                 </div>
               </div>

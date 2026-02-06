@@ -198,10 +198,10 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               onChange={(e) => setStatusFilter(e.target.value as any)}
               className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
             >
-              <option value="ALL">ALL</option>
-              <option value="PENDING">PENDING</option>
-              <option value="APPROVED">APPROVED</option>
-              <option value="PAID">PAID</option>
+              <option value="ALL">{tr('allowances_tab.filter_all')}</option>
+              <option value="PENDING">{tr('allowances_tab.filter_pending')}</option>
+              <option value="APPROVED">{tr('allowances_tab.filter_approved')}</option>
+              <option value="PAID">{tr('allowances_tab.filter_paid')}</option>
             </select>
           </div>
 
@@ -352,7 +352,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                             : 'bg-amber-50 text-amber-600 border-amber-100'
                       }`}
                     >
-                      {claim.status}
+                      {claim.status === 'PAID' ? tr('allowances_tab.filter_paid') : claim.status === 'APPROVED' ? tr('allowances_tab.filter_approved') : tr('allowances_tab.filter_pending')}
                     </span>
                   </td>
                   <td className="py-6">

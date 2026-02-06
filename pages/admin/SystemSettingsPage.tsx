@@ -189,6 +189,71 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       attachDoc: "Attached Templates",
       docsLimit: "No files attached yet",
       targetModule: "Target Module",
+      // Onboarding expanded
+      processTitle: "Process Title",
+      stepLogicType: "Step Logic Type",
+      docUploadOpt: "Document Submission (PDF/IMG)",
+      ndaSignOpt: "E-Signature Confirmation",
+      moduleLinkOpt: "Internal Feature Redirection",
+      externalUrlOpt: "External Website Link",
+      serveTemplates: "Serve multiple templates for this step",
+      addTemplate: "Add New Template",
+      targetModuleInfo: "Ensuring a target module is correctly mapped allows the system to provide \"Next Action\" shortcuts on the intern's home screen.",
+      doneEditing: "Done Editing",
+      stepTitleLabel: "STEP TITLE",
+      actionTypeLabel: "ACTION TYPE",
+      externalUrlLabel: "EXTERNAL URL",
+      targetModuleRedirection: "TARGET MODULE (REDIRECTION)",
+      processIntelligence: "Process Intelligence",
+      processIntelligenceDesc: "Mapping steps to actual modules ensures correct workspace redirection.",
+      autoHandoff: "Auto-Handoff Active",
+      customWorkflow: "CUSTOM WORKFLOW STEP",
+      integrateNewStep: "Integrate New Step",
+      integrateStep: "Integrate Step",
+      modulePrefix: "MODULE",
+      filesLabel: "FILES",
+      // Allowance expanded
+      monthlyPayPeriod: "MONTHLY PAY PERIOD",
+      cutoffWindow: "Cutoff window & payout date",
+      cutoffDesc: "Used for monthly claim calculation and planned payout date.",
+      periodStart: "Period Start",
+      periodEnd: "Period End",
+      plannedPayoutDate: "Planned Payout Date",
+      payoutFrequency: "PAYOUT FREQUENCY",
+      monthlyOpt: "MONTHLY",
+      endProgramOpt: "END PROGRAM",
+      wfoRate: "WFO RATE (DAY)",
+      wfhRate: "WFH RATE (DAY)",
+      applyLocalTax: "APPLY LOCAL TAX",
+      financialDisclaimer: "Financial Disclaimer",
+      financialDisclaimerDesc: "Changing calculation methods or rates mid-month will only affect future records. Existing \"Verified\" records will retain original values.",
+      // Access control expanded
+      standardAccessLevel: "STANDARD ACCESS LEVEL",
+      immediateRevocation: "IMMEDIATE REVOCATION",
+      immediateRevocationDesc: "Account locked instantly on finish",
+      limitedRecommended: "LIMITED (RECOMMENDED)",
+      limitedRecommendedDesc: "Only certificates and profile access",
+      extendedView: "EXTENDED VIEW",
+      extendedViewDesc: "Keep full read-only history",
+      defaultRetentionPeriod: "DEFAULT RETENTION PERIOD",
+      complianceNote: "COMPLIANT WITH ENTERPRISE DATA RETENTION POLICY V4.0",
+      withdrawalRequestsLabel: "WITHDRAWAL REQUESTS",
+      offboardingRequestsLabel: "OFFBOARDING REQUESTS",
+      tasksCompleted: "tasks completed",
+      manageWithdrawnUsers: "MANAGE WITHDRAWN USERS",
+      offboardingUsersLabel: "OFFBOARDING USERS",
+      withdrawalUsersLabel: "WITHDRAWAL USERS",
+      usersCount: "users",
+      noOffboardingUsers: "No offboarding users",
+      noWithdrawalUsers: "No withdrawal users",
+      completedProcess: "Completed process",
+      earlyWithdrawal: "Early withdrawal",
+      accessLevelLabel: "Access Level",
+      retentionLabel: "Retention",
+      postProgramAccessList: "POST-PROGRAM ACCESS LIST",
+      optRevocation: "REVOCATION",
+      optLimited: "LIMITED",
+      optExtended: "EXTENDED",
     },
     TH: {
       title: "ตั้งค่าระบบ",
@@ -212,6 +277,71 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       attachDoc: "แม่แบบเอกสารที่แนบ",
       docsLimit: "ยังไม่มีไฟล์ที่แนบ",
       targetModule: "โมดูลเป้าหมาย",
+      // Onboarding expanded
+      processTitle: "ชื่อขั้นตอน",
+      stepLogicType: "ประเภทการทำงาน",
+      docUploadOpt: "อัปโหลดเอกสาร (PDF/IMG)",
+      ndaSignOpt: "ลงนามดิจิทัล",
+      moduleLinkOpt: "เปลี่ยนเส้นทางภายในระบบ",
+      externalUrlOpt: "ลิงก์เว็บไซต์ภายนอก",
+      serveTemplates: "แนบแม่แบบหลายรายการสำหรับขั้นตอนนี้",
+      addTemplate: "เพิ่มแม่แบบใหม่",
+      targetModuleInfo: "การเชื่อมโยงโมดูลเป้าหมายอย่างถูกต้องช่วยให้ระบบแสดงทางลัด \"ขั้นตอนถัดไป\" บนหน้าหลักของนักศึกษา",
+      doneEditing: "แก้ไขเสร็จ",
+      stepTitleLabel: "ชื่อขั้นตอน",
+      actionTypeLabel: "ประเภทการกระทำ",
+      externalUrlLabel: "ลิงก์ภายนอก",
+      targetModuleRedirection: "โมดูลเป้าหมาย (เปลี่ยนเส้นทาง)",
+      processIntelligence: "ระบบอัจฉริยะ",
+      processIntelligenceDesc: "การเชื่อมโยงขั้นตอนกับโมดูลจริงช่วยให้เปลี่ยนเส้นทางถูกต้อง",
+      autoHandoff: "ส่งมอบอัตโนมัติเปิดใช้งาน",
+      customWorkflow: "ขั้นตอนการทำงานที่กำหนดเอง",
+      integrateNewStep: "เพิ่มขั้นตอนใหม่",
+      integrateStep: "เพิ่มขั้นตอน",
+      modulePrefix: "โมดูล",
+      filesLabel: "ไฟล์",
+      // Allowance expanded
+      monthlyPayPeriod: "งวดจ่ายรายเดือน",
+      cutoffWindow: "ช่วงคัตออฟและวันจ่าย",
+      cutoffDesc: "ใช้สำหรับคำนวณเคลมรายเดือนและวันจ่ายที่วางแผนไว้",
+      periodStart: "วันเริ่มต้น",
+      periodEnd: "วันสิ้นสุด",
+      plannedPayoutDate: "วันจ่ายที่วางแผน",
+      payoutFrequency: "ความถี่การจ่าย",
+      monthlyOpt: "รายเดือน",
+      endProgramOpt: "จบโปรแกรม",
+      wfoRate: "อัตรา WFO (วัน)",
+      wfhRate: "อัตรา WFH (วัน)",
+      applyLocalTax: "เรียกเก็บภาษีท้องถิ่น",
+      financialDisclaimer: "ข้อจำกัดความรับผิดด้านการเงิน",
+      financialDisclaimerDesc: "การเปลี่ยนวิธีคำนวณหรืออัตรากลางเดือนจะมีผลเฉพาะรายการในอนาคต รายการที่ \"ตรวจสอบแล้ว\" จะยังคงใช้ค่าเดิม",
+      // Access control expanded
+      standardAccessLevel: "ระดับการเข้าถึงมาตรฐาน",
+      immediateRevocation: "เพิกถอนทันที",
+      immediateRevocationDesc: "ล็อคบัญชีทันทีเมื่อเสร็จสิ้น",
+      limitedRecommended: "จำกัด (แนะนำ)",
+      limitedRecommendedDesc: "เข้าถึงเฉพาะใบรับรองและโปรไฟล์",
+      extendedView: "ดูแบบขยาย",
+      extendedViewDesc: "เก็บประวัติแบบอ่านอย่างเดียว",
+      defaultRetentionPeriod: "ระยะเวลาเก็บรักษาเริ่มต้น",
+      complianceNote: "สอดคล้องกับนโยบายการเก็บรักษาข้อมูลองค์กร V4.0",
+      withdrawalRequestsLabel: "คำขอถอนตัว",
+      offboardingRequestsLabel: "คำขอ Offboarding",
+      tasksCompleted: "งานที่เสร็จแล้ว",
+      manageWithdrawnUsers: "จัดการผู้ใช้ที่ถอนตัว",
+      offboardingUsersLabel: "ผู้ใช้ OFFBOARDING",
+      withdrawalUsersLabel: "ผู้ใช้ WITHDRAWAL",
+      usersCount: "คน",
+      noOffboardingUsers: "ไม่มีผู้ใช้ offboarding",
+      noWithdrawalUsers: "ไม่มีผู้ใช้ withdrawal",
+      completedProcess: "เสร็จสิ้นกระบวนการ",
+      earlyWithdrawal: "ถอนตัวก่อนกำหนด",
+      accessLevelLabel: "ระดับการเข้าถึง",
+      retentionLabel: "ระยะเวลาเก็บรักษา",
+      postProgramAccessList: "รายชื่อสิทธิ์หลังจบโปรแกรม",
+      optRevocation: "เพิกถอนทันที",
+      optLimited: "จำกัด",
+      optExtended: "ขยาย",
     }
   }[lang];
 
@@ -242,6 +372,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
   const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
+  const displayRetention = (val: string) => {
+    if (lang === 'TH' && val === '6 Months post-offboard') return '6 เดือนหลังพ้นสภาพ';
+    return val;
+  };
 
   const [evaluationLabelsByLang, setEvaluationLabelsByLang] = useState<{ EN: EvaluationLabels; TH: EvaluationLabels }>({
     EN: {
@@ -1034,12 +1168,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                        </div>
                                        {step.targetPage && (
                                          <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
-                                            <ChevronRight size={10} strokeWidth={4}/> MODULE: {step.targetPage}
+                                            <ChevronRight size={10} strokeWidth={4}/> {t.modulePrefix}: {step.targetPage}
                                          </span>
                                        )}
                                        {step.attachedDocuments.length > 0 && (
                                          <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1.5 ml-2">
-                                            <Paperclip size={10} strokeWidth={4}/> {step.attachedDocuments.length} FILES
+                                            <Paperclip size={10} strokeWidth={4}/> {step.attachedDocuments.length} {t.filesLabel}
                                          </span>
                                        )}
                                     </div>
@@ -1066,7 +1200,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                              <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] animate-in slide-in-from-top-4 duration-300 space-y-8 mx-2 mb-4">
                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                   <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Process Title</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.processTitle}</label>
                                     <input 
                                       type="text" 
                                       className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
@@ -1075,16 +1209,16 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Step Logic Type</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.stepLogicType}</label>
                                     <select 
                                       className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none appearance-none"
                                       value={step.type}
                                       onChange={(e) => handleUpdateStep(step.id, { type: e.target.value as ProcessType })}
                                     >
-                                      <option value="DOC_UPLOAD">Document Submission (PDF/IMG)</option>
-                                      <option value="NDA_SIGN">E-Signature Confirmation</option>
-                                      <option value="MODULE_LINK">Internal Feature Redirection</option>
-                                      <option value="EXTERNAL_URL">External Website Link</option>
+                                      <option value="DOC_UPLOAD">{t.docUploadOpt}</option>
+                                      <option value="NDA_SIGN">{t.ndaSignOpt}</option>
+                                      <option value="MODULE_LINK">{t.moduleLinkOpt}</option>
+                                      <option value="EXTERNAL_URL">{t.externalUrlOpt}</option>
                                     </select>
                                   </div>
                                </div>
@@ -1098,14 +1232,14 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                           </div>
                                           <div>
                                              <h5 className="text-sm font-black text-slate-900 leading-none">{t.attachDoc}</h5>
-                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Serve multiple templates for this step</p>
+                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">{t.serveTemplates}</p>
                                           </div>
                                        </div>
                                        <button 
                                           onClick={() => handleAttachFile(step.id)}
                                           className="px-6 py-3 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2 shadow-xl"
                                        >
-                                          <Plus size={14}/> Add New Template
+                                          <Plus size={14}/> {t.addTemplate}
                                        </button>
                                     </div>
 
@@ -1156,14 +1290,14 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                      <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 flex items-start gap-4">
                                         <AlertCircle size={20} className="text-blue-500 shrink-0"/>
                                         <p className="text-[11px] text-blue-700 leading-relaxed font-bold italic">
-                                          Ensuring a target module is correctly mapped allows the system to provide "Next Action" shortcuts on the intern's home screen.
+                                          {t.targetModuleInfo}
                                         </p>
                                      </div>
                                   </div>
                                </div>
 
                                <div className="pt-6 border-t border-slate-100 flex justify-end">
-                                  <button onClick={() => setEditingStepId(null)} className="px-10 py-3 bg-[#111827] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl">Done Editing</button>
+                                  <button onClick={() => setEditingStepId(null)} className="px-10 py-3 bg-[#111827] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl">{t.doneEditing}</button>
                                </div>
                              </div>
                            )}
@@ -1178,8 +1312,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                          <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem] animate-in slide-in-from-top-4 duration-300 space-y-8 mx-2 mt-4">
                            <div className="flex items-start justify-between gap-6">
                              <div>
-                               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{lang === 'EN' ? 'CUSTOM WORKFLOW STEP' : 'เพิ่มขั้นตอนการทำงานที่กำหนดเอง'}</div>
-                               <h3 className="text-2xl font-black text-slate-900 tracking-tight">{lang === 'EN' ? 'Integrate New Step' : 'เพิ่มขั้นตอนใหม่'}</h3>
+                               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{t.customWorkflow}</div>
+                               <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t.integrateNewStep}</h3>
                              </div>
                              <button
                                type="button"
@@ -1193,7 +1327,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                              <div>
-                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">STEP TITLE</label>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.stepTitleLabel}</label>
                                <input
                                  type="text"
                                  className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 focus:border-blue-200 transition-all"
@@ -1204,23 +1338,23 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                              </div>
 
                              <div>
-                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">ACTION TYPE</label>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.actionTypeLabel}</label>
                                <select
                                  className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none appearance-none"
                                  value={newStepType}
                                  onChange={(e) => setNewStepType(e.target.value as ProcessType)}
                                >
-                                 <option value="MODULE_LINK">Internal Module Path</option>
-                                 <option value="DOC_UPLOAD">Document Submission (PDF/IMG)</option>
-                                 <option value="NDA_SIGN">E-Signature Confirmation</option>
-                                 <option value="EXTERNAL_URL">External Website Link</option>
+                                 <option value="MODULE_LINK">{t.moduleLinkOpt}</option>
+                                 <option value="DOC_UPLOAD">{t.docUploadOpt}</option>
+                                 <option value="NDA_SIGN">{t.ndaSignOpt}</option>
+                                 <option value="EXTERNAL_URL">{t.externalUrlOpt}</option>
                                </select>
                              </div>
                            </div>
 
                            {newStepType === 'EXTERNAL_URL' ? (
                              <div>
-                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">EXTERNAL URL</label>
+                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.externalUrlLabel}</label>
                                <input
                                  type="url"
                                  className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 focus:border-blue-200 transition-all"
@@ -1232,7 +1366,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                            ) : (
                              <div>
                                <div className="flex items-center justify-between mb-4">
-                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">TARGET MODULE (REDIRECTION)</label>
+                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{t.targetModuleRedirection}</label>
                                  {newStepTargetPage && (
                                    <div className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{String(newStepTargetPage).replace('-', ' ')}</div>
                                  )}
@@ -1267,7 +1401,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                onClick={handleCreateNewStep}
                                className="px-10 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
                              >
-                               {lang === 'EN' ? 'Integrate Step' : 'เพิ่มขั้นตอน'}
+                               {t.integrateStep}
                              </button>
                            </div>
                          </div>
@@ -1278,11 +1412,11 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
               <div className="lg:col-span-4 space-y-8">
                  <div className="bg-[#0B0F19] rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden h-fit">
-                    <h3 className="text-2xl font-black mb-4 tracking-tight">Process Intelligence</h3>
-                    <p className="text-slate-400 text-xs leading-relaxed mb-6 italic">Mapping steps to actual modules ensures correct workspace redirection.</p>
+                    <h3 className="text-2xl font-black mb-4 tracking-tight">{t.processIntelligence}</h3>
+                    <p className="text-slate-400 text-xs leading-relaxed mb-6 italic">{t.processIntelligenceDesc}</p>
                     <div className="p-6 bg-white/5 border border-white/10 rounded-[2rem] flex items-center gap-5">
                        <CheckCircle2 size={24} className="text-emerald-400"/>
-                       <p className="text-[14px] font-black text-slate-100">Auto-Handoff Active</p>
+                       <p className="text-[14px] font-black text-slate-100">{t.autoHandoff}</p>
                     </div>
                  </div>
               </div>
@@ -1313,9 +1447,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                       <div className="bg-[#F8FAFC] border border-slate-200 rounded-[2rem] p-8">
                         <div className="flex items-start justify-between gap-6 flex-col md:flex-row md:items-center">
                           <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">MONTHLY PAY PERIOD</div>
-                            <div className="mt-2 text-lg font-black text-slate-900">Cutoff window & payout date</div>
-                            <div className="mt-2 text-[11px] font-bold text-slate-500">Used for monthly claim calculation and planned payout date.</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.monthlyPayPeriod}</div>
+                            <div className="mt-2 text-lg font-black text-slate-900">{t.cutoffWindow}</div>
+                            <div className="mt-2 text-[11px] font-bold text-slate-500">{t.cutoffDesc}</div>
                           </div>
 
                           <div className="flex items-center gap-3">
@@ -1341,7 +1475,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
                           <label className="space-y-2 block">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period Start</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.periodStart}</div>
                             <input
                               type="date"
                               value={payPeriodStartDate}
@@ -1351,7 +1485,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                           </label>
 
                           <label className="space-y-2 block">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Period End</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.periodEnd}</div>
                             <input
                               type="date"
                               value={payPeriodEndDate}
@@ -1361,7 +1495,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                           </label>
 
                           <label className="space-y-2 block">
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Planned Payout Date</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.plannedPayoutDate}</div>
                             <input
                               type="date"
                               value={payPeriodPlannedPayoutDate}
@@ -1373,7 +1507,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">PAYOUT FREQUENCY</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">{t.payoutFrequency}</label>
                         <div className="flex gap-4">
                            <button 
                              onClick={() => setPayoutFreq('MONTHLY')}
@@ -1382,7 +1516,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${payoutFreq === 'MONTHLY' ? 'border-blue-600' : 'border-slate-200'}`}>
                                 {payoutFreq === 'MONTHLY' && <div className="w-3 h-3 bg-blue-600 rounded-full"></div>}
                              </div>
-                             <span className={`text-xs font-black uppercase tracking-widest ${payoutFreq === 'MONTHLY' ? 'text-slate-900' : 'text-slate-300'}`}>MONTHLY</span>
+                             <span className={`text-xs font-black uppercase tracking-widest ${payoutFreq === 'MONTHLY' ? 'text-slate-900' : 'text-slate-300'}`}>{t.monthlyOpt}</span>
                            </button>
                            <button 
                              onClick={() => setPayoutFreq('END_PROGRAM')}
@@ -1391,14 +1525,14 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${payoutFreq === 'END_PROGRAM' ? 'border-blue-600' : 'border-slate-200'}`}>
                                 {payoutFreq === 'END_PROGRAM' && <div className="w-3 h-3 bg-blue-600 rounded-full"></div>}
                              </div>
-                             <span className={`text-xs font-black uppercase tracking-widest ${payoutFreq === 'END_PROGRAM' ? 'text-slate-900' : 'text-slate-300'}`}>END PROGRAM</span>
+                             <span className={`text-xs font-black uppercase tracking-widest ${payoutFreq === 'END_PROGRAM' ? 'text-slate-900' : 'text-slate-300'}`}>{t.endProgramOpt}</span>
                            </button>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                          <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">WFO RATE (DAY)</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t.wfoRate}</label>
                             <div className="relative group">
                                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-bold group-focus-within:text-blue-600 transition-colors">฿</div>
                                <input 
@@ -1410,7 +1544,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                             </div>
                          </div>
                          <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">WFH RATE (DAY)</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">{t.wfhRate}</label>
                             <div className="relative group">
                                <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 font-bold group-focus-within:text-blue-600 transition-colors">฿</div>
                                <input 
@@ -1426,7 +1560,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                          <div className="bg-[#EEF2FF] p-8 rounded-[2rem] border border-[#E0E7FF] relative">
                             <div className="flex items-center justify-between mb-8">
-                               <span className="text-[10px] font-black text-[#4338CA] uppercase tracking-widest">APPLY LOCAL TAX</span>
+                               <span className="text-[10px] font-black text-[#4338CA] uppercase tracking-widest">{t.applyLocalTax}</span>
                                <button 
                                  onClick={() => setApplyTax(!applyTax)}
                                  className={`w-12 h-6 rounded-full relative transition-all ${applyTax ? 'bg-[#4338CA]' : 'bg-slate-300'}`}
@@ -1454,9 +1588,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                      <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mb-8">
                         <AlertCircle size={24} />
                      </div>
-                     <h3 className="text-2xl font-black text-[#92400E] mb-6 tracking-tight">Financial Disclaimer</h3>
+                     <h3 className="text-2xl font-black text-[#92400E] mb-6 tracking-tight">{t.financialDisclaimer}</h3>
                      <p className="text-[#B45309] text-sm leading-relaxed font-medium italic">
-                        Changing calculation methods or rates mid-month will only affect future records. Existing "Verified" records will retain original values.
+                        {t.financialDisclaimerDesc}
                      </p>
                   </div>
                </div>
@@ -1475,35 +1609,35 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
                     <div className="space-y-12">
                        <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 block">STANDARD ACCESS LEVEL</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 block">{t.standardAccessLevel}</label>
                           <div className="space-y-3">
                              <AccessCard 
                                active={accessLevel === 'REVOCATION'} 
                                onClick={() => setAccessLevel('REVOCATION')} 
-                               title="IMMEDIATE REVOCATION" 
-                               desc="Account locked instantly on finish" 
+                               title={t.immediateRevocation} 
+                               desc={t.immediateRevocationDesc} 
                              />
                              <AccessCard 
                                active={accessLevel === 'LIMITED'} 
                                onClick={() => setAccessLevel('LIMITED')} 
-                               title="LIMITED (RECOMMENDED)" 
-                               desc="Only certificates and profile access" 
+                               title={t.limitedRecommended} 
+                               desc={t.limitedRecommendedDesc} 
                              />
                              <AccessCard 
                                active={accessLevel === 'EXTENDED'} 
                                onClick={() => setAccessLevel('EXTENDED')} 
-                               title="EXTENDED VIEW" 
-                               desc="Keep full read-only history" 
+                               title={t.extendedView} 
+                               desc={t.extendedViewDesc} 
                              />
                           </div>
                        </div>
 
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
                           <div>
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">DEFAULT RETENTION PERIOD</label>
+                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">{t.defaultRetentionPeriod}</label>
                              <div className="bg-[#F8FAFC] border border-slate-200 rounded-[1.75rem] flex items-center px-8 py-5 group hover:border-blue-300 transition-all cursor-pointer">
                                 <Clock size={20} className="text-slate-300 mr-4" />
-                                <span className="flex-1 text-[14px] font-bold text-slate-700">{retentionPeriod}</span>
+                                <span className="flex-1 text-[14px] font-bold text-slate-700">{displayRetention(retentionPeriod)}</span>
                              </div>
                           </div>
                           <div className="flex flex-col justify-end">
@@ -1512,14 +1646,14 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                    <ShieldCheck size={24} />
                                 </div>
                                 <span className="text-[11px] font-black text-blue-700 leading-tight uppercase italic">
-                                   COMPLIANT WITH ENTERPRISE <br /> DATA RETENTION POLICY V4.0
+                                   {t.complianceNote}
                                 </span>
                               </div>
                            </div>
                         </div>
 
                        <div className="pt-8 border-t border-slate-100">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">WITHDRAWAL REQUESTS</div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.withdrawalRequestsLabel}</div>
                           <div className="space-y-3">
                             {withdrawalRequests.filter((u) => !selectedUserIds.has(u.id)).length === 0 ? (
                               <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
@@ -1565,7 +1699,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                        </div>
 
                        <div className="pt-8 border-t border-slate-100">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">OFFBOARDING REQUESTS</div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.offboardingRequestsLabel}</div>
                           <div className="space-y-3">
                             {offboardingRequests.length === 0 ? (
                               <div className="py-10 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
@@ -1582,7 +1716,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                       <div className="min-w-0">
                                         <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                                          {u.offboardingTasks?.filter((t: any) => t.status === 'COMPLETED').length || 0}/{u.offboardingTasks?.length || 0} tasks completed
+                                          {u.offboardingTasks?.filter((t: any) => t.status === 'COMPLETED').length || 0}/{u.offboardingTasks?.length || 0} {t.tasksCompleted}
                                         </div>
                                       </div>
                                     </div>
@@ -1602,15 +1736,15 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                        </div>
 
                        <div className="pt-10 border-t border-slate-100">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">MANAGE WITHDRAWN USERS</div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.manageWithdrawnUsers}</div>
                           
                           {/* OFFBOARDING USERS */}
                           <div className="mb-8">
                             <div className="flex items-center justify-between gap-4 mb-4">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                                <h4 className="text-sm font-bold text-slate-700">OFFBOARDING USERS</h4>
-                                <span className="text-xs text-slate-400">({offboardingUsers.length} users)</span>
+                                <h4 className="text-sm font-bold text-slate-700">{t.offboardingUsersLabel}</h4>
+                                <span className="text-xs text-slate-400">({offboardingUsers.length} {t.usersCount})</span>
                               </div>
                               <Link
                                 to="/admin/withdrawn-offboarding-users"
@@ -1623,7 +1757,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                               {offboardingUsers.length === 0 ? (
                                 <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
                                   <Users size={24} className="text-slate-200" />
-                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No offboarding users</p>
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t.noOffboardingUsers}</p>
                                 </div>
                               ) : (
                                 offboardingUsers.slice(0, 3).map((u) => {
@@ -1640,7 +1774,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                             <div className="flex items-center gap-2">
                                               <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase rounded-full">OFFBOARDING</span>
                                               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                                                Completed process
+                                                {t.completedProcess}
                                               </div>
                                             </div>
                                           </div>
@@ -1656,7 +1790,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.accessLevelLabel}</div>
                                           <select
                                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
                                             value={accessValue as PostProgramAccessLevel}
@@ -1665,17 +1799,17 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                               setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
                                             }}
                                           >
-                                            <option value="REVOCATION">REVOCATION</option>
-                                            <option value="LIMITED">LIMITED</option>
-                                            <option value="EXTENDED">EXTENDED</option>
+                                            <option value="REVOCATION">{t.optRevocation}</option>
+                                            <option value="LIMITED">{t.optLimited}</option>
+                                            <option value="EXTENDED">{t.optExtended}</option>
                                           </select>
                                         </div>
 
                                         <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.retentionLabel}</div>
                                           <input
                                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
-                                            value={retentionValue}
+                                            value={displayRetention(retentionValue)}
                                             onChange={(e) => {
                                               setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
                                               setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
@@ -1717,8 +1851,8 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                             <div className="flex items-center justify-between gap-4 mb-4">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                                <h4 className="text-sm font-bold text-slate-700">WITHDRAWAL USERS</h4>
-                                <span className="text-xs text-slate-400">({withdrawalUsers.length} users)</span>
+                                <h4 className="text-sm font-bold text-slate-700">{t.withdrawalUsersLabel}</h4>
+                                <span className="text-xs text-slate-400">({withdrawalUsers.length} {t.usersCount})</span>
                               </div>
                               <Link
                                 to="/admin/withdrawn-withdrawal-users"
@@ -1731,7 +1865,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                               {withdrawalUsers.length === 0 ? (
                                 <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
                                   <Users size={24} className="text-slate-200" />
-                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No withdrawal users</p>
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t.noWithdrawalUsers}</p>
                                 </div>
                               ) : (
                                 withdrawalUsers.slice(0, 3).map((u) => {
@@ -1747,7 +1881,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                             <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
                                             <div className="flex items-center gap-2">
                                               <span className="px-2 py-1 bg-rose-100 text-rose-600 text-[8px] font-black uppercase rounded-full">WITHDRAWAL</span>
-                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || 'Early withdrawal'}</div>
+                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.withdrawalReason || t.earlyWithdrawal}</div>
                                             </div>
                                           </div>
                                         </div>
@@ -1766,7 +1900,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Access Level</div>
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.accessLevelLabel}</div>
                                           <select
                                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
                                             value={accessValue as PostProgramAccessLevel}
@@ -1775,17 +1909,17 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                               setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
                                             }}
                                           >
-                                            <option value="REVOCATION">REVOCATION</option>
-                                            <option value="LIMITED">LIMITED</option>
-                                            <option value="EXTENDED">EXTENDED</option>
+                                            <option value="REVOCATION">{t.optRevocation}</option>
+                                            <option value="LIMITED">{t.optLimited}</option>
+                                            <option value="EXTENDED">{t.optExtended}</option>
                                           </select>
                                         </div>
 
                                         <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Retention</div>
+                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.retentionLabel}</div>
                                           <input
                                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
-                                            value={retentionValue}
+                                            value={displayRetention(retentionValue)}
                                             onChange={(e) => {
                                               setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
                                               setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
@@ -1831,7 +1965,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                   <div className="bg-white border border-slate-100 rounded-[3.5rem] p-10 flex flex-col h-full shadow-sm">
                      <div className="flex items-center gap-3 mb-8">
                         <Plus size={20} className="text-slate-400" />
-                        <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">POST-PROGRAM ACCESS LIST</h3>
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight uppercase">{t.postProgramAccessList}</h3>
                      </div>
                      <p className="text-slate-400 text-xs leading-relaxed font-medium mb-10">
                         {lang === 'EN' ? 'Selected withdrawal and offboarding requests waiting for deploy.' : 'รายการที่ถูกเลือกเพื่อกำหนดสิทธิ์ (รอกด Deploy)'}
@@ -1872,12 +2006,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="bg-white rounded-xl p-3 border border-slate-100">
-                                    <div className="text-[10px] text-slate-400 uppercase mb-1">Access Level</div>
+                                    <div className="text-[10px] text-slate-400 uppercase mb-1">{t.accessLevelLabel}</div>
                                     <div className="text-sm font-black text-slate-800">{op.accessLevel}</div>
                                   </div>
                                   <div className="bg-white rounded-xl p-3 border border-slate-100">
-                                    <div className="text-[10px] text-slate-400 uppercase mb-1">Retention</div>
-                                    <div className="text-sm font-black text-slate-800">{op.retentionPeriod}</div>
+                                    <div className="text-[10px] text-slate-400 uppercase mb-1">{t.retentionLabel}</div>
+                                    <div className="text-sm font-black text-slate-800">{displayRetention(op.retentionPeriod)}</div>
                                   </div>
                                 </div>
                               </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ChevronLeft, ChevronRight, Users, UserPlus, X } from 'lucide-react';
 
@@ -10,6 +11,8 @@ interface RosterTabProps {
 }
 
 const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 5;
 
@@ -44,9 +47,9 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between mb-10">
           <div className="space-y-1">
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Intern Status Overview</h3>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_roster.title')}</h3>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
-              Active: {internRoster.filter(i => i.status === 'Active').length} | Inactive: {internRoster.filter(i => i.status === 'WITHDRAWN').length}
+              {tr('admin_roster.active')}: {internRoster.filter(i => i.status === 'Active').length} | {tr('admin_roster.inactive')}: {internRoster.filter(i => i.status === 'WITHDRAWN').length}
             </p>
           </div>
         </div>
@@ -55,11 +58,11 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
           <table className="w-full">
             <thead>
               <tr className="text-left border-b border-slate-50">
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">Intern Identity</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Department</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Supervisor</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Program Status</th>
-                <th className="pb-6 text-right pr-4">Action</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">{tr('admin_roster.col_intern')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_roster.col_department')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_roster.col_supervisor')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_roster.col_program_status')}</th>
+                <th className="pb-6 text-right pr-4">{tr('admin_roster.col_action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -85,7 +88,7 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
                       </div>
                     ) : (
                       <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-2">
-                        <X size={12} /> Unassigned
+                        <X size={12} /> {tr('admin_roster.unassigned')}
                       </span>
                     )}
                   </td>
@@ -97,14 +100,14 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
                           : 'bg-rose-50 text-rose-600 border-rose-100'
                       }`}
                     >
-                      {intern.status === 'Active' ? 'Active' : 'Inactive'}
+                      {intern.status === 'Active' ? tr('admin_roster.active') : tr('admin_roster.inactive')}
                     </span>
                   </td>
                   <td className="py-6 text-right pr-4">
                     <button
                       onClick={() => onAssignSupervisor(intern)}
                       className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:shadow-lg transition-all active:scale-95"
-                      title="Re-assign Mentor"
+                      title={tr('admin_roster.reassign_mentor')}
                     >
                       <UserPlus size={18} />
                     </button>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Building2, ChevronLeft, ChevronRight, Home } from 'lucide-react';
 
@@ -33,6 +34,8 @@ type AttendanceRow = {
 };
 
 const AttendanceTab: React.FC = () => {
+  const { t } = useTranslation();
+  const tr = (key: string) => String(t(key));
   const PAGE_SIZE = 5;
 
   const [interns, setInterns] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
@@ -183,8 +186,8 @@ const AttendanceTab: React.FC = () => {
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between mb-10">
           <div className="space-y-1">
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Program Attendance Audit</h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Verification of daily work sessions</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_attendance.title')}</h3>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{tr('admin_attendance.subtitle')}</p>
           </div>
         </div>
 
@@ -192,12 +195,12 @@ const AttendanceTab: React.FC = () => {
           <table className="w-full">
             <thead>
               <tr className="text-left border-b border-slate-50">
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">Intern</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Latest Date</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Clock In</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Clock Out</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">Mode</th>
-                <th className="pb-6 text-right pr-4 text-[10px] font-black text-slate-400 uppercase">Status</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase pl-4">{tr('admin_attendance.col_intern')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_attendance.col_latest_date')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_attendance.col_clock_in')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_attendance.col_clock_out')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase">{tr('admin_attendance.col_mode')}</th>
+                <th className="pb-6 text-right pr-4 text-[10px] font-black text-slate-400 uppercase">{tr('admin_attendance.col_status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">

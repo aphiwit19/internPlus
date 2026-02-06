@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
@@ -17,6 +18,8 @@ interface AdminLeaveRequestPageProps {
 }
 
 const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) => {
+  const { t: i18t } = useTranslation();
+  const tr = (key: string) => String(i18t(key));
   const navigate = useNavigate();
   const [quotaDays, setQuotaDays] = useState<number>(39);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
@@ -129,11 +132,11 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
       }
       topNav={
         <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
-          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label="Roster" />
-          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label="Attendance" />
-          <TabBtn active onClick={() => void 0} icon={<UserX size={16} />} label="Absences" />
-          <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16} />} label="Certs" />
-          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label="Payouts" />
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label={tr('admin_dashboard.tab_roster')} />
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label={tr('admin_dashboard.tab_attendance')} />
+          <TabBtn active onClick={() => void 0} icon={<UserX size={16} />} label={tr('admin_dashboard.tab_absences')} />
+          <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16} />} label={tr('admin_dashboard.tab_certs')} />
+          <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label={tr('admin_dashboard.tab_payouts')} />
         </div>
       }
       sidePanel={

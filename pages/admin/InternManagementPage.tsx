@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { BarChart3, ChevronDown, FileCode, FileImage, FileSpreadsheet, FileText, Filter, MoreHorizontal, StickyNote } from 'lucide-react';
 
@@ -199,6 +200,8 @@ const DEFAULT_PERFORMANCE: PerformanceMetrics = {
 
 
 const InternManagementPage: React.FC = () => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const navigate = useNavigate();
 
@@ -1598,7 +1601,7 @@ const InternManagementPage: React.FC = () => {
 
                   <div>
 
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('admin_intern_management.project_handoff')}</div>
 
                     <div className="mt-2 text-2xl font-black text-slate-900 tracking-tight">{handoffProjectOpen.projectTitle}</div>
 
@@ -1672,9 +1675,9 @@ const InternManagementPage: React.FC = () => {
 
                 <div>
 
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Work Assets Vault</h3>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_intern_management.work_assets_vault')}</h3>
 
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">ALL FILES ACROSS ACTIVE & COMPLETED TASKS</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{tr('admin_intern_management.all_files_subtitle')}</p>
 
                 </div>
 
@@ -1686,7 +1689,7 @@ const InternManagementPage: React.FC = () => {
 
                   <div className="mb-6 p-6 bg-rose-50 border border-rose-100 rounded-[2rem]">
 
-                    <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Load Error</div>
+                    <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">{tr('admin_intern_management.load_error')}</div>
 
                     <div className="mt-2 text-sm font-bold text-rose-700 break-words">{handoffLoadError}</div>
 
@@ -1700,7 +1703,7 @@ const InternManagementPage: React.FC = () => {
 
                   <div className="py-16 text-center">
 
-                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">Loading...</div>
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{tr('admin_intern_management.loading')}</div>
 
                   </div>
 
@@ -1712,9 +1715,9 @@ const InternManagementPage: React.FC = () => {
 
                   <div className="py-16 text-center">
 
-                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">NO HANDOFF SUBMISSIONS YET</div>
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{tr('admin_intern_management.no_handoff_title')}</div>
 
-                    <div className="mt-3 text-sm font-bold text-slate-500">No project handoff has been submitted.</div>
+                    <div className="mt-3 text-sm font-bold text-slate-500">{tr('admin_intern_management.no_handoff_desc')}</div>
 
                   </div>
 
@@ -1728,9 +1731,9 @@ const InternManagementPage: React.FC = () => {
 
                     <div className="px-2">
 
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</h4>
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('admin_intern_management.project_handoff')}</h4>
 
-                      <p className="mt-1 text-[10px] font-black text-slate-300 uppercase tracking-widest">LATEST SUBMISSIONS</p>
+                      <p className="mt-1 text-[10px] font-black text-slate-300 uppercase tracking-widest">{tr('admin_intern_management.latest_submissions')}</p>
 
                     </div>
 
@@ -1752,7 +1755,7 @@ const InternManagementPage: React.FC = () => {
 
                             date={p.date}
 
-                            taskTitle={`${docCount} files, ${linkCount} links`}
+                            taskTitle={tr('admin_intern_management.files_links', { files: docCount, links: linkCount })}
 
                             status={p.status}
 
@@ -1850,13 +1853,13 @@ const InternManagementPage: React.FC = () => {
 
               <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
 
-                <h3 className="text-lg font-bold text-slate-900 mb-8">Time Report Filter</h3>
+                <h3 className="text-lg font-bold text-slate-900 mb-8">{tr('admin_intern_management.time_report_filter')}</h3>
 
                 <div className="space-y-6">
 
                   <div>
 
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Date Range</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('admin_intern_management.date_range')}</label>
 
                     <div className="flex flex-col gap-3">
 
@@ -1880,7 +1883,7 @@ const InternManagementPage: React.FC = () => {
 
                   <div>
 
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Status Filter</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('admin_intern_management.status_filter')}</label>
 
                     <div className="relative">
 
@@ -1894,7 +1897,7 @@ const InternManagementPage: React.FC = () => {
 
                       >
 
-                        <option value="ALL">All Status</option>
+                        <option value="ALL">{tr('admin_intern_management.all_status')}</option>
 
                         <option value="PRESENT">PRESENT</option>
 
@@ -1912,7 +1915,7 @@ const InternManagementPage: React.FC = () => {
 
                   <div>
 
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Work Mode</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('admin_intern_management.work_mode')}</label>
 
                     <div className="relative">
 
@@ -1926,7 +1929,7 @@ const InternManagementPage: React.FC = () => {
 
                       >
 
-                        <option value="ALL">All Mode</option>
+                        <option value="ALL">{tr('admin_intern_management.all_mode')}</option>
 
                         <option value="WFO">WFO</option>
 
@@ -1958,7 +1961,7 @@ const InternManagementPage: React.FC = () => {
 
                   >
 
-                    <Filter size={16} /> Apply Filter
+                    <Filter size={16} /> {tr('admin_intern_management.apply_filter')}
 
                   </button>
 

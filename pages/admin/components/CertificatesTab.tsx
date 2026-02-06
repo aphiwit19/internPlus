@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { FileCheck, ShieldCheck } from 'lucide-react';
 
@@ -10,11 +11,13 @@ interface CertificatesTabProps {
 }
 
 const CertificatesTab: React.FC<CertificatesTabProps> = ({ certRequests, onSelectForSigning }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between mb-12">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Certificate Issuance Queue</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_certificates_tab.title')}</h3>
         </div>
         <div className="space-y-6">
           {certRequests.map(req => (
@@ -30,7 +33,7 @@ const CertificatesTab: React.FC<CertificatesTabProps> = ({ certRequests, onSelec
                 <img src={req.avatar} className="w-16 h-16 rounded-[1.25rem] object-cover ring-4 ring-slate-50" alt="" />
                 <div>
                   <h4 className="text-xl font-black text-slate-900 leading-none">{req.internName}</h4>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-2">Requested {req.date}</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-2">{tr('admin_certificates_tab.requested', { date: req.date })}</p>
                 </div>
               </div>
               <div className="flex-1 flex justify-center">
@@ -41,7 +44,7 @@ const CertificatesTab: React.FC<CertificatesTabProps> = ({ certRequests, onSelec
                       : 'bg-[#F0F4FF] text-[#4F46E5] border-[#E0E7FF]'
                   }`}
                 >
-                  {req.type} Document
+                  {tr('admin_certificates_tab.document', { type: req.type })}
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -50,11 +53,11 @@ const CertificatesTab: React.FC<CertificatesTabProps> = ({ certRequests, onSelec
                     onClick={() => onSelectForSigning(req)}
                     className="px-8 py-4 bg-[#111827] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-3 shadow-xl"
                   >
-                    <ShieldCheck size={18} /> APPROVE & SIGN
+                    <ShieldCheck size={18} /> {tr('admin_certificates_tab.approve_sign')}
                   </button>
                 ) : (
                   <div className="flex items-center gap-3 text-emerald-600 font-black text-xs uppercase tracking-widest bg-emerald-50 px-6 py-3 rounded-2xl border border-emerald-100">
-                    <FileCheck size={20} /> DOCUMENT ISSUED
+                    <FileCheck size={20} /> {tr('admin_certificates_tab.document_issued')}
                   </div>
                 )}
               </div>

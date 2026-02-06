@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   UserPlus, 
   User, 
@@ -22,6 +23,8 @@ import { useAppContext } from '@/app/AppContext';
 import { getDefaultAvatarUrl } from '@/app/avatar';
 
 const InvitationsPage: React.FC = () => {
+  const { t } = useTranslation();
+  const tr = (key: string) => String(t(key));
   const { user } = useAppContext();
 
   const [inviteRole, setInviteRole] = useState<UserRole>('INTERN');
@@ -324,8 +327,8 @@ const InvitationsPage: React.FC = () => {
         
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">Invitations</h1>
-            <p className="text-slate-500 text-sm font-medium pt-2">Manage and deploy access invitations to new trainees or supervisors.</p>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_invitations.title')}</h1>
+            <p className="text-slate-500 text-sm font-medium pt-2">{tr('admin_invitations.subtitle')}</p>
           </div>
         </div>
 
@@ -342,13 +345,13 @@ const InvitationsPage: React.FC = () => {
                         onClick={() => setInviteRole('INTERN')}
                         className={`flex items-center gap-2 px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${inviteRole === 'INTERN' ? 'bg-white text-blue-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
                       >
-                        <User size={16} /> Intern
+                        <User size={16} /> {tr('admin_invitations.intern')}
                       </button>
                       <button 
                         onClick={() => setInviteRole('SUPERVISOR')}
                         className={`flex items-center gap-2 px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${inviteRole === 'SUPERVISOR' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
                       >
-                        <ShieldCheck size={16} /> Supervisor
+                        <ShieldCheck size={16} /> {tr('admin_invitations.supervisor')}
                       </button>
                    </div>
                 </div>
@@ -358,22 +361,22 @@ const InvitationsPage: React.FC = () => {
                     {inviteRole === 'INTERN' ? <UserPlus size={28} /> : <UserCheck size={28} />}
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Deploy {inviteRole === 'INTERN' ? 'Trainee' : 'Mentor'} Access</h2>
-                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1">Credentials Configuration</p>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{inviteRole === 'INTERN' ? tr('admin_invitations.deploy_trainee') : tr('admin_invitations.deploy_mentor')}</h2>
+                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1">{tr('admin_invitations.credentials_config')}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
                   <div className="space-y-6">
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Full Name</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.full_name')}</label>
                       <div className="relative">
                          <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                          <input type="text" placeholder="John Doe" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
                       </div>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Recipient Email</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.recipient_email')}</label>
                       <div className="relative">
                          <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                          <input type="email" placeholder="user@company.io" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
@@ -384,11 +387,11 @@ const InvitationsPage: React.FC = () => {
                   <div className="space-y-6">
                     {inviteRole === 'INTERN' ? (
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Assign Supervisor</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.assign_supervisor')}</label>
                         <div className="relative">
                          <ShieldCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                          <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer" value={selectedSupervisor} onChange={(e) => setSelectedSupervisor(e.target.value)}>
-                            <option value="">Select Supervisor...</option>
+                            <option value="">{tr('admin_invitations.select_supervisor')}</option>
                             {supervisors.map((s) => (
                               <option key={s.id} value={s.id}>
                                 {s.name} - {s.position} ({s.department})
@@ -400,12 +403,12 @@ const InvitationsPage: React.FC = () => {
                     ) : (
                       <div className="space-y-6">
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Assign HR Lead</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.assign_hr_lead')}</label>
                           <div className="flex items-stretch gap-3">
                             <div className="relative flex-1">
                               <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                               <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer" value={selectedHrLead} onChange={(e) => setSelectedHrLead(e.target.value)}>
-                                <option value="">Select HR Representative...</option>
+                                <option value="">{tr('admin_invitations.select_hr_rep')}</option>
                                 {hrLeads.map((lead) => (
                                   <option key={lead} value={lead}>
                                     {lead}
@@ -417,8 +420,8 @@ const InvitationsPage: React.FC = () => {
                               type="button"
                               onClick={() => setIsAddingHrLead((v) => !v)}
                               className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                              aria-label="Add HR Lead"
-                              title="Add HR Lead"
+                              aria-label={tr('admin_invitations.add_hr_lead')}
+                              title={tr('admin_invitations.add_hr_lead')}
                             >
                               <Plus size={18} />
                             </button>
@@ -427,7 +430,7 @@ const InvitationsPage: React.FC = () => {
                           {isAddingHrLead && (
                             <div className="mt-4 p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                               <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">New HR Lead</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.new_hr_lead')}</label>
                                 <div className="relative">
                                   <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                                   <input
@@ -449,14 +452,14 @@ const InvitationsPage: React.FC = () => {
                                   }}
                                   className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-100 transition-all"
                                 >
-                                  Cancel
+                                  {tr('admin_invitations.cancel')}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={handleAddHrLead}
                                   className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-600 transition-all"
                                 >
-                                  Add
+                                  {tr('admin_invitations.add')}
                                 </button>
                               </div>
                             </div>
@@ -465,8 +468,8 @@ const InvitationsPage: React.FC = () => {
 
                         <div className="flex items-center justify-between gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
                           <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Co-Admin Access</div>
-                            <div className="text-slate-700 text-sm font-bold mt-2">Allow this Supervisor to also act as HR Admin</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{tr('admin_invitations.co_admin_access')}</div>
+                            <div className="text-slate-700 text-sm font-bold mt-2">{tr('admin_invitations.co_admin_desc')}</div>
                           </div>
                           <button
                             type="button"
@@ -477,12 +480,12 @@ const InvitationsPage: React.FC = () => {
                                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                             }`}
                           >
-                            {supervisorCoAdmin ? 'Enabled' : 'Disabled'}
+                            {supervisorCoAdmin ? tr('admin_invitations.enabled') : tr('admin_invitations.disabled')}
                           </button>
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Assign Department</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.assign_department')}</label>
                           <div className="flex items-stretch gap-3">
                             <div className="relative flex-1">
                               <Briefcase size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
@@ -498,8 +501,8 @@ const InvitationsPage: React.FC = () => {
                               type="button"
                               onClick={() => setIsAddingDepartment((v) => !v)}
                               className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                              aria-label="Add Department"
-                              title="Add Department"
+                              aria-label={tr('admin_invitations.add_department')}
+                              title={tr('admin_invitations.add_department')}
                             >
                               <Plus size={18} />
                             </button>
@@ -508,7 +511,7 @@ const InvitationsPage: React.FC = () => {
                           {isAddingDepartment && (
                             <div className="mt-4 p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                               <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">New Department</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.new_department')}</label>
                                 <div className="relative">
                                   <Briefcase size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                                   <input
@@ -530,14 +533,14 @@ const InvitationsPage: React.FC = () => {
                                   }}
                                   className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-100 transition-all"
                                 >
-                                  Cancel
+                                  {tr('admin_invitations.cancel')}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={handleAddDepartment}
                                   className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-600 transition-all"
                                 >
-                                  Add
+                                  {tr('admin_invitations.add')}
                                 </button>
                               </div>
                             </div>
@@ -548,14 +551,14 @@ const InvitationsPage: React.FC = () => {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Effective Date</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.effective_date')}</label>
                         <div className="relative">
                           <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                           <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Start Time</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.start_time')}</label>
                         <div className="relative">
                           <Clock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                           <input type="time" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
@@ -566,7 +569,7 @@ const InvitationsPage: React.FC = () => {
                 </div>
 
                 <div className="mt-12 flex gap-4">
-                   <button className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Discard Draft</button>
+                   <button className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">{tr('admin_invitations.discard_draft')}</button>
                    <button
                      onClick={() => void handleSendInviteEmail()}
                      disabled={isSendingInvite}
@@ -578,7 +581,7 @@ const InvitationsPage: React.FC = () => {
                            : 'bg-[#111827] hover:bg-indigo-600 text-white'
                      } rounded-[1.5rem] font-black text-sm uppercase tracking-widest transition-all shadow-2xl flex items-center justify-center gap-3`}
                    >
-                     <Send size={18} /> Deploy Official Invite
+                     <Send size={18} /> {tr('admin_invitations.deploy_invite')}
                    </button>
                 </div>
 

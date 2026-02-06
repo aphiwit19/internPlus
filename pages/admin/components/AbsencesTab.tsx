@@ -1,16 +1,19 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { CheckCircle2, UserX } from 'lucide-react';
 import { getDefaultAvatarUrl } from '@/app/avatar';
 
 const AbsencesTab: React.FC = () => {
+  const { t } = useTranslation();
+  const tr = (key: string) => String(t(key));
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between mb-12">
           <div className="space-y-1">
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Absence & Leave Audit</h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Cross-reference for unpaid leave payroll adjustments</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_absences.title')}</h3>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{tr('admin_absences.subtitle')}</p>
           </div>
         </div>
 
@@ -33,12 +36,12 @@ const AbsencesTab: React.FC = () => {
             </div>
             <div className="flex items-center gap-10">
               <div className="text-center">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">STIPEND IMPACT</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{tr('admin_absences.stipend_impact')}</p>
                 <p className="text-lg font-black text-rose-600">-100 THB</p>
               </div>
               <div className="bg-white px-6 py-3 rounded-2xl border border-rose-100 flex items-center gap-3">
                 <CheckCircle2 size={20} className="text-emerald-500" />
-                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">LOGGED FOR PAYROLL</span>
+                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{tr('admin_absences.logged_for_payroll')}</span>
               </div>
             </div>
           </div>

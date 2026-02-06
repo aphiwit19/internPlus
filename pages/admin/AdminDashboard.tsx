@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   ShieldCheck, 
   Trash2, 
@@ -127,6 +128,8 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   
@@ -945,7 +948,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Adjust Allowance Amount</h3>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('admin_dashboard.adjust_allowance')}</h3>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
                       {editingAllowanceClaim.internName}
                     </div>
@@ -960,7 +963,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                 </div>
                 <div className="p-8 space-y-5">
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">New Amount (THB)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.new_amount')}</div>
                     <input
                       value={editAllowanceAmount}
                       onChange={(e) => setEditAllowanceAmount(e.target.value)}
@@ -968,7 +971,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                     />
                   </label>
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (required)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.note_required')}</div>
                     <textarea
                       value={editAllowanceNote}
                       onChange={(e) => setEditAllowanceNote(e.target.value)}
@@ -982,14 +985,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                       disabled={isSavingAllowanceEdit}
                       className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
                     >
-                      Cancel
+                      {tr('admin_dashboard.cancel')}
                     </button>
                     <button
                       onClick={() => void handleSaveAdminAllowanceEdit()}
                       disabled={isSavingAllowanceEdit || !editAllowanceNote.trim() || !String(editAllowanceAmount).trim()}
                       className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
                     >
-                      Save
+                      {tr('admin_dashboard.save')}
                     </button>
                   </div>
                 </div>
@@ -1001,15 +1004,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
         {/* Global Admin Header */}
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">HR Command Center</h1>
-            <p className="text-slate-500 text-sm font-medium pt-2">Global oversight for roster, absences, and payouts.</p>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.title')}</h1>
+            <p className="text-slate-500 text-sm font-medium pt-2">{tr('admin_dashboard.subtitle')}</p>
           </div>
           <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
-             <TabBtn active={activeTab === 'roster'} onClick={() => setActiveTab('roster')} icon={<Users size={16}/>} label="Roster" />
-             <TabBtn active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} icon={<Clock size={16}/>} label="Attendance" />
-             <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16}/>} label="Absences" hasNotification={pendingLeaveCount > 0} />
-             <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16}/>} label="Certs" />
-             <TabBtn active={activeTab === 'allowances'} onClick={() => setActiveTab('allowances')} icon={<CreditCard size={16}/>} label="Payouts" />
+             <TabBtn active={activeTab === 'roster'} onClick={() => setActiveTab('roster')} icon={<Users size={16}/>} label={tr('admin_dashboard.tab_roster')} />
+             <TabBtn active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} icon={<Clock size={16}/>} label={tr('admin_dashboard.tab_attendance')} />
+             <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16}/>} label={tr('admin_dashboard.tab_absences')} hasNotification={pendingLeaveCount > 0} />
+             <TabBtn active={false} onClick={() => navigate('/admin/certificates')} icon={<Award size={16}/>} label={tr('admin_dashboard.tab_certs')} />
+             <TabBtn active={activeTab === 'allowances'} onClick={() => setActiveTab('allowances')} icon={<CreditCard size={16}/>} label={tr('admin_dashboard.tab_payouts')} />
           </div>
         </div>
 
@@ -1042,8 +1045,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
            <div className="space-y-6">
              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                <div>
-                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Bulk Actions</div>
-                 <div className="text-sm font-black text-slate-900 mt-1">Apply to all interns for selected month</div>
+                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.bulk_actions')}</div>
+                 <div className="text-sm font-black text-slate-900 mt-1">{tr('admin_dashboard.bulk_actions_desc')}</div>
                </div>
                <div className="flex items-center gap-3">
                  <button
@@ -1052,7 +1055,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                    disabled={isAllowanceLoading || isBulkAuthorizing || isBulkPaying}
                    className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
                  >
-                   Authorize All
+                   {tr('admin_dashboard.authorize_all')}
                  </button>
                  <button
                    type="button"
@@ -1060,7 +1063,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                    disabled={isAllowanceLoading || isBulkAuthorizing || isBulkPaying}
                    className="px-6 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
                  >
-                   Pay All
+                   {tr('admin_dashboard.pay_all')}
                  </button>
                </div>
              </div>
@@ -1088,8 +1091,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
            <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
               <div className="flex items-center justify-between">
                 <div>
-                   <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Select Primary Mentor</h3>
-                   <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Assigning mentor for {assigningIntern.name}</p>
+                   <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.select_mentor')}</h3>
+                   <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">{tr('admin_dashboard.assigning_mentor_for', { name: assigningIntern.name })}</p>
                 </div>
                 <button onClick={() => setAssigningIntern(null)} className="text-slate-300 hover:text-slate-900"><X size={28}/></button>
               </div>
@@ -1108,7 +1111,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                           <div className="flex items-center gap-2">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                               {mentor.dept}
-                              {'position' in mentor && mentor.position ? ` • ${mentor.position}` : ' Team Lead'}
+                              {'position' in mentor && mentor.position ? ` • ${mentor.position}` : ` ${tr('admin_dashboard.team_lead')}`}
                             </p>
                             {'isCoAdmin' in mentor && mentor.isCoAdmin ? (
                               <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-indigo-100">
@@ -1133,8 +1136,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Confirm Bulk Payout</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Set one payout date & time for all</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.confirm_bulk_payout')}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">{tr('admin_dashboard.bulk_payout_subtitle')}</p>
               </div>
               <button
                 onClick={() => {
@@ -1149,7 +1152,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             </div>
 
             <label className="space-y-2 block">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paid at</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.paid_at')}</div>
               <input
                 type="datetime-local"
                 value={bulkPaidAtInput}
@@ -1168,14 +1171,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                 className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
                 disabled={isBulkPaying}
               >
-                Cancel
+                {tr('admin_dashboard.cancel')}
               </button>
               <button
                 onClick={() => void handleConfirmBulkPay()}
                 disabled={!bulkPaidAtInput || isBulkPaying}
                 className="px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
               >
-                Confirm
+                {tr('admin_dashboard.confirm')}
               </button>
             </div>
           </div>
@@ -1187,8 +1190,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Confirm Payout</h3>
-                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">Set payout date & time</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.confirm_payout')}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">{tr('admin_dashboard.payout_subtitle')}</p>
               </div>
               <button
                 onClick={() => {
@@ -1202,7 +1205,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             </div>
 
             <label className="space-y-2 block">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paid at</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.paid_at')}</div>
               <input
                 type="datetime-local"
                 value={payoutPaidAtInput}
@@ -1219,14 +1222,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                 }}
                 className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
               >
-                Cancel
+                {tr('admin_dashboard.cancel')}
               </button>
               <button
                 onClick={() => void handleConfirmProcessPayment()}
                 disabled={!payoutPaidAtInput}
                 className="px-8 py-3 bg-emerald-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-500/20 disabled:opacity-60 disabled:hover:bg-emerald-600"
               >
-                Confirm
+                {tr('admin_dashboard.confirm')}
               </button>
             </div>
           </div>
@@ -1243,8 +1246,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                       <Award size={32} />
                    </div>
                    <div>
-                     <h3 className="text-3xl font-black text-slate-900 tracking-tight leading-none">Final Authorization</h3>
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">Document Certification for {signingCert.internName}</p>
+                     <h3 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.final_authorization')}</h3>
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">{tr('admin_dashboard.doc_certification_for', { name: signingCert.internName })}</p>
                    </div>
                 </div>
                 <button onClick={() => { setSigningCert(null); setIsStampApplied(false); setHasSigned(false); }} className="p-4 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-2xl transition-all">
@@ -1255,13 +1258,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-10 p-10 overflow-y-auto scrollbar-hide">
                  <div className="space-y-6">
                     <div>
-                       <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Official Signature</h4>
+                       <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{tr('admin_dashboard.official_signature')}</h4>
                        <div className="aspect-[4/3] bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2.5rem] relative overflow-hidden group">
                           <canvas ref={canvasRef} width={600} height={450} className="absolute inset-0 w-full h-full cursor-crosshair touch-none" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
                           {!hasSigned && (
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-30">
                               <PenTool size={48} className="text-slate-400 mb-4" />
-                              <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Sign by hand</span>
+                              <span className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">{tr('admin_dashboard.sign_by_hand')}</span>
                             </div>
                           )}
                           {hasSigned && (
@@ -1275,7 +1278,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
                  <div className="space-y-10">
                     <div className="space-y-4">
-                       <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Company Protocol</h4>
+                       <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.company_protocol')}</h4>
                        <div 
                          onClick={() => setIsStampApplied(!isStampApplied)}
                          className={`p-10 rounded-[2.5rem] border-2 border-dashed flex flex-col items-center justify-center gap-6 cursor-pointer transition-all duration-500 ${
@@ -1288,7 +1291,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                        </div>
                     </div>
                     <button onClick={handleFinalApprove} disabled={!hasSigned || !isStampApplied || isProcessing} className="w-full py-6 bg-[#111827] text-white rounded-full font-black text-lg tracking-tight hover:bg-blue-600 transition-all shadow-2xl disabled:opacity-30 flex items-center justify-center gap-3">
-                       {isProcessing ? <><Clock className="animate-spin" size={24} /> GENERATING...</> : <><FileCheck size={24} /> ISSUE CERTIFICATE</>}
+                       {isProcessing ? <><Clock className="animate-spin" size={24} /> {tr('admin_dashboard.generating')}</> : <><FileCheck size={24} /> {tr('admin_dashboard.issue_certificate')}</>}
                     </button>
                  </div>
               </div>

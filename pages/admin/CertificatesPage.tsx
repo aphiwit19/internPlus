@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Award, ChevronLeft, ChevronRight, Clock, CreditCard, Download, FileText, Settings2, Upload, Users, UserX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, query, serverTimestamp, updateDoc, doc, where } from 'firebase/firestore';
@@ -51,6 +52,8 @@ interface AdminCertificatesPageProps {
 }
 
 const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) => {
+  const { t: i18t } = useTranslation();
+  const tr = (key: string, options?: any) => String(i18t(key, options));
   const { user } = useAppContext();
   const navigate = useNavigate();
 
@@ -419,11 +422,11 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
             </div>
 
             <div className="flex bg-white p-1.5 rounded-[1.5rem] border border-slate-200 shadow-sm overflow-x-auto scrollbar-hide">
-              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label="Roster" />
-              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label="Attendance" />
-              <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16} />} label="Absences" />
-              <TabBtn active onClick={() => void 0} icon={<Award size={16} />} label="Certs" />
-              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label="Payouts" />
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=roster')} icon={<Users size={16} />} label={tr('admin_dashboard.tab_roster')} />
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=attendance')} icon={<Clock size={16} />} label={tr('admin_dashboard.tab_attendance')} />
+              <TabBtn active={false} onClick={() => navigate('/admin/leave')} icon={<UserX size={16} />} label={tr('admin_dashboard.tab_absences')} />
+              <TabBtn active onClick={() => void 0} icon={<Award size={16} />} label={tr('admin_dashboard.tab_certs')} />
+              <TabBtn active={false} onClick={() => navigate('/admin/dashboard?tab=allowances')} icon={<CreditCard size={16} />} label={tr('admin_dashboard.tab_payouts')} />
             </div>
           </div>
 
