@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
 
@@ -18,6 +19,8 @@ type UserDocument = {
 };
 
 const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
   const [policyPreviewUrls, setPolicyPreviewUrls] = useState<Record<string, string>>({});
 
@@ -150,14 +153,14 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
           {d.acknowledgementText && d.policyTitle && (
             <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">{d.acknowledgementText}</p>
           )}
-          {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">Signed: {formatDateTime(d.signedAt) ?? '-'}</p>}
+          {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">{tr('supervisor_dashboard.documents.signed_at')}: {formatDateTime(d.signedAt) ?? '-'}</p>}
         </div>
       </div>
 
       <button
         onClick={() => void handleDownloadDocument(d.id)}
         className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
-        title={d.url ? 'Open' : 'Download'}
+        title={d.url ? tr('supervisor_dashboard.documents.open') : tr('supervisor_dashboard.documents.download')}
       >
         {d.url ? <ExternalLink size={16} /> : <Download size={16} />}
       </button>
@@ -169,35 +172,35 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
       <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
           <div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Document</h3>
-            <p className="text-slate-400 text-sm font-medium mt-2">All intern documents (always visible for admin/supervisor).</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.documents.title')}</h3>
+            <p className="text-slate-400 text-sm font-medium mt-2">{tr('supervisor_dashboard.documents.subtitle')}</p>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-2">
-              <ShieldCheck size={16} /> SECURE
+              <ShieldCheck size={16} /> {tr('supervisor_dashboard.documents.secure')}
             </div>
           </div>
         </div>
 
         {orderedDocuments.length === 0 ? (
           <div className="pt-10 text-center">
-            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No documents yet</p>
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.no_documents')}</p>
           </div>
         ) : (
           <div className="space-y-10">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Signature Evidence</p>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Policy acknowledgement records signed by the intern.</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.policy_acknowledgements')}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{tr('supervisor_dashboard.documents.policy_acknowledgements_subtitle')}</p>
                 </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{policyAcknowledgements.length} items</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.documents.items', { count: policyAcknowledgements.length })}</div>
               </div>
 
               {policyAcknowledgements.length === 0 ? (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No signature evidence yet</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.no_signature_evidence')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -211,15 +214,15 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Withdrawal Evidence</p>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Withdrawal request signature record signed by the intern.</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.withdrawal_evidence')}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{tr('supervisor_dashboard.documents.withdrawal_evidence_subtitle')}</p>
                 </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{withdrawalEvidence.length} items</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.documents.items', { count: withdrawalEvidence.length })}</div>
               </div>
 
               {withdrawalEvidence.length === 0 ? (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No withdrawal evidence yet</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.no_withdrawal_evidence')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -233,15 +236,15 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Intern Documents</p>
-                  <p className="text-xs font-bold text-slate-500 mt-1">Other documents uploaded/generated for this intern.</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.uploaded_documents')}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{tr('supervisor_dashboard.documents.uploaded_documents_subtitle')}</p>
                 </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{otherDocuments.length} items</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.documents.items', { count: otherDocuments.length })}</div>
               </div>
 
               {otherDocuments.length === 0 ? (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No other documents</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.no_other_documents')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">

@@ -126,6 +126,8 @@ import { arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query,
 
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
+import { useTranslation } from 'react-i18next';
+
 import { UserProfile, PerformanceMetrics, Language, SubTask, TaskAttachment } from '@/types';
 
 import { PageId } from '@/pageTypes';
@@ -319,6 +321,8 @@ const SUP_MANAGE_INTERNS_NAV_KEY = 'sup_manage_interns_nav';
 
 
 const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavigate, currentTab }) => {
+
+  const { t } = useTranslation();
 
   const [interns, setInterns] = useState<InternDetail[]>([]);
 
@@ -2644,13 +2648,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           </div>
 
-                          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Performance Analysis</h3>
+                          <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t('supervisor_dashboard.evaluation.performance_analysis')}</h3>
 
                         </div>
 
                         <button className="flex items-center gap-2 px-6 py-3 bg-[#4F46E5] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#4338CA] transition-all shadow-xl shadow-indigo-100">
 
-                          <StickyNote size={16} /> DOWNLOAD FULL AUDIT
+                          <StickyNote size={16} /> {t('supervisor_dashboard.evaluation.download_full_audit')}
 
                         </button>
 
@@ -2658,13 +2662,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     <div className="space-y-10">
 
-                        <ProgressRow label="TECHNICAL PROFICIENCY" score={displayPerformance.technical} color="bg-blue-600" />
+                        <ProgressRow label={String(t('supervisor_dashboard.evaluation.technical_proficiency'))} score={displayPerformance.technical} color="bg-blue-600" />
 
-                        <ProgressRow label="TEAM COMMUNICATION" score={displayPerformance.communication} color="bg-indigo-600" />
+                        <ProgressRow label={String(t('supervisor_dashboard.evaluation.team_communication'))} score={displayPerformance.communication} color="bg-indigo-600" />
 
-                        <ProgressRow label="PUNCTUALITY & RELIABILITY" score={displayPerformance.punctuality} color="bg-emerald-500" />
+                        <ProgressRow label={String(t('supervisor_dashboard.evaluation.punctuality_reliability'))} score={displayPerformance.punctuality} color="bg-emerald-500" />
 
-                        <ProgressRow label="SELF-INITIATIVE" score={displayPerformance.initiative} color="bg-rose-500" />
+                        <ProgressRow label={String(t('supervisor_dashboard.evaluation.self_initiative'))} score={displayPerformance.initiative} color="bg-rose-500" />
 
                     </div>
 
@@ -2688,7 +2692,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         <ScoreInput
 
-                          label="TECHNICAL PROFICIENCY"
+                          label={String(t('supervisor_dashboard.evaluation.technical_proficiency'))}
 
                           value={editPerformance.technical}
 
@@ -2698,7 +2702,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         <ScoreInput
 
-                          label="TEAM COMMUNICATION"
+                          label={String(t('supervisor_dashboard.evaluation.team_communication'))}
 
                           value={editPerformance.communication}
 
@@ -2708,7 +2712,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         <ScoreInput
 
-                          label="PUNCTUALITY & RELIABILITY"
+                          label={String(t('supervisor_dashboard.evaluation.punctuality_reliability'))}
 
                           value={editPerformance.punctuality}
 
@@ -2718,7 +2722,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         <ScoreInput
 
-                          label="SELF-INITIATIVE"
+                          label={String(t('supervisor_dashboard.evaluation.self_initiative'))}
 
                           value={editPerformance.initiative}
 
@@ -2732,7 +2736,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div>
 
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">EXECUTIVE SUMMARY</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{t('supervisor_dashboard.evaluation.executive_summary')}</div>
 
                         <textarea
 
@@ -2744,7 +2748,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
 
-                          placeholder="Write a summary for supervisor review..."
+                          placeholder={t('supervisor_dashboard.evaluation.summary_placeholder')}
 
                         />
 
@@ -2774,7 +2778,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         >
 
-                          Reset
+                          {t('supervisor_dashboard.evaluation.reset')}
 
                         </button>
 
@@ -2788,7 +2792,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         >
 
-                          {isSavingEvaluation ? 'Saving...' : 'Save Evaluation'}
+                          {isSavingEvaluation ? t('supervisor_dashboard.evaluation.saving') : t('supervisor_dashboard.evaluation.save_evaluation')}
 
                         </button>
 
@@ -2802,7 +2806,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
 
-                    <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
+                    <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">{t('supervisor_dashboard.overview.executive_summary')}</h3>
 
                     <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
 
@@ -2810,13 +2814,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           <span className="text-6xl font-black tracking-tighter leading-none">{displayPerformance.overallRating}</span>
 
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">{t('supervisor_dashboard.evaluation.avg_score')}</span>
 
                         </div>
 
                         <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
 
-                          {displaySummary ? `"${displaySummary}"` : '"Summary placeholder for supervisor review."'}
+                          {displaySummary ? `"${displaySummary}"` : t('supervisor_dashboard.evaluation.summary_placeholder_display')}
 
                         </p>
 
@@ -2846,7 +2850,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div>
 
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{t('supervisor_dashboard.assets.project_handoff')}</div>
 
                         <div className="mt-2 text-2xl font-black text-slate-900 tracking-tight">{handoffProjectOpen.projectTitle}</div>
 
@@ -2928,9 +2932,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div>
 
-                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">Work Assets Vault</h3>
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t('supervisor_dashboard.assets.title')}</h3>
 
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">ALL FILES ACROSS ACTIVE & COMPLETED TASKS</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{t('supervisor_dashboard.assets.subtitle')}</p>
 
                       </div>
 
@@ -2944,7 +2948,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div className="mb-6 p-6 bg-rose-50 border border-rose-100 rounded-[2rem]">
 
-                        <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Load Error</div>
+                        <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest">{t('supervisor_dashboard.assets.load_error')}</div>
 
                         <div className="mt-2 text-sm font-bold text-rose-700 break-words">{handoffLoadError}</div>
 
@@ -2958,7 +2962,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div className="py-16 text-center">
 
-                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">Loading...</div>
+                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{t('supervisor_dashboard.assets.loading')}</div>
 
                       </div>
 
@@ -2970,9 +2974,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div className="py-16 text-center">
 
-                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">NO HANDOFF SUBMISSIONS YET</div>
+                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{t('supervisor_dashboard.assets.no_submissions_title')}</div>
 
-                        <div className="mt-3 text-sm font-bold text-slate-500">No project handoff has been submitted.</div>
+                        <div className="mt-3 text-sm font-bold text-slate-500">{t('supervisor_dashboard.assets.no_submissions_subtitle')}</div>
 
                       </div>
 
@@ -2986,9 +2990,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         <div className="px-2">
 
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">PROJECT HANDOFF</h4>
+                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{t('supervisor_dashboard.assets.project_handoff')}</h4>
 
-                          <p className="mt-1 text-[10px] font-black text-slate-300 uppercase tracking-widest">LATEST SUBMISSIONS</p>
+                          <p className="mt-1 text-[10px] font-black text-slate-300 uppercase tracking-widest">{t('supervisor_dashboard.assets.latest_submissions')}</p>
 
                         </div>
 
@@ -3108,13 +3112,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                   <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
 
-                    <h3 className="text-lg font-bold text-slate-900 mb-8">Time Report Filter</h3>
+                    <h3 className="text-lg font-bold text-slate-900 mb-8">{t('supervisor_dashboard.attendance_filter.title')}</h3>
 
                     <div className="space-y-6">
 
                       <div>
 
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Date Range</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t('supervisor_dashboard.attendance_filter.date_range')}</label>
 
                         <div className="flex flex-col gap-3">
 
@@ -3138,7 +3142,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div>
 
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Status Filter</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t('supervisor_dashboard.attendance_filter.status_filter')}</label>
 
                         <div className="relative">
 
@@ -3152,11 +3156,11 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           >
 
-                            <option value="ALL">All Status</option>
+                            <option value="ALL">{t('supervisor_dashboard.attendance_filter.all_status')}</option>
 
-                            <option value="PRESENT">PRESENT</option>
+                            <option value="PRESENT">{t('supervisor_dashboard.attendance_filter.present')}</option>
 
-                            <option value="LATE">LATE</option>
+                            <option value="LATE">{t('supervisor_dashboard.attendance_filter.late')}</option>
 
                           </select>
 
@@ -3170,7 +3174,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <div>
 
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Work Mode</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t('supervisor_dashboard.attendance_filter.work_mode')}</label>
 
                         <div className="relative">
 
@@ -3184,7 +3188,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           >
 
-                            <option value="ALL">All Mode</option>
+                            <option value="ALL">{t('supervisor_dashboard.attendance_filter.all_mode')}</option>
 
                             <option value="WFO">WFO</option>
 
@@ -3216,7 +3220,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       >
 
-                        <Filter size={16} /> Apply Filter
+                        <Filter size={16} /> {t('supervisor_dashboard.attendance_filter.apply_filter')}
 
                       </button>
 
@@ -3344,9 +3348,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-3">INTERNPLUS <span className="mx-1 text-slate-200">/</span> TEAM INTELLIGENCE</p>
 
-                      <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Team Overview</h1>
+                      <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">{t('supervisor_dashboard.dashboard.team_overview')}</h1>
 
-                      <p className="text-slate-400 text-sm font-medium mt-4 italic">Performance data for the <span className="text-blue-600 font-bold not-italic">Product</span> division.</p>
+                      <p className="text-slate-400 text-sm font-medium mt-4 italic">{t('supervisor_dashboard.dashboard.team_overview_subtitle')}</p>
 
                     </div>
 
@@ -3358,7 +3362,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     >
 
-                      <Users size={18} strokeWidth={2.5}/> MANAGE FULL ROSTER
+                      <Users size={18} strokeWidth={2.5}/> {t('supervisor_dashboard.dashboard.manage_full_roster')}
 
                     </button>
 
@@ -3372,7 +3376,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       icon={<Clock className="text-amber-500" size={24} />}
 
-                      label="PENDING LEAVE"
+                      label={String(t('supervisor_dashboard.dashboard.pending_leave'))}
 
                       value={String(pendingLeaveCount)}
 
@@ -3382,7 +3386,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       icon={<Award className="text-emerald-500" size={24} />}
 
-                      label="PENDING CERTIFICATES"
+                      label={String(t('supervisor_dashboard.dashboard.pending_certificates'))}
 
                       value={String(pendingCertificateCount)}
 
@@ -3392,7 +3396,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       icon={<GraduationCap className="text-indigo-600" size={24} />}
 
-                      label="PENDING UNI EVAL"
+                      label={String(t('supervisor_dashboard.dashboard.pending_university'))}
 
                       value={String(pendingUniversityEvaluationCount)}
 
@@ -3416,7 +3420,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                              </div>
 
-                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Pending Action Items</h3>
+                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t('supervisor_dashboard.dashboard.pending_action_items')}</h3>
 
                           </div>
 
@@ -3442,7 +3446,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                               <CheckCircle2 size={32} className="text-slate-200 mb-3" />
 
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ITEMS REQUIRING REVIEW</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">{t('supervisor_dashboard.dashboard.no_items_requiring_review')}</p>
 
                             </div>
 
@@ -3476,7 +3480,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                                          <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
 
-                                           ASSIGNMENT SUBMISSIONS PENDING REVIEW
+                                           {t('supervisor_dashboard.dashboard.assignment_submissions_pending')}
 
                                          </span>
 
@@ -3496,7 +3500,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                                     >
 
-                                      <Eye size={16} strokeWidth={3}/> Review
+                                      <Eye size={16} strokeWidth={3}/> {t('supervisor_dashboard.dashboard.review')}
 
                                     </button>
 
@@ -3598,9 +3602,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
 
-                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Total Interns</h3>
+                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">{t('supervisor_dashboard.dashboard.total_interns')}</h3>
 
-                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">ASSIGNED TO YOU</p>
+                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t('supervisor_dashboard.dashboard.assigned_to_you')}</p>
 
 
 
@@ -3616,7 +3620,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                               <div className="text-5xl font-black text-slate-900 tracking-tighter leading-none">{interns.length}</div>
 
-                              <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">ACTIVE LIST</div>
+                              <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.dashboard.active_list')}</div>
 
                             </div>
 
@@ -3628,9 +3632,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
 
-                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Team Presence</h3>
+                          <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">{t('supervisor_dashboard.dashboard.team_presence')}</h3>
 
-                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">WHO IS AWAY TODAY</p>
+                          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t('supervisor_dashboard.dashboard.who_is_away')}</p>
 
                           
 
@@ -3642,7 +3646,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                                  <PlaneTakeoff size={32} className="text-slate-200 mb-3" />
 
-                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">NO ONE IS AWAY TODAY</p>
+                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">{t('supervisor_dashboard.dashboard.no_one_away')}</p>
 
                               </div>
 
@@ -3664,7 +3668,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                                       <p className="text-sm font-black text-slate-900 leading-none">{x.internName}</p>
 
-                                      <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">{x.type || 'LEAVE'}</p>
+                                      <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest mt-1">{x.type || t('supervisor_dashboard.dashboard.leave')}</p>
 
                                     </div>
 
@@ -3696,9 +3700,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                       <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-3">INTERNPLUS <span className="mx-1 text-slate-200">/</span> TEAM INTELLIGENCE</p>
 
-                      <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">My Interns</h1>
+                      <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">{t('supervisor_dashboard.dashboard.my_interns')}</h1>
 
-                      <p className="text-slate-400 text-sm font-medium mt-4 italic">Manage and monitor your assigned interns' performance.</p>
+                      <p className="text-slate-400 text-sm font-medium mt-4 italic">{t('supervisor_dashboard.dashboard.my_interns_subtitle')}</p>
 
                     </div>
 
@@ -3778,9 +3782,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                 <div>
 
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Assign Intern</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">{t('supervisor_dashboard.assign_modal.title')}</h3>
 
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">SELECT AN INTERN TO MONITOR</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t('supervisor_dashboard.assign_modal.subtitle')}</p>
 
                 </div>
 
@@ -3810,7 +3814,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     type="text"
 
-                    placeholder="Search interns..."
+                    placeholder={t('supervisor_dashboard.modals.assign_intern_search_placeholder')}
 
                     className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
 
@@ -3864,7 +3868,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     <div className="py-14 text-center">
 
-                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No interns found</p>
+                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t('supervisor_dashboard.assign_modal.no_interns_found')}</p>
 
                     </div>
 

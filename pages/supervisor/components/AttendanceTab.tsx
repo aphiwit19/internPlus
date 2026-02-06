@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, ChevronLeft, ChevronRight, History, Home } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type AttendanceViewMode = 'LOG' | 'CALENDAR';
 
@@ -14,6 +15,8 @@ export interface AttendanceLogItem {
 }
 
 const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -45,7 +48,7 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
               type="button"
               onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
               className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"
-              title="Previous month"
+              title={tr('supervisor_attendance_calendar.tooltips.previous_month')}
             >
               <ChevronLeft size={20} />
             </button>
@@ -53,7 +56,7 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
               type="button"
               onClick={() => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
               className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-slate-900 transition-all"
-              title="Next month"
+              title={tr('supervisor_attendance_calendar.tooltips.next_month')}
             >
               <ChevronRight size={20} />
             </button>
@@ -62,21 +65,21 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PRESENT</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.legend.present')}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LATE</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.legend.late')}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-slate-100"></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">WEEKEND / OFF</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.legend.weekend_off')}</span>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-7 border border-slate-50 rounded-[2.5rem] overflow-hidden bg-slate-50/20">
-        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map((d) => (
+        {tr('supervisor_attendance_calendar.days.short').split('|').map((d) => (
           <div
             key={d}
             className="py-6 text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] bg-white/50 border-b border-slate-50"
@@ -152,6 +155,8 @@ interface AttendanceTabProps {
 }
 
 const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewModeChange }) => {
+  const { t } = useTranslation();
+  const tr = (key: string) => String(t(key));
   const PAGE_SIZE = 5;
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -175,8 +180,8 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative">
         <div className="flex items-center justify-between mb-12">
           <div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Time Attendance Audit</h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase mt-1">Verification of daily clock records</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_attendance_calendar.title')}</h3>
+            <p className="text-slate-400 text-[10px] font-black uppercase mt-1">{tr('supervisor_attendance_calendar.subtitle')}</p>
           </div>
           <div className="flex bg-slate-50 p-1 rounded-[1.25rem] border border-slate-100 shadow-sm overflow-hidden">
             <button
@@ -187,7 +192,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                   : 'text-slate-400 hover:text-slate-600'
               }`}
             >
-              LOG VIEW
+              {tr('supervisor_attendance_calendar.log_view')}
             </button>
             <button
               onClick={() => onViewModeChange('CALENDAR')}
@@ -197,7 +202,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
                   : 'text-slate-400 hover:text-slate-600'
               }`}
             >
-              CALENDAR
+              {tr('supervisor_attendance_calendar.calendar')}
             </button>
           </div>
         </div>
@@ -207,12 +212,12 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
             <table className="w-full">
               <thead>
                 <tr className="text-left border-b border-slate-50">
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">DATE</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">CLOCK IN</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">CLOCK OUT</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">MODE</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">TOTAL TIME</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-4">STATUS</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">{tr('supervisor_attendance_calendar.col_date')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.col_clock_in')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.col_clock_out')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.col_mode')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_calendar.col_total_time')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-4">{tr('supervisor_attendance_calendar.col_status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -249,7 +254,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
             {logs.length === 0 && (
               <div className="py-32 text-center flex flex-col items-center">
                 <History size={48} className="text-slate-100 mb-6" />
-                <p className="text-slate-300 font-black uppercase tracking-[0.3em]">No attendance records found</p>
+                <p className="text-slate-300 font-black uppercase tracking-[0.3em]">{tr('supervisor_attendance_calendar.no_records')}</p>
               </div>
             )}
 

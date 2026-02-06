@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, Clock, UserX } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
@@ -55,13 +56,6 @@ function toDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function monthLabel(d: Date): { EN: string; TH: string } {
-  const m = d.getUTCMonth();
-  const en = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][m] ?? '';
-  const th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][m] ?? '';
-  return { EN: en, TH: th };
-}
-
 function parseIsoDateKey(dateKey: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
   const d = new Date(`${dateKey}T00:00:00.000Z`);
@@ -69,50 +63,17 @@ function parseIsoDateKey(dateKey: string): Date | null {
 }
 
 const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lang, user }) => {
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'Activities & Timeline',
-          subtitle: 'Overview of appointment requests from your interns.',
-          viewAll: 'All',
-          viewAppt: 'Appointments',
-          statusAll: 'All status',
-          statusRequested: 'Requested',
-          statusConfirmed: 'Confirmed',
-          statusRescheduled: 'Rescheduled',
-          statusCancelled: 'Cancelled',
-          calendar: 'Calendar Overview',
-          days: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
-          empty: 'No activities yet.',
-          apptTitle: 'Appointment Request',
-          apptOnline: 'Online',
-          apptCompany: 'Company',
-          syncTitle: 'Live Ecosystem Sync',
-          syncDesc: 'Appointment requests are automatically mirrored here.',
-        },
-        TH: {
-          title: 'กิจกรรมและลำดับเวลา',
-          subtitle: 'ภาพรวมการขอเข้าพบจากนักศึกษาที่คุณดูแล',
-          viewAll: 'ทั้งหมด',
-          viewAppt: 'ขอเข้าพบ',
-          statusAll: 'ทุกสถานะ',
-          statusRequested: 'ขอเข้าพบแล้ว',
-          statusConfirmed: 'ยืนยันแล้ว',
-          statusRescheduled: 'เลื่อนนัด',
-          statusCancelled: 'ยกเลิก',
-          calendar: 'ภาพรวมปฏิทิน',
-          days: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'],
-          empty: 'ยังไม่มีกิจกรรม',
-          apptTitle: 'ขอเข้าพบ',
-          apptOnline: 'ออนไลน์',
-          apptCompany: 'บริษัท',
-          syncTitle: 'ซิงค์ข้อมูลระบบแล้ว',
-          syncDesc: 'นัดหมายขอเข้าพบจะแสดงที่นี่โดยอัตโนมัติ',
-        },
-      }[lang]),
-    [lang],
-  );
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
+  const trLng = (lng: 'en' | 'th', key: string, options?: any) => String(t(key, { ...(options ?? {}), lng }));
+  const uiLang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
+
+  const monthLabel = (d: Date): { EN: string; TH: string } => {
+    const m = d.getUTCMonth();
+    const en = String(t('intern_activities.months.short', { lng: 'en' } as any)).split('|')[m] ?? '';
+    const th = String(t('intern_activities.months.short', { lng: 'th' } as any)).split('|')[m] ?? '';
+    return { EN: en, TH: th };
+  };
 
   const [viewMode, setViewMode] = useState<'ALL' | 'APPOINTMENT'>('ALL');
 
@@ -143,17 +104,26 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
         if (!date) return;
 
         const mode = (ar.mode ?? 'ONLINE') as AppointmentMode;
-        const modeLabelText = mode === 'COMPANY' ? { EN: t.apptCompany, TH: t.apptCompany } : { EN: t.apptOnline, TH: t.apptOnline };
+        const modeLabelText =
+          mode === 'COMPANY'
+            ? {
+                EN: trLng('en', 'supervisor_activities.appointment.mode_company'),
+                TH: trLng('th', 'supervisor_activities.appointment.mode_company'),
+              }
+            : {
+                EN: trLng('en', 'supervisor_activities.appointment.mode_online'),
+                TH: trLng('th', 'supervisor_activities.appointment.mode_online'),
+              };
 
         out.push({
           id: `appt:${d.id}:${String(ar.time ?? '')}:${dateKey}`,
           day: String(date.getUTCDate()).padStart(2, '0'),
           month: monthLabel(date),
           title: {
-            EN: `${t.apptTitle} (${modeLabelText.EN})`,
-            TH: `${t.apptTitle} (${modeLabelText.TH})`,
+            EN: `${trLng('en', 'supervisor_activities.appointment.title')} (${modeLabelText.EN})`,
+            TH: `${trLng('th', 'supervisor_activities.appointment.title')} (${modeLabelText.TH})`,
           },
-          time: ar.time ? String(ar.time) : '—',
+          time: ar.time ? String(ar.time) : tr('supervisor_activities.time.unknown'),
           type: 'APPOINTMENT',
           internName: data.internName,
           status: typeof ar.status === 'string' ? ar.status : undefined,
@@ -163,7 +133,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       out.sort((a, b) => a.id.localeCompare(b.id));
       setApptActivities(out);
     });
-  }, [t.apptCompany, t.apptOnline, t.apptTitle, user.id]);
+  }, [i18n.language, user.id]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'leaveRequests'), where('supervisorId', '==', user.id));
@@ -179,16 +149,16 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
           if (!date) return;
           const end = typeof data.endDate === 'string' ? data.endDate : start;
           const leaveType = String(data.type ?? 'LEAVE');
-          const title =
-            lang === 'TH'
-              ? `ลา (${leaveType})`
-              : `Leave (${leaveType})`;
+          const title = {
+            EN: trLng('en', 'supervisor_activities.leave.title', { type: leaveType } as any),
+            TH: trLng('th', 'supervisor_activities.leave.title', { type: leaveType } as any),
+          };
 
           out.push({
             id: `leave:${d.id}:${start}`,
             day: String(date.getUTCDate()).padStart(2, '0'),
             month: monthLabel(date),
-            title: { EN: title, TH: title },
+            title,
             time: start === end ? start : `${start} - ${end}`,
             type: 'LEAVE',
             internName: typeof data.internName === 'string' ? data.internName : undefined,
@@ -200,7 +170,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       },
       () => setLeaveActivities([]),
     );
-  }, [lang, user.id]);
+  }, [i18n.language, user.id]);
 
   const filteredApptActivities = useMemo(() => {
     if (statusFilter === 'ALL') return apptActivities;
@@ -296,8 +266,8 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
       <div className="max-w-7xl mx-auto w-full overflow-y-auto scrollbar-hide pb-20">
         <div className="mb-12">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-400 text-sm font-medium mt-1">{t.subtitle}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{tr('supervisor_activities.title')}</h1>
+          <p className="text-slate-400 text-sm font-medium mt-1">{tr('supervisor_activities.subtitle')}</p>
         </div>
 
         <div className="mb-10">
@@ -310,7 +280,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                   viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {t.viewAll}
+                {tr('supervisor_activities.filters.all')}
               </button>
               <button
                 type="button"
@@ -319,7 +289,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                   viewMode === 'APPOINTMENT' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {t.viewAppt}
+                {tr('supervisor_activities.filters.appointments')}
               </button>
             </div>
 
@@ -329,11 +299,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                 onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                 className="bg-white text-slate-700 text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-[1.25rem] border border-transparent focus:outline-none"
               >
-                <option value="ALL">{t.statusAll}</option>
-                <option value="REQUESTED">{t.statusRequested}</option>
-                <option value="CONFIRMED">{t.statusConfirmed}</option>
-                <option value="RESCHEDULED">{t.statusRescheduled}</option>
-                <option value="CANCELLED">{t.statusCancelled}</option>
+                <option value="ALL">{tr('supervisor_activities.status.all')}</option>
+                <option value="REQUESTED">{tr('supervisor_activities.status.requested')}</option>
+                <option value="CONFIRMED">{tr('supervisor_activities.status.confirmed')}</option>
+                <option value="RESCHEDULED">{tr('supervisor_activities.status.rescheduled')}</option>
+                <option value="CANCELLED">{tr('supervisor_activities.status.cancelled')}</option>
               </select>
             </div>
           </div>
@@ -348,8 +318,8 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                     <CalendarIcon size={20} />
                   </div>
                   <div>
-                    <div className="text-sm font-black text-slate-800">{lang === 'TH' ? 'ยังไม่มีกิจกรรม' : 'No activities yet'}</div>
-                    <div className="text-xs font-bold text-slate-400 mt-1">{t.empty}</div>
+                    <div className="text-sm font-black text-slate-800">{tr('supervisor_activities.empty.title')}</div>
+                    <div className="text-xs font-bold text-slate-400 mt-1">{tr('supervisor_activities.empty.subtitle')}</div>
                   </div>
                 </div>
               </div>
@@ -378,7 +348,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                         >
                           {item.day}
                         </span>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[lang]}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[uiLang]}</span>
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -389,7 +359,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                               item.type === 'APPOINTMENT' ? 'text-blue-700' : 'text-slate-800'
                             }`}
                           >
-                            {item.title[lang]}
+                            {item.title[uiLang]}
                           </h3>
                         </div>
                         {item.internName ? (
@@ -404,11 +374,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                       <div className="flex items-center gap-4">
                         {item.type === 'APPOINTMENT' ? (
                           <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-blue-50 text-blue-600 border-blue-200">
-                            APPOINTMENT
+                            {tr('supervisor_activities.appointment.badge')}
                           </span>
                         ) : (
                           <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-rose-50 text-rose-600 border-rose-200 flex items-center gap-2">
-                            <UserX size={12} /> LEAVE
+                            <UserX size={12} /> {tr('supervisor_activities.leave.badge')}
                           </span>
                         )}
                       </div>
@@ -421,7 +391,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
 
           <div className="lg:col-span-4">
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100/60 sticky top-4">
-              <h3 className="text-lg font-black text-slate-800 mb-8">{t.calendar}</h3>
+              <h3 className="text-lg font-black text-slate-800 mb-8">{tr('supervisor_activities.calendar.title')}</h3>
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-6">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{calendarTitle}</h4>
@@ -434,15 +404,15 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                           ? 'bg-slate-900 text-white border-slate-900'
                           : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'
                       }`}
-                      title={lang === 'TH' ? 'กรองกิจกรรมตามเดือนที่เลือก' : 'Filter activities by this month'}
+                      title={tr('supervisor_activities.tooltips.filter_by_month')}
                     >
-                      {lang === 'TH' ? 'เดือน' : 'Month'}
+                      {tr('supervisor_activities.labels.month')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
                       className="p-1 text-slate-400 hover:text-slate-900"
-                      title={lang === 'TH' ? 'เดือนก่อนหน้า' : 'Previous month'}
+                      title={tr('supervisor_activities.tooltips.previous_month')}
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -450,14 +420,14 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                       type="button"
                       onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
                       className="p-1 text-slate-400 hover:text-slate-900"
-                      title={lang === 'TH' ? 'เดือนถัดไป' : 'Next month'}
+                      title={tr('supervisor_activities.tooltips.next_month')}
                     >
                       <ChevronRight size={16} />
                     </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-2 text-center">
-                  {t.days.map((d, i) => (
+                  {tr('supervisor_activities.days.short').split('|').map((d, i) => (
                     <div key={`${d}-${i}`} className="text-[10px] font-black text-slate-300 py-2">
                       {d}
                     </div>
@@ -505,8 +475,8 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                     <CalendarIcon size={16} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{t.syncTitle}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed font-medium">{t.syncDesc}</p>
+                    <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{tr('supervisor_activities.sync.title')}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed font-medium">{tr('supervisor_activities.sync.description')}</p>
                   </div>
                 </div>
               </div>

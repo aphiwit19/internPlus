@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ArrowUpRight, Banknote, Building2, ChevronLeft, ChevronRight, CreditCard, Home, ShieldCheck, UserX } from 'lucide-react';
 
@@ -29,6 +30,8 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
   readOnly = false,
   onRowClick,
 }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [nameQuery, setNameQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | AllowanceClaim['status']>('ALL');
   const [payFrom, setPayFrom] = useState('');
@@ -96,15 +99,15 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
             <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Adjustment Note</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('allowances_tab.adjustment_note')}</h3>
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
                     {noteClaim.internName}
                   </div>
                   <div className="text-[10px] font-black uppercase tracking-widest mt-2">
                     {noteSource === 'ADMIN' ? (
-                      <span className="text-rose-600">ADMIN ADJUSTED</span>
+                      <span className="text-rose-600">{tr('allowances_tab.admin_adjusted')}</span>
                     ) : (
-                      <span className="text-indigo-600">SUPERVISOR ADJUSTED</span>
+                      <span className="text-indigo-600">{tr('allowances_tab.supervisor_adjusted')}</span>
                     )}
                   </div>
                 </div>
@@ -117,7 +120,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               </div>
               <div className="p-8 space-y-5">
                 <div className="bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Adjusted Amount</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.adjusted_amount')}</div>
                   <div className="text-lg font-black text-slate-900">
                     {Number(
                       (noteSource === 'ADMIN'
@@ -128,7 +131,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                 </div>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-[1.5rem] p-5">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Note</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.note')}</div>
                   <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
                     {(noteSource === 'ADMIN' ? noteClaim.adminAdjustmentNote : noteClaim.supervisorAdjustmentNote) || '-'}
                   </div>
@@ -139,7 +142,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                     onClick={() => setNoteClaim(null)}
                     className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
                   >
-                    Close
+                    {tr('allowances_tab.close')}
                   </button>
                 </div>
               </div>
@@ -150,31 +153,31 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
 
       <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between mb-10">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Allowance Disbursement</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('allowances_tab.title')}</h3>
         </div>
 
         {overdueCount > 0 && !isLoading && !errorMessage && (
           <div className="mb-8 p-5 bg-amber-50 border border-amber-100 rounded-[1.5rem]">
-            <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Payout overdue</div>
+            <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">{tr('allowances_tab.payout_overdue')}</div>
             <div className="mt-2 text-sm font-bold text-amber-900">
-              {overdueCount} claim(s) reached planned payout date but are not paid yet.
+              {tr('allowances_tab.overdue_message', { count: overdueCount })}
             </div>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
           <div className="lg:col-span-4">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Search name</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.search_name')}</div>
             <input
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
-              placeholder="Search intern name"
+              placeholder={tr('allowances_tab.search_placeholder')}
               className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
             />
           </div>
 
           <div className="lg:col-span-3">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Period</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.period')}</div>
             <select
               value={selectedMonthKey}
               onChange={(e) => onSelectMonthKey(e.target.value)}
@@ -189,7 +192,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
           </div>
 
           <div className="lg:col-span-2">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.status')}</div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
@@ -204,7 +207,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
 
           <div className="lg:col-span-3 grid grid-cols-2 gap-3">
             <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pay from</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.pay_from')}</div>
               <input
                 type="datetime-local"
                 value={payFrom}
@@ -213,7 +216,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               />
             </div>
             <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pay to</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('allowances_tab.pay_to')}</div>
               <input
                 type="datetime-local"
                 value={payTo}
@@ -228,14 +231,14 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
           <table className="w-full">
             <thead>
               <tr className="text-left border-b border-slate-50">
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">Intern Identity</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bank</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Account</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Activity Mix</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Period Amount</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Planned payout</th>
-                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pay date</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest pl-4">{tr('allowances_tab.col_intern')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_bank')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_account')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_activity')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_amount')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_status')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_planned')}</th>
+                <th className="pb-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('allowances_tab.col_pay_date')}</th>
                 {!readOnly && <th className="pb-6 text-right pr-4">Action</th>}
               </tr>
             </thead>
@@ -243,7 +246,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               {!isLoading && Boolean(errorMessage) && (
                 <tr>
                   <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
-                    <div className="text-sm font-black text-rose-600">โหลดข้อมูลไม่สำเร็จ</div>
+                    <div className="text-sm font-black text-rose-600">{tr('allowances_tab.load_failed')}</div>
                     <div className="text-[11px] font-bold text-slate-400 mt-1 break-words">{errorMessage}</div>
                   </td>
                 </tr>
@@ -252,8 +255,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               {isLoading && (
                 <tr>
                   <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
-                    <div className="text-sm font-black text-slate-700">กำลังดาวน์โหลดอยู่…</div>
-                    <div className="text-[11px] font-bold text-slate-400 mt-1">Loading payout data</div>
+                    <div className="text-sm font-black text-slate-700">{tr('allowances_tab.loading')}</div>
                   </td>
                 </tr>
               )}
@@ -261,7 +263,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               {!isLoading && !errorMessage && filtered.length === 0 && (
                 <tr>
                   <td colSpan={readOnly ? 8 : 9} className="py-10 text-center">
-                    <div className="text-sm font-black text-slate-700">ไม่พบข้อมูล</div>
+                    <div className="text-sm font-black text-slate-700">{tr('allowances_tab.no_data')}</div>
                   </td>
                 </tr>
               )}
@@ -304,9 +306,9 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                       className="flex flex-col"
                       title={
                         typeof claim.adminAdjustedAmount === 'number'
-                          ? claim.adminAdjustmentNote || 'Admin Adjusted'
+                          ? claim.adminAdjustmentNote || tr('allowances_tab.admin_adjusted')
                           : typeof claim.supervisorAdjustedAmount === 'number'
-                            ? claim.supervisorAdjustmentNote || 'Supervisor Adjusted'
+                            ? claim.supervisorAdjustmentNote || tr('allowances_tab.supervisor_adjusted')
                             : undefined
                       }
                     >
@@ -322,7 +324,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                             setNoteClaim(claim);
                           }}
                         >
-                          Admin Adjusted
+                          {tr('allowances_tab.admin_adjusted')}
                         </button>
                       ) : typeof claim.supervisorAdjustedAmount === 'number' ? (
                         <button
@@ -335,7 +337,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                             setNoteClaim(claim);
                           }}
                         >
-                          Supervisor Adjusted
+                          {tr('allowances_tab.supervisor_adjusted')}
                         </button>
                       ) : null}
                     </div>
@@ -368,7 +370,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           <span className="text-[11px] font-black text-slate-700">{iso}</span>
                           {isOverdue ? (
                             <span className="inline-flex w-fit px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-rose-50 text-rose-600 border border-rose-100">
-                              Overdue
+                              {tr('allowances_tab.overdue')}
                             </span>
                           ) : null}
                         </div>
@@ -385,12 +387,12 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           <button
                             disabled
                             className="px-5 py-2.5 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2"
-                            title={claim.lockReason || 'Locked until program completion'}
+                            title={claim.lockReason || tr('allowances_tab.locked_reason')}
                           >
-                            <ShieldCheck size={14} /> Locked
+                            <ShieldCheck size={14} /> {tr('allowances_tab.locked')}
                           </button>
                           <div className="text-[10px] font-bold text-slate-400 max-w-[220px] text-right">
-                            {claim.lockReason || 'Locked until program completion'}
+                            {claim.lockReason || tr('allowances_tab.locked_reason')}
                           </div>
                         </div>
                       ) : claim.status === 'PENDING' ? (
@@ -401,7 +403,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           }}
                           className="px-5 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2 ml-auto"
                         >
-                          <ShieldCheck size={14} /> Authorize
+                          <ShieldCheck size={14} /> {tr('allowances_tab.authorize')}
                         </button>
                       ) : claim.status === 'APPROVED' ? (
                         <button
@@ -411,7 +413,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           }}
                           className="px-5 py-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all shadow-sm flex items-center gap-2 ml-auto"
                         >
-                          <Banknote size={14} /> Process Payout
+                          <Banknote size={14} /> {tr('allowances_tab.process_payout')}
                         </button>
                       ) : (
                         <div className="flex justify-end pr-2">

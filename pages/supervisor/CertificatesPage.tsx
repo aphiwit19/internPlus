@@ -3,6 +3,7 @@ import { Award, ChevronLeft, ChevronRight, Clock, Download, FileText, Upload } f
 import { collection, onSnapshot, query, serverTimestamp, updateDoc, where, doc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
@@ -47,35 +48,10 @@ interface SupervisorCertificatesPageProps {
   user: UserProfile;
 }
 
-const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({ lang, user }) => {
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'Certificates',
-          subtitle: 'Review and issue internship certificates for your assigned interns.',
-          empty: 'No certificate requests yet',
-          requested: 'Requested',
-          issued: 'Issued',
-          upload: 'Upload Signed PDF',
-          download: 'Download',
-          uploading: 'Uploading...',
-          missingSupervisor: 'This request is not assigned to you.',
-        },
-        TH: {
-          title: 'ใบรับรอง',
-          subtitle: 'ตรวจสอบและออกใบรับรองสำหรับนักศึกษาที่คุณดูแล',
-          empty: 'ยังไม่มีคำขอใบรับรอง',
-          requested: 'ส่งคำขอแล้ว',
-          issued: 'ออกเอกสารแล้ว',
-          upload: 'อัปโหลด PDF ที่เซ็นแล้ว',
-          download: 'ดาวน์โหลด',
-          uploading: 'กำลังอัปโหลด...',
-          missingSupervisor: 'คำขอนี้ไม่ได้อยู่ในความดูแลของคุณ',
-        },
-      }[lang]),
-    [lang],
-  );
+const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({ lang: _lang, user }) => {
+  const { t } = useTranslation();
+  const lng = _lang === 'TH' ? 'th' : 'en';
+  const tr = (key: string, options?: any) => String(t(key, { ...(options ?? {}), lng }));
 
   const [requests, setRequests] = useState<Array<CertificateRequestDoc & { id: string }>>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -119,7 +95,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load requests'}`);
+        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.load_failed')}`);
       },
     );
   }, [user.id]);
@@ -134,7 +110,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load templates'}`);
+        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.load_templates_failed')}`);
       },
     );
   }, []);
@@ -162,7 +138,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     if (!req) return;
 
     if (req.supervisorId !== user.id) {
-      alert(t.missingSupervisor);
+      alert(tr('supervisor_certificates.errors.missing_supervisor'));
       return;
     }
 
@@ -183,7 +159,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.upload_failed')}`);
     } finally {
       setUploadingId(null);
     }
@@ -196,17 +172,13 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     if (!req) return;
 
     if (req.supervisorId !== user.id) {
-      alert(t.missingSupervisor);
+      alert(tr('supervisor_certificates.errors.missing_supervisor'));
       return;
     }
 
     const url = linkDraft.trim();
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-      setUploadError(
-        lang === 'TH'
-          ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://'
-          : 'Please enter a link that starts with http:// or https://',
-      );
+      setUploadError(tr('supervisor_certificates.errors.url_must_start_with_http'));
       return;
     }
 
@@ -225,7 +197,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       setLinkDraft('');
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save link failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.save_link_failed')}`);
     } finally {
       setSavingLinkId(null);
     }
@@ -269,7 +241,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     if (generatingId) return;
     const templateId = selectedTemplateByType[req.type];
     if (!templateId) {
-      setUploadError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      setUploadError(tr('supervisor_certificates.errors.select_template_first'));
       return;
     }
 
@@ -280,7 +252,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       await fn({ requestId: req.id, templateId });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.generate_failed')}`);
     } finally {
       setGeneratingId(null);
     }
@@ -304,7 +276,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       if (!byIntern[safeInternId]) {
         byIntern[safeInternId] = {
           internId: safeInternId,
-          internName: r.internName || 'Unknown',
+          internName: r.internName || tr('supervisor_certificates.interns.name_fallback'),
           internAvatar: normalizeAvatarUrl(r.internAvatar),
           internPosition: r.internPosition,
           internDepartment: r.internDepartment,
@@ -381,14 +353,14 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
         ) : null}
 
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('supervisor_certificates.title')}</h1>
+          <p className="text-slate-500 text-sm mt-1">{tr('supervisor_certificates.subtitle')}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
           {interns.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_certificates.empty')}</p>
             </div>
           ) : activeIntern ? (
             <div className="space-y-6">
@@ -398,7 +370,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                 className="inline-flex items-center gap-2 text-slate-600 text-sm font-bold hover:text-slate-900"
               >
                 <ChevronLeft size={18} />
-                {lang === 'TH' ? 'กลับไปที่รายชื่อ' : 'Back to list'}
+                {tr('supervisor_certificates.actions.back_to_list')}
               </button>
 
               <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
@@ -406,7 +378,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                 <div>
                   <p className="text-lg font-black text-slate-900">{activeIntern.internName}</p>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {(activeIntern.internPosition ?? 'Intern') + ' • ' + (activeIntern.internDepartment ?? 'Unknown')}
+                    {(activeIntern.internPosition ?? tr('supervisor_certificates.interns.position_fallback')) +
+                      ' • ' +
+                      (activeIntern.internDepartment ?? tr('supervisor_certificates.interns.department_fallback'))}
                   </p>
                 </div>
               </div>
@@ -437,24 +411,26 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                             {meta.icon}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-sm font-black text-slate-900 truncate">{meta.label}</p>
+                            <p className="text-sm font-black text-slate-900 truncate">{meta.type === 'COMPLETION' ? tr('supervisor_certificates.types.completion') : tr('supervisor_certificates.types.recommendation')}</p>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                              {req?.fileName ?? (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ?? (lang === 'TH' ? 'ยังไม่มีคำขอ' : 'No request yet')}
+                              req?.fileName ??
+                                (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ??
+                                tr('supervisor_certificates.labels.no_request_yet')
                             </p>
                           </div>
                         </div>
 
                         {status === 'REQUESTED' ? (
                           <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                            {t.requested}
+                            {tr('supervisor_certificates.statuses.requested')}
                           </div>
                         ) : status === 'ISSUED' ? (
                           <div className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest">
-                            {t.issued}
+                            {tr('supervisor_certificates.statuses.issued')}
                           </div>
                         ) : (
                           <div className="px-4 py-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-100 text-[10px] font-black uppercase tracking-widest">
-                            {lang === 'TH' ? 'ไม่มีคำขอ' : 'NO REQUEST'}
+                            {tr('supervisor_certificates.labels.no_request')}
                           </div>
                         )}
                       </div>
@@ -474,7 +450,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                                   }
                                   className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
                                 >
-                                  <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                                  <option value="">{tr('supervisor_certificates.placeholders.select_template')}</option>
                                   {templatesByType[meta.type].map((tpl) => (
                                     <option key={tpl.id} value={tpl.id}>
                                       {tpl.name || tpl.id}
@@ -489,7 +465,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                                   className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                                 >
                                   {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                                  {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : 'Generate'}
+                                  {generatingId === req.id ? tr('supervisor_certificates.actions.generating') : tr('supervisor_certificates.actions.generate')}
                                 </button>
                               </>
                             ) : null}
@@ -501,7 +477,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                               className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
                             >
                               {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {uploadingId === req.id ? t.uploading : t.upload}
+                              {uploadingId === req.id
+                                ? tr('supervisor_certificates.actions.uploading')
+                                : tr('supervisor_certificates.actions.upload_signed_pdf')}
                             </button>
 
                             <button
@@ -510,7 +488,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                               disabled={savingLinkId === req.id}
                               className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
                             >
-                              Attach Link
+                              {tr('supervisor_certificates.actions.attach_link')}
                             </button>
                           </div>
                         ) : status === 'ISSUED' && req ? (
@@ -519,7 +497,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                             onClick={() => void handleDownload(req)}
                             disabled={!(req.issuedPdfPath ?? req.storagePath ?? req.issuedPngPath) && !(Array.isArray(req.attachmentLinks) && req.attachmentLinks.length > 0)}
                             className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
-                            title={t.download}
+                            title={tr('supervisor_certificates.actions.download')}
                           >
                             <Download size={18} />
                           </button>
@@ -532,7 +510,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                             type="text"
                             value={linkDraft}
                             onChange={(e) => setLinkDraft(e.target.value)}
-                            placeholder={lang === 'TH' ? 'วางลิ้งค์ (Drive/URL)' : 'Paste link (Drive/URL)'}
+                            placeholder={tr('supervisor_certificates.placeholders.paste_drive_url')}
                             className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"
                           />
                           <button
@@ -541,7 +519,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                             disabled={savingLinkId === req.id}
                             className="px-5 py-3 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50"
                           >
-                            {savingLinkId === req.id ? 'Saving...' : 'Save'}
+                            {savingLinkId === req.id
+                              ? tr('supervisor_certificates.actions.uploading')
+                              : tr('supervisor_certificates.actions.save_link')}
                           </button>
                           <button
                             type="button"
@@ -551,7 +531,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                             }}
                             className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
                           >
-                            Cancel
+                            {tr('supervisor_appointment_requests.actions.cancel')}
                           </button>
                         </div>
                       ) : null}
@@ -578,7 +558,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-black text-slate-900 truncate">{intern.internName}</p>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                          {(intern.internPosition ?? 'Intern') + ' • ' + (intern.internDepartment ?? 'Unknown')}
+                          {(intern.internPosition ?? tr('supervisor_certificates.interns.position_fallback')) +
+                            ' • ' +
+                            (intern.internDepartment ?? tr('supervisor_certificates.interns.department_fallback'))}
                         </p>
                       </div>
                     </div>
@@ -586,17 +568,17 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {requestedCount > 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                          {requestedCount} {lang === 'TH' ? 'รอดำเนินการ' : 'pending'}
+                          {requestedCount} {tr('supervisor_certificates.labels.pending')}
                         </div>
                       ) : null}
                       {issuedCount > 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest">
-                          {issuedCount} {lang === 'TH' ? 'ออกแล้ว' : 'issued'}
+                          {issuedCount} {tr('supervisor_certificates.labels.issued')}
                         </div>
                       ) : null}
                       {requestedCount === 0 && issuedCount === 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-100 text-[10px] font-black uppercase tracking-widest">
-                          {lang === 'TH' ? 'ไม่มีคำขอ' : 'NO REQUEST'}
+                          {tr('supervisor_certificates.labels.no_request')}
                         </div>
                       ) : null}
                     </div>

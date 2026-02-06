@@ -15,6 +15,7 @@ import {
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
 import { normalizeAvatarUrl } from '@/app/avatar';
+import { useTranslation } from 'react-i18next';
 
 import AllowancesTab from '@/pages/admin/components/AllowancesTab';
 import { AllowanceClaim } from '@/pages/admin/adminDashboardTypes';
@@ -36,6 +37,8 @@ const monthKeyFromDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 
 
 const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lang }) => {
   void lang;
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const [selectedMonthKey, setSelectedMonthKey] = useState(() => monthKeyFromDate(new Date()));
   const monthOptions = useMemo(() => {
@@ -230,7 +233,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
       } catch (e) {
         if (!cancelled) {
           setClaims([]);
-          const msg = e instanceof Error ? e.message : 'Failed to load payouts.';
+          const msg = e instanceof Error ? e.message : tr('supervisor_dashboard.payouts.save_failed');
           setErrorMessage(msg);
         }
       } finally {
@@ -294,7 +297,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
       setEditAmount('');
       setEditNote('');
     } catch {
-      alert('Failed to save adjustment. Please check permissions and try again.');
+      alert(tr('supervisor_dashboard.payouts.save_failed'));
     } finally {
       setIsSavingEdit(false);
     }
@@ -313,7 +316,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Adjust Allowance Amount</h3>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.payouts.adjust_title')}</h3>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
                       {editingClaim.internName}
                     </div>
@@ -328,7 +331,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                 </div>
                 <div className="p-8 space-y-5">
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">New Amount (THB)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.payouts.new_amount')}</div>
                     <input
                       value={editAmount}
                       onChange={(e) => setEditAmount(e.target.value)}
@@ -336,7 +339,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                     />
                   </label>
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (required)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.payouts.note_required')}</div>
                     <textarea
                       value={editNote}
                       onChange={(e) => setEditNote(e.target.value)}
@@ -350,14 +353,14 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                       disabled={isSavingEdit}
                       className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
                     >
-                      Cancel
+                      {tr('supervisor_dashboard.payouts.cancel')}
                     </button>
                     <button
                       onClick={() => void handleSaveEdit()}
                       disabled={isSavingEdit || !editNote.trim() || !String(editAmount).trim()}
                       className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
                     >
-                      Save
+                      {tr('supervisor_dashboard.payouts.save')}
                     </button>
                   </div>
                 </div>
@@ -381,7 +384,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
         {!isLoading && !errorMessage && claims.length > 0 && (
           <div className="mt-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            Tip: Click an intern row to adjust amount.
+            {tr('supervisor_dashboard.payouts.tip')}
           </div>
         )}
       </div>

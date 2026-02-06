@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Filter, Search, Star, UserPlus, ChevronDown, ChevronLeft, ChevronRight, X, BarChart3, StickyNote } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface InternListItem {
   id: string;
@@ -45,6 +46,8 @@ const InternListSection: React.FC<InternListSectionProps> = ({
   showHeader = true,
   onSelectIntern,
 }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [internsPage, setInternsPage] = useState(1);
 
@@ -52,9 +55,9 @@ const InternListSection: React.FC<InternListSectionProps> = ({
   const inactiveCount = interns.filter((i) => i.status === 'Inactive').length;
 
   const statusOptions = [
-    { value: 'all', label: 'All Status' },
-    { value: 'Active', label: 'Active' },
-    { value: 'Inactive', label: 'Inactive' },
+    { value: 'all', label: tr('supervisor_dashboard.intern_list.all_status') },
+    { value: 'Active', label: tr('supervisor_dashboard.intern_list.active') },
+    { value: 'Inactive', label: tr('supervisor_dashboard.intern_list.inactive') },
   ];
 
   const filteredInterns = useMemo(() => {
@@ -98,15 +101,15 @@ const InternListSection: React.FC<InternListSectionProps> = ({
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-14 gap-8">
         {showHeader ? (
           <div>
-            <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Intern Management</h1>
-            <p className="text-slate-400 text-sm font-medium mt-4">Review performance, approve tasks, and provide feedback.</p>
+            <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">{tr('supervisor_dashboard.intern_list.title')}</h1>
+            <p className="text-slate-400 text-sm font-medium mt-4">{tr('supervisor_dashboard.intern_list.subtitle')}</p>
             <div className="flex items-center gap-4 mt-4">
               <span className="text-sm font-medium text-slate-600">
-                Active:{' '}
+                {tr('supervisor_dashboard.intern_list.active')}:{' '}
                 <span className="text-emerald-600 font-bold ml-1">{activeCount}</span>
               </span>
               <span className="text-sm font-medium text-slate-600">
-                | Inactive:{' '}
+                | {tr('supervisor_dashboard.intern_list.inactive')}:{' '}
                 <span className="text-rose-600 font-bold ml-1">{inactiveCount}</span>
               </span>
             </div>
@@ -115,10 +118,10 @@ const InternListSection: React.FC<InternListSectionProps> = ({
           <div className="flex items-end">
             <div className="flex items-center gap-4">
               <span className="text-sm font-medium text-slate-600">
-                Active: <span className="text-emerald-600 font-bold ml-1">{activeCount}</span>
+                {tr('supervisor_dashboard.intern_list.active')}: <span className="text-emerald-600 font-bold ml-1">{activeCount}</span>
               </span>
               <span className="text-sm font-medium text-slate-600">
-                | Inactive: <span className="text-rose-600 font-bold ml-1">{inactiveCount}</span>
+                | {tr('supervisor_dashboard.intern_list.inactive')}: <span className="text-rose-600 font-bold ml-1">{inactiveCount}</span>
               </span>
             </div>
           </div>
@@ -128,7 +131,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
             <input
               type="text"
-              placeholder="Search interns..."
+              placeholder={tr('supervisor_dashboard.intern_list.search_placeholder')}
               className="pl-12 pr-6 py-4 bg-white border border-slate-100 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none w-full md:w-[34rem] focus:ring-8 focus:ring-blue-500/5 transition-all shadow-sm"
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
@@ -141,7 +144,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
               className="flex items-center gap-2 px-6 py-4 bg-white border border-slate-100 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none hover:bg-slate-50 transition-all shadow-sm"
             >
               <Filter size={18} />
-              <span>{statusOptions.find(opt => opt.value === statusFilter)?.label || 'All Status'}</span>
+              <span>{statusOptions.find(opt => opt.value === statusFilter)?.label || tr('supervisor_dashboard.intern_list.all_status')}</span>
               <ChevronDown size={16} className={`transition-transform ${showStatusDropdown ? 'rotate-180' : ''}`} />
             </button>
             
@@ -172,7 +175,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
               onClick={onOpenAssignIntern}
               className="px-8 py-4 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2"
             >
-              <UserPlus size={18} strokeWidth={2.5} /> Assign Intern
+              <UserPlus size={18} strokeWidth={2.5} /> {tr('supervisor_dashboard.intern_list.assign_intern')}
             </button>
           )}
         </div>
@@ -207,7 +210,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
                       ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
                       : 'bg-rose-50 text-rose-600 border-rose-100'
                   }`}>
-                    {intern.status === 'Active' ? 'Active' : 'Inactive'}
+                    {intern.status === 'Active' ? tr('supervisor_dashboard.intern_list.active') : tr('supervisor_dashboard.intern_list.inactive')}
                   </span>
                 </div>
               </div>
@@ -215,7 +218,7 @@ const InternListSection: React.FC<InternListSectionProps> = ({
 
             <div className="space-y-4 mb-10">
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-300">
-                <span>Cohort Progress</span>
+                <span>{tr('supervisor_dashboard.intern_list.cohort_progress')}</span>
                 <span className="text-slate-900 font-black">{intern.progress}%</span>
               </div>
               <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100 p-0.5">

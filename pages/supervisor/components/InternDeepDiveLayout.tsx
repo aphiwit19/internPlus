@@ -1,5 +1,6 @@
 import React from 'react';
 import { Briefcase, ChevronLeft, Clock, FolderOpen, MessageCircle, ShieldCheck } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type SupervisorDeepDiveTab = 'overview' | 'assets' | 'tasks' | 'assignments' | 'feedback' | 'attendance' | 'documents';
 
@@ -64,6 +65,7 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
   feedbackNotificationCount = 0,
   documentsNotificationCount = 0,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300">
       <div className="bg-white border-b border-slate-100 p-6 flex items-center justify-between sticky top-0 z-30">
@@ -80,7 +82,7 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-xl font-black text-slate-900 leading-none truncate">{intern.name}</h2>
                 <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-emerald-100">
-                  MONITORING ACTIVE
+                  {t('supervisor_dashboard.deep_dive.monitoring_active')}
                 </span>
               </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
@@ -91,25 +93,25 @@ const InternDeepDiveLayout: React.FC<InternDeepDiveLayoutProps> = ({
         </div>
 
         <div className="flex items-center gap-1 justify-end whitespace-nowrap flex-shrink-0">
-          <NavText active={activeTab === 'assets'} onClick={() => onTabChange('assets')} label="ASSETS" icon={<FolderOpen size={14} />} hasNotification={assetsNotificationCount > 0} />
+          <NavText active={activeTab === 'assets'} onClick={() => onTabChange('assets')} label={String(t('supervisor_dashboard.deep_dive.tab_assets'))} icon={<FolderOpen size={14} />} hasNotification={assetsNotificationCount > 0} />
             {showAssignmentsTab && (
               <NavText
                 active={activeTab === 'assignments'}
                 onClick={() => onTabChange('assignments')}
-                label="ASSIGNMENTS"
+                label={String(t('supervisor_dashboard.deep_dive.tab_assignments'))}
                 icon={<Briefcase size={14} />}
                 hasNotification={assignmentsNotificationCount > 0}
               />
             )}
-          <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label="ATTENDANCE" icon={<Clock size={14} />} hasNotification={attendanceNotificationCount > 0} />
+          <NavText active={activeTab === 'attendance'} onClick={() => onTabChange('attendance')} label={String(t('supervisor_dashboard.deep_dive.tab_attendance'))} icon={<Clock size={14} />} hasNotification={attendanceNotificationCount > 0} />
           <NavText
             active={activeTab === 'feedback'}
             onClick={() => onTabChange('feedback')}
-            label="FEEDBACK & Self Evaluation"
+            label={String(t('supervisor_dashboard.deep_dive.tab_feedback'))}
             icon={<MessageCircle size={14} />}
             hasNotification={feedbackNotificationCount > 0}
           />
-          <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label="DOCUMENT" icon={<ShieldCheck size={14} />} hasNotification={documentsNotificationCount > 0} />
+          <NavText active={activeTab === 'documents'} onClick={() => onTabChange('documents')} label={String(t('supervisor_dashboard.deep_dive.tab_documents'))} icon={<ShieldCheck size={14} />} hasNotification={documentsNotificationCount > 0} />
         </div>
       </div>
 

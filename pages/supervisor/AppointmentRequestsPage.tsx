@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Edit2, Save, Search, X } from 'lucide-react';
 import { arrayUnion, collection, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb } from '@/firebase';
@@ -68,65 +69,10 @@ interface AppointmentRequestsPageProps {
   user: UserProfile;
 }
 
-const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang, user }) => {
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'Appointment Requests',
-          subtitle: 'Review and manage appointment requests from your interns.',
-          loading: 'Loading...',
-          empty: 'No appointment requests yet.',
-          searchPlaceholder: 'Search intern name...',
-          filterAll: 'All',
-          results: 'results',
-          date: 'Date',
-          time: 'Time',
-          status: 'Status',
-          save: 'Save',
-          saving: 'Saving...',
-          note: 'Note',
-          statusDraft: 'Draft',
-          statusRequested: 'Requested',
-          statusConfirmed: 'Confirmed',
-          statusRescheduled: 'Rescheduled',
-          statusCancelled: 'Cancelled',
-          statusDone: 'Done',
-          mode: 'Mode',
-          modeOnline: 'Online',
-          modeCompany: 'Company',
-          supervisorNote: 'Supervisor note',
-          history: 'History',
-        },
-        TH: {
-          title: 'นัดหมายขอเข้าพบ',
-          subtitle: 'ตรวจสอบและจัดการการขอเข้าพบจากนักศึกษาที่คุณดูแล',
-          loading: 'กำลังโหลด...',
-          empty: 'ยังไม่มีรายการขอเข้าพบ',
-          searchPlaceholder: 'ค้นหาชื่อนักศึกษา...',
-          filterAll: 'ทั้งหมด',
-          results: 'รายการ',
-          date: 'วันที่',
-          time: 'เวลา',
-          status: 'สถานะ',
-          save: 'บันทึก',
-          saving: 'กำลังบันทึก...',
-          note: 'หมายเหตุ',
-          statusDraft: 'ร่าง',
-          statusRequested: 'ขอเข้าพบแล้ว',
-          statusConfirmed: 'ยืนยันแล้ว',
-          statusRescheduled: 'เลื่อนนัด',
-          statusCancelled: 'ยกเลิก',
-          statusDone: 'เสร็จสิ้น',
-          mode: 'รูปแบบเข้าพบ',
-          modeOnline: 'ออนไลน์',
-          modeCompany: 'บริษัท',
-          supervisorNote: 'หมายเหตุจากพี่เลี้ยง',
-          history: 'ประวัติการขอเข้าพบ',
-        },
-      }[lang]),
-    [lang],
-  );
+const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang: _lang, user }) => {
+  const { t } = useTranslation();
+  const lng = _lang === 'TH' ? 'th' : 'en';
+  const tr = (key: string, options?: any) => String(t(key, { ...(options ?? {}), lng }));
 
   const [items, setItems] = useState<AppointmentItem[]>([]);
   const [internContacts, setInternContacts] = useState<Record<string, InternContact>>({});
@@ -172,12 +118,12 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
             const prevKey = prevToastMapRef.current[it.id];
             if (prevKey && prevKey !== key) {
               const status = String(ar?.status ?? 'REQUESTED');
-              const title = lang === 'TH' ? `คำขอเข้าพบมีการอัปเดต: ${it.internName}` : `Appointment request updated: ${it.internName}`;
+              const title = tr('supervisor_appointment_requests.toast.updated_title', { name: it.internName } as any);
               const detail = `${String(ar?.date ?? '--')} ${String(ar?.time ?? '--')} • ${String(ar?.mode ?? 'ONLINE')}`;
               toast(title, { description: `${status}\n${detail}`, duration: 6000 });
             }
             if (!prevKey) {
-              const title = lang === 'TH' ? `มีคำขอเข้าพบใหม่: ${it.internName}` : `New appointment request: ${it.internName}`;
+              const title = tr('supervisor_appointment_requests.toast.new_title', { name: it.internName } as any);
               const detail = `${String(ar?.date ?? '--')} ${String(ar?.time ?? '--')} • ${String(ar?.mode ?? 'ONLINE')}`;
               toast(title, { description: detail, duration: 6000 });
             }
@@ -209,7 +155,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         setIsLoading(false);
       },
     );
-  }, [user.id]);
+  }, [user.id, lng]);
 
   const resetDraftFromItem = (it: AppointmentItem) => {
     const ar = it.appointmentRequest ?? {};
@@ -260,16 +206,16 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
   }, [user.id]);
 
   const statusLabel = (s: AppointmentStatus) => {
-    if (s === 'REQUESTED') return t.statusRequested;
-    if (s === 'CONFIRMED') return t.statusConfirmed;
-    if (s === 'RESCHEDULED') return t.statusRescheduled;
-    if (s === 'CANCELLED') return t.statusCancelled;
-    return t.statusRequested;
+    if (s === 'REQUESTED') return tr('supervisor_appointment_requests.status.requested');
+    if (s === 'CONFIRMED') return tr('supervisor_appointment_requests.status.confirmed');
+    if (s === 'RESCHEDULED') return tr('supervisor_appointment_requests.status.rescheduled');
+    if (s === 'CANCELLED') return tr('supervisor_appointment_requests.status.cancelled');
+    return tr('supervisor_appointment_requests.status.requested');
   };
 
   const modeLabel = (m: AppointmentMode) => {
-    if (m === 'COMPANY') return t.modeCompany;
-    return t.modeOnline;
+    if (m === 'COMPANY') return tr('supervisor_appointment_requests.mode.company');
+    return tr('supervisor_appointment_requests.mode.online');
   };
 
   const statusBadgeClass = (s: AppointmentStatus) => {
@@ -374,9 +320,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                   <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
                     <CalendarDays size={20} />
                   </div>
-                  <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{t.title}</h1>
+                  <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">{tr('supervisor_appointment_requests.title')}</h1>
                 </div>
-                <p className="text-slate-500 text-sm font-medium">{t.subtitle}</p>
+                <p className="text-slate-500 text-sm font-medium">{tr('supervisor_appointment_requests.subtitle')}</p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -385,7 +331,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                   <input
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
-                    placeholder={t.searchPlaceholder}
+                    placeholder={tr('supervisor_appointment_requests.search_placeholder')}
                     className="w-full sm:w-[260px] bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
@@ -395,15 +341,15 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                   onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'ALL')}
                   className="w-full sm:w-[200px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 >
-                  <option value="ALL">{t.filterAll}</option>
-                  <option value="REQUESTED">{t.statusRequested}</option>
-                  <option value="CONFIRMED">{t.statusConfirmed}</option>
-                  <option value="RESCHEDULED">{t.statusRescheduled}</option>
-                  <option value="CANCELLED">{t.statusCancelled}</option>
+                  <option value="ALL">{tr('supervisor_appointment_requests.filter_all')}</option>
+                  <option value="REQUESTED">{tr('supervisor_appointment_requests.status.requested')}</option>
+                  <option value="CONFIRMED">{tr('supervisor_appointment_requests.status.confirmed')}</option>
+                  <option value="RESCHEDULED">{tr('supervisor_appointment_requests.status.rescheduled')}</option>
+                  <option value="CANCELLED">{tr('supervisor_appointment_requests.status.cancelled')}</option>
                 </select>
 
                 <div className="hidden lg:flex items-center px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-black text-slate-700">
-                  {filteredItems.length} {t.results}
+                  {filteredItems.length} {tr('supervisor_appointment_requests.results')}
                 </div>
               </div>
             </div>
@@ -413,11 +359,11 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
           {isLoading ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.loading}</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_appointment_requests.loading')}</p>
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_appointment_requests.empty')}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -443,7 +389,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                         <div className="min-w-0">
                           <p className="text-lg font-black text-slate-900 truncate">{it.internName}</p>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                            {(displayPosition ?? 'Intern') + ' • ' + (displayDepartment ?? 'Unknown')}
+                            {(displayPosition ?? tr('supervisor_appointment_requests.interns.position_fallback')) +
+                              ' • ' +
+                              (displayDepartment ?? tr('supervisor_appointment_requests.interns.department_fallback'))}
                           </p>
                         </div>
                       </div>
@@ -453,7 +401,11 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                           type="button"
                           onClick={() => setExpandedId((prev) => (prev === it.id ? null : it.id))}
                           className="h-10 w-10 rounded-2xl bg-slate-50 text-slate-700 border border-slate-200 flex items-center justify-center hover:bg-white hover:border-slate-300 transition-all"
-                          title={lang === 'TH' ? (isExpanded ? 'ย่อ' : 'ดูรายละเอียด') : isExpanded ? 'Collapse' : 'Expand'}
+                          title={
+                            isExpanded
+                              ? tr('supervisor_appointment_requests.actions.collapse')
+                              : tr('supervisor_appointment_requests.actions.expand')
+                          }
                         >
                           {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </button>
@@ -467,10 +419,10 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               setExpandedId(it.id);
                             }}
                             className="h-10 px-5 rounded-2xl bg-blue-600 text-white border border-blue-600 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
-                            title={lang === 'TH' ? 'แก้ไข' : 'Edit'}
+                            title={tr('supervisor_appointment_requests.actions.edit')}
                           >
                             <Edit2 size={16} />
-                            {lang === 'TH' ? 'แก้ไข' : 'Edit'}
+                            {tr('supervisor_appointment_requests.actions.edit')}
                           </button>
                         ) : (
                           <button
@@ -480,10 +432,10 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               setEditingId(null);
                             }}
                             className="h-10 px-5 rounded-2xl bg-rose-600 text-white border border-rose-600 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all"
-                            title={lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                            title={tr('supervisor_appointment_requests.actions.cancel')}
                           >
                             <X size={18} />
-                            {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                            {tr('supervisor_appointment_requests.actions.cancel')}
                           </button>
                         )}
                       </div>
@@ -510,13 +462,13 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                       <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                            {lang === 'TH' ? 'อีเมล' : 'Email'}
+                            {tr('supervisor_appointment_requests.fields.email')}
                           </div>
                           <div className="text-sm font-black text-slate-900 break-words">{displayEmail ?? '-'}</div>
                         </div>
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                            {lang === 'TH' ? 'เบอร์โทร' : 'Phone'}
+                            {tr('supervisor_appointment_requests.fields.phone')}
                           </div>
                           <div className="text-sm font-black text-slate-900">{displayPhone ?? '-'}</div>
                         </div>
@@ -527,7 +479,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                       <div className="mt-6">
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                           <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.date}</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('supervisor_appointment_requests.fields.date')}</label>
                             <input
                               type="date"
                               value={draft?.date ?? ''}
@@ -542,7 +494,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.time}</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('supervisor_appointment_requests.fields.time')}</label>
                             <input
                               type="time"
                               value={draft?.time ?? ''}
@@ -557,7 +509,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.mode}</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('supervisor_appointment_requests.fields.mode')}</label>
                             <select
                               value={draft?.mode ?? 'ONLINE'}
                               onChange={(e) =>
@@ -568,13 +520,13 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
                             >
-                              <option value="ONLINE">{t.modeOnline}</option>
-                              <option value="COMPANY">{t.modeCompany}</option>
+                              <option value="ONLINE">{tr('supervisor_appointment_requests.mode.online')}</option>
+                              <option value="COMPANY">{tr('supervisor_appointment_requests.mode.company')}</option>
                             </select>
                           </div>
 
                           <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.status}</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('supervisor_appointment_requests.fields.status')}</label>
                             <select
                               value={draft?.status ?? 'REQUESTED'}
                               onChange={(e) =>
@@ -588,9 +540,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               }
                               className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-900"
                             >
-                              <option value="CONFIRMED">{t.statusConfirmed}</option>
-                              <option value="RESCHEDULED">{t.statusRescheduled}</option>
-                              <option value="CANCELLED">{t.statusCancelled}</option>
+                              <option value="CONFIRMED">{tr('supervisor_appointment_requests.status.confirmed')}</option>
+                              <option value="RESCHEDULED">{tr('supervisor_appointment_requests.status.rescheduled')}</option>
+                              <option value="CANCELLED">{tr('supervisor_appointment_requests.status.cancelled')}</option>
                             </select>
                           </div>
 
@@ -602,13 +554,13 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                               className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-3 rounded-xl text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {savingId === it.id ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}
-                              {savingId === it.id ? t.saving : t.save}
+                              {savingId === it.id ? tr('supervisor_appointment_requests.actions.saving') : tr('supervisor_appointment_requests.actions.save')}
                             </button>
                           </div>
                         </div>
 
                         <div className="mt-4">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.supervisorNote}</label>
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('supervisor_appointment_requests.fields.supervisor_note')}</label>
                           <textarea
                             value={draft?.supervisorNote ?? ''}
                             onChange={(e) =>
@@ -625,7 +577,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
                     {isExpanded && Array.isArray(it.appointmentHistory) && it.appointmentHistory.length > 0 ? (
                       <div className="mt-5 p-5 rounded-[1.5rem] bg-slate-50 border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{t.history}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{tr('supervisor_appointment_requests.history.title')}</div>
                         {(() => {
                           const page = historyPages[it.id] ?? 1;
                           const all = [...it.appointmentHistory].slice().reverse();
@@ -642,12 +594,8 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                                   const hm = (String(h.mode ?? 'ONLINE') as AppointmentMode) ?? 'ONLINE';
                                   const who =
                                     h.actor === 'SUPERVISOR'
-                                      ? lang === 'TH'
-                                        ? 'พี่เลี้ยง'
-                                        : 'Supervisor'
-                                      : lang === 'TH'
-                                        ? 'นักศึกษา'
-                                        : 'Intern';
+                                      ? tr('supervisor_appointment_requests.history.actor.supervisor')
+                                      : tr('supervisor_appointment_requests.history.actor.intern');
 
                                   return (
                                     <div key={h.id} className="bg-white rounded-2xl border border-slate-100 p-4">
@@ -684,7 +632,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
                                           {String(h.supervisorNote ?? '').trim() ? (
                                             <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
                                               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                                                {t.supervisorNote}
+                                                {t('supervisor_appointment_requests.fields.supervisor_note')}
                                               </div>
                                               <div className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
                                             </div>
@@ -692,7 +640,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
                                           {String(h.note ?? '').trim() ? (
                                             <div className="mt-2 p-3 rounded-2xl bg-white border border-slate-100">
-                                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{t.note}</div>
+                                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                                                {t('supervisor_appointment_requests.fields.note')}
+                                              </div>
                                               <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap">{String(h.note)}</div>
                                             </div>
                                           ) : null}
@@ -759,7 +709,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang,
 
                     {typeof ar.note === 'string' && ar.note.trim() ? (
                       <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{t.note}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{tr('supervisor_appointment_requests.fields.note')}</div>
                         <div className="text-sm font-bold text-slate-800 whitespace-pre-wrap">{ar.note}</div>
                       </div>
                     ) : null}

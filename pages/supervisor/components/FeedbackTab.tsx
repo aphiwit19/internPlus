@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, ExternalLink, FileText, MessageSquareMore, Play, Star, StickyNote, Zap } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 import { firestoreDb } from '@/firebase';
 
 import { PerformanceMetrics } from '@/types';
@@ -86,6 +87,8 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
   isSavingPerformance,
   savePerformanceError,
 }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const isReadOnly = Boolean(readOnly);
   const shouldHideWhenNoData = Boolean(hideWhenNoData);
 
@@ -142,7 +145,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
     <div className="space-y-10 animate-in slide-in-from-bottom-6 duration-500">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">SELECT VIEW</span>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">{tr('supervisor_dashboard.feedback.select_view')}</span>
           {canShowPerformanceView && (
             <div className="flex bg-white p-2 rounded-[2rem] border border-slate-100 shadow-sm w-fit">
               <button
@@ -151,7 +154,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                   viewMode === 'FEEDBACK' ? 'bg-[#0B0F19] text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'
                 }`}
               >
-                Feedback & Self Evaluation
+                {tr('supervisor_dashboard.feedback.tab_feedback')}
               </button>
               <button
                 onClick={() => setViewMode('PERFORMANCE')}
@@ -159,7 +162,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                   viewMode === 'PERFORMANCE' ? 'bg-[#0B0F19] text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'
                 }`}
               >
-                Supervisor Performance Evaluation
+                {tr('supervisor_dashboard.feedback.tab_performance')}
               </button>
             </div>
           )}
@@ -167,7 +170,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
 
         {hasPerformancePanel && viewMode === 'PERFORMANCE' && (
           <>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">SELECT ASSESSMENT PERIOD</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">{tr('supervisor_dashboard.feedback.select_assessment_period')}</span>
             <div className="flex bg-white p-2 rounded-[2rem] border border-slate-100 shadow-sm w-fit overflow-x-auto scrollbar-hide max-w-full">
               {feedback.map((f) => (
                 <button
@@ -186,7 +189,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
 
         {viewMode === 'FEEDBACK' && (
           <>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">SELECT ASSESSMENT PERIOD</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">{tr('supervisor_dashboard.feedback.select_assessment_period')}</span>
             <div className="flex bg-white p-2 rounded-[2rem] border border-slate-100 shadow-sm w-fit overflow-x-auto scrollbar-hide max-w-full">
               {feedback.map((f) => (
                 <button
@@ -235,7 +238,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
           <div />
         ) : (
           <div className="py-24 text-center">
-            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">NO PERFORMANCE ANALYSIS AVAILABLE</p>
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.feedback.no_performance_available')}</p>
           </div>
         ))}
 
@@ -251,12 +254,12 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                   </div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900 tracking-tight">{activeFeedback.period}</h3>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">INTERN SUBMISSION DETAILS</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{tr('supervisor_dashboard.feedback.intern_submission_details')}</p>
                   </div>
                 </div>
                 {activeFeedback.status === 'reviewed' && (
                   <div className="bg-emerald-50 text-emerald-600 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100">
-                    REVIEWED
+                    {tr('supervisor_dashboard.feedback.reviewed_badge')}
                   </div>
                 )}
               </div>
@@ -269,9 +272,9 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                         <BarChart3 size={24} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SELF EVALUATION</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.feedback.self_evaluation')}</div>
                         <div className="text-xl font-black text-slate-900 truncate">
-                          {activeFeedback.submissionDate ? `Submitted • ${activeFeedback.submissionDate}` : 'Submission Pending'}
+                          {activeFeedback.submissionDate ? tr('supervisor_dashboard.feedback.submitted_on', { date: activeFeedback.submissionDate }) : tr('supervisor_dashboard.feedback.submission_pending')}
                         </div>
                       </div>
                     </div>
@@ -293,7 +296,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                     </div>
                   ) : (
                     <div className="py-10 text-center">
-                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">NO SELF EVALUATION SUBMITTED</p>
+                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.feedback.no_self_evaluation')}</p>
                     </div>
                   )}
                 </div>
@@ -306,12 +309,12 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                         <StickyNote size={20} />
                       </div>
                       <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70">SUMMARY</div>
-                        <div className="text-lg font-black tracking-tight">Intern Note</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70">{tr('supervisor_dashboard.feedback.summary_label')}</div>
+                        <div className="text-lg font-black tracking-tight">{tr('supervisor_dashboard.feedback.intern_note')}</div>
                       </div>
                     </div>
                     <p className="text-sm leading-relaxed text-indigo-50 italic font-medium whitespace-pre-wrap break-words">
-                      {activeFeedback.selfSummary ? `"${activeFeedback.selfSummary}"` : '"No summary provided"'}
+                      {activeFeedback.selfSummary ? `"${activeFeedback.selfSummary}"` : `"${tr('supervisor_dashboard.feedback.no_summary')}"`}
                     </p>
                   </div>
                 </div>
@@ -319,7 +322,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12 pb-12 border-b border-slate-50">
                 <div className="space-y-4">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">VLOG REFLECTION</h4>
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">{tr('supervisor_dashboard.feedback.vlog_reflection')}</h4>
                   {activeFeedback.videoStoragePath ? (
                     <div
                       className="aspect-video bg-[#0B0F19] rounded-[2.5rem] relative overflow-hidden group/video cursor-pointer"
@@ -333,19 +336,19 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                       <div className="absolute bottom-5 left-6 right-6 flex items-center justify-between text-white/70 text-[10px] font-black uppercase tracking-widest">
                         <span className="truncate">{activeFeedback.videoFileName || 'Video'}</span>
                         <span className="flex items-center gap-2">
-                          <ExternalLink size={14} /> OPEN
+                          <ExternalLink size={14} /> {tr('supervisor_dashboard.feedback.open')}
                         </span>
                       </div>
                     </div>
                   ) : (
                     <div className="aspect-video bg-[#0B0F19]/30 rounded-[2.5rem] relative overflow-hidden border border-slate-100 flex items-center justify-center text-slate-300">
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">NO VIDEO</span>
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">{tr('supervisor_dashboard.feedback.no_video')}</span>
                     </div>
                   )}
 
                   {Array.isArray(activeFeedback.attachments) && activeFeedback.attachments.length > 0 && (
                     <div className="mt-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">ATTACHMENTS</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{tr('supervisor_dashboard.feedback.attachments')}</div>
                       <div className="space-y-2">
                         {activeFeedback.attachments.map((a, idx) => (
                           <button
@@ -362,7 +365,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                               </div>
                             </div>
                             <div className="text-blue-600 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
-                              <ExternalLink size={14} /> OPEN
+                              <ExternalLink size={14} /> {tr('supervisor_dashboard.feedback.open')}
                             </div>
                           </button>
                         ))}
@@ -371,7 +374,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                   )}
                 </div>
                 <div className="space-y-6">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">PROGRAM SATISFACTION</h4>
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">{tr('supervisor_dashboard.feedback.program_satisfaction')}</h4>
                   <div className="flex gap-4">
                     {[1, 2, 3, 4, 5].map((s) => (
                       <div
@@ -387,15 +390,15 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
                     ))}
                   </div>
                   <p className="p-6 bg-slate-50 rounded-2xl border border-slate-100 italic text-slate-500 text-sm leading-relaxed font-medium whitespace-pre-wrap break-words">
-                    "{activeFeedback.internProgramFeedback || 'No feedback provided'}"
+                    "{activeFeedback.internProgramFeedback || tr('supervisor_dashboard.feedback.no_feedback_provided')}"
                   </p>
                 </div>
               </div>
 
               <div className="p-10 bg-slate-50/50 rounded-[2.5rem] border border-slate-100">
-                <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4">INTERN SELF-REFLECTION</h4>
+                <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4">{tr('supervisor_dashboard.feedback.intern_self_reflection')}</h4>
                 <p className="text-lg text-slate-700 leading-relaxed italic font-medium">
-                  "{activeFeedback.internReflection || 'Submission pending'}"
+                  "{activeFeedback.internReflection || tr('supervisor_dashboard.feedback.submission_pending_reflection')}"
                 </p>
               </div>
               </div>
@@ -408,7 +411,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
             <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 mb-6 border border-slate-100 shadow-inner">
               <MessageSquareMore size={48} />
             </div>
-            <p className="text-slate-400 font-black uppercase tracking-[0.3em]">No feedback milestones available</p>
+            <p className="text-slate-400 font-black uppercase tracking-[0.3em]">{tr('supervisor_dashboard.feedback.no_milestones')}</p>
           </div>
         ))}
     </div>
@@ -416,6 +419,8 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({
 };
 
 const ReadOnlyPerformancePanel = ({ item, milestoneLabel }: { item?: FeedbackItem; milestoneLabel: string }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const perf: PerformanceMetrics = item?.supervisorPerformance ?? {
     technical: 0,
     communication: 0,
@@ -473,11 +478,11 @@ const ReadOnlyPerformancePanel = ({ item, milestoneLabel }: { item?: FeedbackIte
                 <BarChart3 size={24} />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Supervisor Performance Evaluation</h3>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.feedback.supervisor_performance_evaluation')}</h3>
                 <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
                   {milestoneLabel}
-                  {item?.submissionDate ? `  •  SUBMITTED ${item.submissionDate}` : ''}
-                  {item?.supervisorReviewedDate ? `  •  REVIEWED ${item.supervisorReviewedDate}` : ''}
+                  {item?.submissionDate ? `  •  ${tr('supervisor_dashboard.feedback.submitted_label')} ${item.submissionDate}` : ''}
+                  {item?.supervisorReviewedDate ? `  •  ${tr('supervisor_dashboard.feedback.reviewed_label')} ${item.supervisorReviewedDate}` : ''}
                 </div>
               </div>
             </div>
@@ -491,7 +496,7 @@ const ReadOnlyPerformancePanel = ({ item, milestoneLabel }: { item?: FeedbackIte
           </div>
 
           <div className="mb-10">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">PROGRAM SATISFACTION (SUPERVISOR)</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{tr('supervisor_dashboard.feedback.program_satisfaction_supervisor')}</div>
             <div className="flex items-center gap-3">
               {[1, 2, 3, 4, 5].map((s) => (
                 <div
@@ -530,14 +535,14 @@ const ReadOnlyPerformancePanel = ({ item, milestoneLabel }: { item?: FeedbackIte
 
         <div className="xl:col-span-5 bg-[#3B49DF] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-          <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
+          <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">{tr('supervisor_dashboard.feedback.executive_summary')}</h3>
           <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
             <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
               <span className="text-6xl font-black tracking-tighter leading-none">{typeof perf.overallRating === 'number' ? perf.overallRating : 0}</span>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">{tr('supervisor_dashboard.feedback.avg_score')}</span>
             </div>
             <p className="text-sm leading-relaxed text-indigo-50 text-center whitespace-pre-wrap break-words font-medium italic max-w-md">
-              {overallComments ? `"${overallComments}"` : '"No summary provided"'}
+              {overallComments ? `"${overallComments}"` : `"${tr('supervisor_dashboard.feedback.no_summary')}"`}
             </p>
           </div>
         </div>
@@ -631,6 +636,8 @@ const PerformanceAnalysisPanel = ({
   submissionDate?: string;
   reviewedDate?: string;
 }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const displayOverall = computeOverall(editPerformance);
   const mentorshipRating = Math.max(0, Math.min(5, Number(editMentorshipQualityRating) || 0));
   const supervisorProgramSat = Math.max(0, Math.min(5, Number(editSupervisorProgramSatisfaction) || 0));
@@ -679,11 +686,11 @@ const PerformanceAnalysisPanel = ({
                 <BarChart3 size={24} />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Supervisor Performance Evaluation</h3>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.feedback.supervisor_performance_evaluation')}</h3>
                 <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
                   {milestoneLabel}
-                  {submissionDate ? `  •  SUBMITTED ${submissionDate}` : ''}
-                  {reviewedDate ? `  •  REVIEWED ${reviewedDate}` : ''}
+                  {submissionDate ? `  •  ${tr('supervisor_dashboard.feedback.submitted_label')} ${submissionDate}` : ''}
+                  {reviewedDate ? `  •  ${tr('supervisor_dashboard.feedback.reviewed_label')} ${reviewedDate}` : ''}
                 </div>
               </div>
             </div>
@@ -697,7 +704,7 @@ const PerformanceAnalysisPanel = ({
           </div>
 
           <div className="mb-10">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">PROGRAM SATISFACTION (SUPERVISOR)</div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{tr('supervisor_dashboard.feedback.program_satisfaction_supervisor')}</div>
             <div className="flex items-center gap-3">
               {[1, 2, 3, 4, 5].map((s) => (
                 <button
@@ -718,7 +725,7 @@ const PerformanceAnalysisPanel = ({
                 onClick={() => onEditSupervisorProgramSatisfactionChange(0)}
                 className="ml-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-white"
               >
-                CLEAR
+                {tr('supervisor_dashboard.feedback.clear')}
               </button>
               <div className="ml-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 {supervisorProgramSat}/5
@@ -787,7 +794,7 @@ const PerformanceAnalysisPanel = ({
                 onChange={(e) => onEditOverallCommentsChange(e.target.value)}
                 rows={4}
                 className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                placeholder="Write overall evaluation and comments..."
+                placeholder={tr('supervisor_dashboard.feedback.overall_comments_placeholder')}
               />
             </div>
 
@@ -798,7 +805,7 @@ const PerformanceAnalysisPanel = ({
                 onChange={(e) => onEditWorkPerformanceCommentsChange(e.target.value)}
                 rows={4}
                 className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                placeholder="Write work performance comments..."
+                placeholder={tr('supervisor_dashboard.feedback.work_performance_placeholder')}
               />
             </div>
 
@@ -808,7 +815,7 @@ const PerformanceAnalysisPanel = ({
                 className="px-8 py-3 rounded-2xl bg-[#111827] text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl"
                 disabled={isSaving}
               >
-                {isSaving ? 'Sending...' : 'Send Back to Intern'}
+                {isSaving ? tr('supervisor_dashboard.feedback.sending') : tr('supervisor_dashboard.feedback.send_back')}
               </button>
             </div>
           </div>
@@ -816,14 +823,14 @@ const PerformanceAnalysisPanel = ({
 
         <div className="xl:col-span-5 bg-[#3B49DF] rounded-[3rem] p-12 text-white shadow-2xl relative overflow-hidden flex flex-col">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-          <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">Executive Summary</h3>
+          <h3 className="text-xl font-black mb-12 tracking-tight relative z-10">{tr('supervisor_dashboard.feedback.executive_summary')}</h3>
           <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
             <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
               <span className="text-6xl font-black tracking-tighter leading-none">{displayOverall}</span>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">AVG SCORE</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">{tr('supervisor_dashboard.feedback.avg_score')}</span>
             </div>
             <div className="w-full max-w-md bg-white/10 border border-white/15 rounded-[2rem] p-6">
-              <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70 mb-4">OVERALL BAR</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70 mb-4">{tr('supervisor_dashboard.feedback.overall_bar')}</div>
               <div className="h-3.5 w-full bg-white/10 rounded-full overflow-hidden border border-white/10 p-0.5">
                 <div
                   className="h-full bg-white rounded-full transition-all duration-700"
@@ -832,7 +839,7 @@ const PerformanceAnalysisPanel = ({
               </div>
             </div>
             <p className="text-sm leading-relaxed text-indigo-50 text-center whitespace-pre-wrap break-words font-medium italic max-w-md">
-              {editOverallComments ? `"${editOverallComments}"` : '"No summary provided"'}
+              {editOverallComments ? `"${editOverallComments}"` : `"${tr('supervisor_dashboard.feedback.no_summary')}"`}
             </p>
           </div>
         </div>

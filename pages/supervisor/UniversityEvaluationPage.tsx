@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Download, FileText, Link as LinkIcon } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 import { Language, UserProfile } from '@/types';
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -60,35 +61,9 @@ interface SupervisorUniversityEvaluationPageProps {
   user: UserProfile;
 }
 
-const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluationPageProps> = ({ lang, user }) => {
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'University Evaluation',
-          subtitle: 'Review links and documents submitted by your assigned interns.',
-          empty: 'No submissions yet',
-          links: 'Links',
-          documents: 'Documents',
-          download: 'Download',
-          back: 'Back to list',
-          noLinks: 'No links yet',
-          noFiles: 'No files yet',
-        },
-        TH: {
-          title: 'การประเมินผลจากมหาวิทยาลัย',
-          subtitle: 'ดูข้อมูลลิงก์และเอกสารที่นักศึกษาที่คุณดูแลส่งมา',
-          empty: 'ยังไม่มีข้อมูลที่ส่งมา',
-          links: 'ลิงก์',
-          documents: 'เอกสาร',
-          download: 'ดาวน์โหลด',
-          back: 'กลับไปที่รายชื่อ',
-          noLinks: 'ยังไม่มีลิงก์',
-          noFiles: 'ยังไม่มีไฟล์',
-        },
-      }[lang]),
-    [lang],
-  );
+const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluationPageProps> = ({ lang: _lang, user }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const [items, setItems] = useState<Array<UniversityEvaluationDoc & { id: string }>>([]);
   const [activeInternId, setActiveInternId] = useState<string | null>(null);
@@ -254,8 +229,8 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
 
         <div className="mb-10 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-            <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('supervisor_university_evaluation.title')}</h1>
+            <p className="text-slate-500 text-sm mt-1">{tr('supervisor_university_evaluation.subtitle')}</p>
           </div>
 
           {active ? (
@@ -265,10 +240,10 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
               disabled={isDownloadingAll || activeFiles.length === 0}
               className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50"
               aria-label="Download all documents"
-              title={lang === 'TH' ? 'ดาวน์โหลดเอกสารทั้งหมด' : 'Download all documents'}
+              title={tr('supervisor_university_evaluation.download_all.title')}
             >
               {isDownloadingAll ? <Clock size={16} className="animate-spin" /> : <Download size={16} />}
-              {lang === 'TH' ? 'ดาวน์โหลดทั้งหมด' : 'Download all'}
+              {tr('supervisor_university_evaluation.download_all.button')}
             </button>
           ) : null}
         </div>
@@ -282,7 +257,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
           {items.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_university_evaluation.empty')}</p>
             </div>
           ) : active ? (
             <div className="space-y-6">
@@ -292,7 +267,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                 className="inline-flex items-center gap-2 text-slate-600 text-sm font-bold hover:text-slate-900"
               >
                 <ChevronLeft size={18} />
-                {t.back}
+                {tr('supervisor_university_evaluation.back')}
               </button>
 
               <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
@@ -300,7 +275,9 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                 <div className="min-w-0">
                   <p className="text-lg font-black text-slate-900 truncate">{active.internName}</p>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                    {(active.internPosition ?? 'Intern') + ' • ' + (active.internDepartment ?? 'Unknown')}
+                    {(active.internPosition ?? tr('supervisor_university_evaluation.interns.position_fallback')) +
+                      ' • ' +
+                      (active.internDepartment ?? tr('supervisor_university_evaluation.interns.department_fallback'))}
                   </p>
                 </div>
               </div>
@@ -312,11 +289,11 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                       <div className="w-10 h-10 bg-amber-50 text-amber-700 rounded-xl flex items-center justify-center">
                         <LinkIcon size={18} />
                       </div>
-                      <h2 className="text-lg font-black text-slate-900">{t.links}</h2>
+                      <h2 className="text-lg font-black text-slate-900">{tr('supervisor_university_evaluation.links')}</h2>
                     </div>
 
                     {activeLinks.length === 0 ? (
-                      <p className="text-sm text-slate-400 font-bold">{t.noLinks}</p>
+                      <p className="text-sm text-slate-400 font-bold">{tr('supervisor_university_evaluation.no_links')}</p>
                     ) : (
                       <div className="space-y-3">
                         {displayedLinks.map((l) => (
@@ -382,11 +359,11 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                       <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
                         <FileText size={18} />
                       </div>
-                      <h2 className="text-lg font-black text-slate-900">{t.documents}</h2>
+                      <h2 className="text-lg font-black text-slate-900">{tr('supervisor_university_evaluation.documents')}</h2>
                     </div>
 
                     {activeFiles.length === 0 ? (
-                      <p className="text-sm text-slate-400 font-bold">{t.noFiles}</p>
+                      <p className="text-sm text-slate-400 font-bold">{tr('supervisor_university_evaluation.no_files')}</p>
                     ) : (
                       <div className="space-y-3">
                         {displayedFiles.map((f) => (
@@ -405,7 +382,7 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                               type="button"
                               onClick={() => void handleDownload(f)}
                               className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
-                              title={t.download}
+                              title={tr('supervisor_university_evaluation.download')}
                             >
                               <Download size={16} />
                             </button>
@@ -463,37 +440,37 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                     <div className="w-10 h-10 bg-indigo-50 text-indigo-700 rounded-xl flex items-center justify-center">
                       <FileText size={18} />
                     </div>
-                    <h2 className="text-lg font-black text-slate-900">{lang === 'TH' ? 'รายละเอียดการจัดส่ง' : 'Delivery Details'}</h2>
+                    <h2 className="text-lg font-black text-slate-900">{tr('supervisor_university_evaluation.delivery_details.title')}</h2>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ชื่อผู้รับ/อาจารย์' : 'Recipient'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.recipient')}</p>
                       <p className="text-sm font-black text-slate-900">{activeDeliveryDetails?.recipientName ?? '-'}</p>
                     </div>
                     <div className="p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'คณะ/ภาควิชา' : 'Department'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.department')}</p>
                       <p className="text-sm font-black text-slate-900">{activeDeliveryDetails?.department ?? '-'}</p>
                     </div>
                     <div className="p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'วิธีการจัดส่ง' : 'Method'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.method')}</p>
                       <p className="text-sm font-black text-slate-900">{activeDeliveryDetails?.method ?? '-'}</p>
                     </div>
 
                     {(activeDeliveryDetails?.method ?? '') === 'Email' ? (
                       <div className="p-4 rounded-2xl border border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'อีเมลผู้รับ' : 'Recipient Email'}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.recipient_email')}</p>
                         <p className="text-sm font-black text-slate-900">{activeDeliveryDetails?.email ?? '-'}</p>
                       </div>
                     ) : (
                       <div className="p-4 rounded-2xl border border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ที่อยู่จัดส่ง' : 'Address'}</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.address')}</p>
                         <p className="text-sm font-black text-slate-900 whitespace-pre-wrap">{activeDeliveryDetails?.address ?? '-'}</p>
                       </div>
                     )}
 
                     <div className="p-4 rounded-2xl border border-slate-100 md:col-span-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'คำแนะนำเพิ่มเติม' : 'Instructions'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_university_evaluation.delivery_details.instructions')}</p>
                       <p className="text-sm font-black text-slate-900 whitespace-pre-wrap">{activeDeliveryDetails?.instructions ?? '-'}</p>
                     </div>
                   </div>
@@ -514,7 +491,9 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                     <div className="min-w-0 text-left">
                       <p className="text-sm font-black text-slate-900 truncate">{intern.internName}</p>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                        {(intern.internPosition ?? 'Intern') + ' • ' + (intern.internDepartment ?? 'Unknown')}
+                        {(intern.internPosition ?? tr('supervisor_university_evaluation.interns.position_fallback')) +
+                          ' • ' +
+                          (intern.internDepartment ?? tr('supervisor_university_evaluation.interns.department_fallback'))}
                       </p>
                     </div>
                   </div>
@@ -522,21 +501,21 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {Array.isArray(intern.submittedLinks) && intern.submittedLinks.length > 0 ? (
                       <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                        {intern.submittedLinks.length} links
+                        {tr('supervisor_university_evaluation.interns.links_count', { count: intern.submittedLinks.length } as any)}
                       </div>
                     ) : !intern.pendingChanges && Array.isArray(intern.links) && intern.links.length > 0 ? (
                       <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                        {intern.links.length} links
+                        {tr('supervisor_university_evaluation.interns.links_count', { count: intern.links.length } as any)}
                       </div>
                     ) : null}
 
                     {Array.isArray(intern.submittedFiles) && intern.submittedFiles.length > 0 ? (
                       <div className="px-4 py-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-widest">
-                        {intern.submittedFiles.length} files
+                        {tr('supervisor_university_evaluation.interns.files_count', { count: intern.submittedFiles.length } as any)}
                       </div>
                     ) : !intern.pendingChanges && Array.isArray(intern.files) && intern.files.length > 0 ? (
                       <div className="px-4 py-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-black uppercase tracking-widest">
-                        {intern.files.length} files
+                        {tr('supervisor_university_evaluation.interns.files_count', { count: intern.files.length } as any)}
                       </div>
                     ) : null}
                   </div>

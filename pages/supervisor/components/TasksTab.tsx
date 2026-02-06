@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, CheckCircle2, Clock, Download, FileText, Plus, RotateCcw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { TaskAttachment } from '@/types';
 import { firebaseStorage } from '@/firebase';
@@ -22,6 +23,8 @@ interface TasksTabProps {
 }
 
 const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTaskStatus }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const attachmentLabel = (a: TaskAttachment) => (typeof a === 'string' ? a : a.fileName);
 
   const handleOpenAttachment = async (a: TaskAttachment) => {
@@ -45,14 +48,14 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative">
         <div className="flex items-center justify-between mb-12">
           <div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Work Log Audits</h3>
-            <p className="text-slate-400 text-[10px] font-black uppercase mt-1">Assignments and tracked logs</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.tasks.title')}</h3>
+            <p className="text-slate-400 text-[10px] font-black uppercase mt-1">{tr('supervisor_dashboard.tasks.subtitle')}</p>
           </div>
           <button
             onClick={onNewAssignment}
             className="flex items-center gap-3 px-8 py-3.5 bg-[#111827] text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-900/10"
           >
-            <Plus size={18} strokeWidth={3} /> New Assignment
+            <Plus size={18} strokeWidth={3} /> {tr('supervisor_dashboard.tasks.new_assignment')}
           </button>
         </div>
 
@@ -105,7 +108,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
                   ) : (
                     <div className="p-5 border-2 border-dashed border-slate-100 rounded-3xl flex items-center gap-3 text-slate-300">
                       <Clock size={20} />
-                      <span className="text-[11px] font-bold uppercase">No artifacts submitted yet</span>
+                      <span className="text-[11px] font-bold uppercase">{tr('supervisor_dashboard.tasks.no_attachments')}</span>
                     </div>
                   )}
                 </div>
@@ -116,14 +119,14 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
                   <div className="p-8 bg-emerald-50/50 border border-emerald-100 rounded-[2rem] flex flex-col items-center justify-center gap-4 text-center">
                     <CheckCircle2 size={40} className="text-emerald-500" strokeWidth={2.5} />
                     <div>
-                      <p className="text-[11px] font-black text-emerald-900 uppercase tracking-widest leading-none mb-1">Approved</p>
-                      <p className="text-[9px] font-bold text-emerald-600/60 uppercase tracking-widest">Task finalized</p>
+                      <p className="text-[11px] font-black text-emerald-900 uppercase tracking-widest leading-none mb-1">{tr('supervisor_dashboard.tasks.mark_done')}</p>
+                      <p className="text-[9px] font-bold text-emerald-600/60 uppercase tracking-widest">{tr('supervisor_dashboard.tasks.mark_done')}</p>
                     </div>
                     <button
                       onClick={() => onUpdateTaskStatus(task.id, 'REVISION')}
                       className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors"
                     >
-                      Re-open Audit
+                      {tr('supervisor_dashboard.tasks.mark_revision')}
                     </button>
                   </div>
                 ) : (
@@ -132,13 +135,13 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
                       onClick={() => onUpdateTaskStatus(task.id, 'DONE')}
                       className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3"
                     >
-                      <Check size={18} strokeWidth={3} /> Approve Task
+                      <Check size={18} strokeWidth={3} /> {tr('supervisor_dashboard.tasks.mark_done')}
                     </button>
                     <button
                       onClick={() => onUpdateTaskStatus(task.id, 'REVISION')}
                       className="w-full py-5 bg-amber-50 text-amber-600 border border-amber-100 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-amber-100 active:scale-95 transition-all flex items-center justify-center gap-3"
                     >
-                      <RotateCcw size={18} strokeWidth={3} /> Needs Revision
+                      <RotateCcw size={18} strokeWidth={3} /> {tr('supervisor_dashboard.tasks.mark_revision')}
                     </button>
                   </>
                 )}
@@ -151,7 +154,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ tasks, onNewAssignment, onUpdateTas
               <div className="w-24 h-24 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 mb-6 border border-slate-100 shadow-inner">
                 <FileText size={48} />
               </div>
-              <p className="text-slate-400 font-black uppercase tracking-[0.3em]">No assigned tasks or logs found</p>
+              <p className="text-slate-400 font-black uppercase tracking-[0.3em]">{tr('supervisor_dashboard.tasks.no_attachments')}</p>
             </div>
           )}
         </div>
