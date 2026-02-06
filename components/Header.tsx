@@ -2,6 +2,7 @@ import React from 'react';
 import { MapPin, Menu } from 'lucide-react';
 import { Language, UserProfile } from '@/types';
 import { normalizeAvatarUrl } from '@/app/avatar';
+import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
   onMenuToggle?: () => void;
@@ -11,6 +12,8 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle, user }) => {
+  const { t } = useTranslation();
+
   return (
     <header className="h-16 bg-white border-b border-slate-100 flex items-center sticky top-0 z-40 px-4 md:px-6">
       <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between gap-4">
@@ -47,7 +50,7 @@ const Header: React.FC<HeaderProps> = ({ onMenuToggle, lang, onLangToggle, user 
               <h4 className="text-xs font-black text-slate-900 group-hover:text-blue-600 transition-colors tracking-tight">{user.name}</h4>
               <div className="flex items-center gap-1 text-[8px] text-slate-400 font-black uppercase tracking-[0.2em] justify-end mt-0.5">
                 <MapPin size={8} className="text-blue-500" />
-                {user.department || 'HQ UNIT'}
+                {user.department || t('common.hq_unit')}
               </div>
             </div>
             <img 

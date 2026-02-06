@@ -27,6 +27,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { firestoreDb } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 interface OffboardingTask {
   id: string;
@@ -42,81 +43,47 @@ interface OffboardingPageProps {
   lang: Language;
 }
 
-const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
+const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const navigate = useNavigate();
-  const t = {
-    EN: {
-      title: "Offboarding Progress",
-      subtitle: "Complete these mandatory steps to formally conclude your tenure.",
-      devBtn: "Dev: Finish All Tasks",
-      ready: "READY FOR CLEARANCE",
-      inProgress: "IN PROGRESS",
-      taskHeader: "Required Offboarding Tasks",
-      taskSub: "Verification process for intern departure",
-      action: "Accept",
-      totalHours: "Total Hours",
-      tasksDone: "Tasks Done",
-      certificates: "Certificates",
-      finalScore: "Final Score",
-      signatureTitle: "Clearance Signature",
-      finalDecl: "FINAL DECLARATION",
-      agree: "I hereby certify that I have returned all company property and completed the required handover processes.",
-      pending: "TASKS PENDING",
-      signHere: "SIGN BY HAND HERE",
-      submitBtn: "Submit Final Clearance",
-      thankYou: "THANK YOU FOR YOUR CONTRIBUTION",
-      binding: "SIGNATURE IS BINDING AND IRREVERSIBLE ONCE SUBMITTED.",
-      modalAction: "Action Required",
-      completeSave: "Complete & Save Step"
-    },
-    TH: {
-      title: "ความคืบหน้าการแจ้งออกจากงาน",
-      subtitle: "ดำเนินการตามขั้นตอนที่กำหนดให้ครบถ้วนเพื่อจบโปรแกรมการฝึกงานอย่างเป็นทางการ",
-      devBtn: "ทางลัด: เสร็จสิ้นงานทั้งหมด",
-      ready: "พร้อมสำหรับการอนุมัติ",
-      inProgress: "กำลังดำเนินการ",
-      taskHeader: "รายการที่ต้องดำเนินการก่อนแจ้งออก",
-      taskSub: "กระบวนการตรวจสอบสำหรับการพ้นสภาพนักศึกษาฝึกงาน",
-      action: "ยอมรับ",
-      totalHours: "ชั่วโมงรวม",
-      tasksDone: "งานที่สำเร็จ",
-      certificates: "ใบรับรอง",
-      finalScore: "คะแนนสุดท้าย",
-      signatureTitle: "ลายเซ็นเพื่ออนุมัติ",
-      finalDecl: "คำประกาศขั้นสุดท้าย",
-      agree: "ข้าพเจ้าขอรับรองว่าได้คืนทรัพย์สินของบริษัททั้งหมดและเสร็จสิ้นกระบวนการส่งมอบงานที่กำหนดแล้ว",
-      pending: "รอการดำเนินการงาน",
-      signHere: "ลงชื่อด้วยลายมือที่นี่",
-      submitBtn: "ส่งคำขออนุมัติขั้นสุดท้าย",
-      thankYou: "ขอบคุณสำหรับความทุ่มเทในการทำงานของคุณ",
-      binding: "ลายเซ็นนี้มีผลผูกพันและไม่สามารถยกเลิกได้หลังจากส่งแล้ว",
-      modalAction: "จำเป็นต้องดำเนินการ",
-      completeSave: "เสร็จสิ้นและบันทึกขั้นตอน"
-    }
-  }[lang];
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
+
+  const taskTitle = (taskId: string) => {
+    if (taskId === 'ot-1') return tr('intern_offboarding.tasks.knowledge_transfer.title');
+    if (taskId === 'ot-2') return tr('intern_offboarding.tasks.hardware_return.title');
+    if (taskId === 'ot-3') return tr('intern_offboarding.tasks.system_access.title');
+    return '';
+  };
+
+  const taskDescription = (taskId: string) => {
+    if (taskId === 'ot-1') return tr('intern_offboarding.tasks.knowledge_transfer.description');
+    if (taskId === 'ot-2') return tr('intern_offboarding.tasks.hardware_return.description');
+    if (taskId === 'ot-3') return tr('intern_offboarding.tasks.system_access.description');
+    return '';
+  };
 
   const INITIAL_TASKS: OffboardingTask[] = [
     {
       id: 'ot-1',
-      title: lang === 'EN' ? 'Knowledge Transfer Documents' : 'เอกสารส่งมอบงาน',
-      description: lang === 'EN' ? 'Upload handover docs and logic maps.' : 'อัปโหลดเอกสารส่งมอบงานและแผนผังตรรกะงาน',
+      title: '',
+      description: '',
       status: 'IN_PROGRESS',
       icon: <Book size={20} />,
       actionType: 'UPLOAD'
     },
     {
       id: 'ot-2',
-      title: lang === 'EN' ? 'Hardware Asset Return' : 'คืนทรัพย์สินอุปกรณ์',
-      description: lang === 'EN' ? 'Return laptop and ID badge.' : 'คืนแล็ปท็อปและบัตรประจำตัวพนักงาน',
+      title: '',
+      description: '',
       status: 'PENDING',
       icon: <Cpu size={20} />,
       actionType: 'RECEIPT'
     },
     {
       id: 'ot-3',
-      title: lang === 'EN' ? 'System Access Credentials' : 'สิทธิ์การเข้าถึงระบบ',
-      description: lang === 'EN' ? 'Revocation of API keys and tokens.' : 'ยกเลิกการใช้รหัส API และรหัสผ่านต่างๆ',
+      title: '',
+      description: '',
       status: 'PENDING',
       icon: <ShieldCheck size={20} />,
       actionType: 'CONFIRM'
@@ -132,6 +99,10 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
   const [hasSigned, setHasSigned] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  useEffect(() => {
+    setTasks((prev) => prev.map((task) => ({ ...task })));
+  }, [i18n.language]);
 
   const alreadyRequested =
     user?.lifecycleStatus === 'OFFBOARDING_REQUESTED' || Boolean((user as any)?.offboardingRequestedAt);
@@ -171,8 +142,8 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
       // Convert tasks to plain object to avoid Firestore serialization issues
       const plainTasks = tasks.map(task => ({
         id: task.id,
-        title: task.title,
-        description: task.description,
+        title: taskTitle(task.id),
+        description: taskDescription(task.id),
         status: task.status,
         actionType: task.actionType,
         completedAt: task.completedAt
@@ -189,10 +160,7 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
     } catch (error) {
       console.error('Failed to submit offboarding request:', error);
       const errorMessage = (error as any).message || 'Unknown error';
-      alert(lang === 'EN' 
-        ? `Failed to submit offboarding request: ${errorMessage}` 
-        : `ไม่สามารถส่งคำขอแจ้งออกจากงาน: ${errorMessage}`
-      );
+      alert(tr('intern_offboarding.errors.submit_failed', { message: errorMessage } as any));
     } finally {
       setIsSubmitting(false);
     }
@@ -253,13 +221,10 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
             <ShieldCheck size={48} />
           </div>
           <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-4">
-            {lang === 'EN' ? 'Offboarding Request Submitted' : 'ส่งคำขอแจ้งออกจากงานเรียบร้อย'}
+            {tr('intern_offboarding.submitted.title')}
           </h2>
           <p className="text-slate-500 text-lg leading-relaxed mb-10">
-            {lang === 'EN' 
-              ? 'Your request has been securely forwarded.'
-              : 'คำขอของคุณได้รับการส่งต่ออย่างปลอดภัยแล้ว'
-            }
+            {tr('intern_offboarding.submitted.subtitle')}
           </p>
         </div>
       </div>
@@ -271,18 +236,18 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4 flex-shrink-0">
           <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">{t.title}</h1>
-            <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">{tr('intern_offboarding.title')}</h1>
+            <p className="text-slate-500 text-sm mt-1">{tr('intern_offboarding.subtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
             {!allCompleted && (
               <button onClick={completeAllTasks} className="px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-300 transition-colors">
-                {t.devBtn}
+                {tr('intern_offboarding.actions.dev_finish_all')}
               </button>
             )}
             <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border flex items-center gap-2 ${allCompleted ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
               {allCompleted ? <CheckCircle2 size={16} /> : <Clock size={16} />}
-              {allCompleted ? t.ready : t.inProgress}
+              {allCompleted ? tr('intern_offboarding.status.ready_for_clearance') : tr('intern_offboarding.status.in_progress')}
             </div>
           </div>
         </div>
@@ -291,8 +256,8 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
           <div className="lg:col-span-8 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
               <div className="mb-8">
-                <h2 className="text-xl font-bold text-slate-900 leading-tight">{t.taskHeader}</h2>
-                <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">{t.taskSub}</p>
+                <h2 className="text-xl font-bold text-slate-900 leading-tight">{tr('intern_offboarding.tasks_header')}</h2>
+                <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">{tr('intern_offboarding.tasks_subtitle')}</p>
               </div>
               <div className="space-y-4">
                 {tasks.map(task => (
@@ -301,18 +266,18 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                       {task.status === 'COMPLETED' ? <FileCheck size={20} /> : task.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-bold text-slate-900 truncate">{task.title}</h4>
-                      <p className="text-[11px] text-slate-500 leading-relaxed truncate">{task.description}</p>
+                      <h4 className="text-sm font-bold text-slate-900 truncate">{taskTitle(task.id)}</h4>
+                      <p className="text-[11px] text-slate-500 leading-relaxed truncate">{taskDescription(task.id)}</p>
                       {task.status === 'COMPLETED' && task.completedAt && (
                         <p className="text-[10px] text-emerald-600 font-medium mt-1">
-                          {lang === 'EN' ? 'Completed' : 'เสร็จสิ้น'} • {task.completedAt}
+                          {tr('intern_offboarding.task.completed')} • {task.completedAt}
                         </p>
                       )}
                       {completedTaskId === task.id && showCompletionAnimation && (
                         <div className="flex items-center gap-1 mt-1">
                           <CheckCircle2 size={12} className="text-emerald-600 animate-pulse" />
                           <span className="text-[10px] text-emerald-600 font-medium animate-pulse">
-                            {lang === 'EN' ? 'Task completed!' : 'งานเสร็จสิ้น!'}
+                            {tr('intern_offboarding.task.task_completed')}
                           </span>
                         </div>
                       )}
@@ -323,12 +288,12 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                           onClick={() => navigate('/intern/training')} 
                           className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 active:scale-95 transition-all"
                         >
-                          {t.action}
+                          {tr('intern_offboarding.actions.accept')}
                         </button>
                       ) : (
                         <div className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
                           <Check size={12} />
-                          {lang === 'EN' ? 'Done' : 'เสร็จแล้ว'}
+                          {tr('intern_offboarding.task.done')}
                         </div>
                       )}
                     </div>
@@ -341,14 +306,14 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
           <div className="lg:col-span-4 h-fit">
             <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col items-center">
               <div className="w-full text-left mb-8">
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t.signatureTitle}</h3>
-                <p className="text-[11px] font-black text-slate-400 mt-1 uppercase tracking-widest">{t.finalDecl}</p>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('intern_offboarding.signature.title')}</h3>
+                <p className="text-[11px] font-black text-slate-400 mt-1 uppercase tracking-widest">{tr('intern_offboarding.signature.final_declaration')}</p>
               </div>
               <div className={`w-full p-6 rounded-[1.5rem] mb-8 flex items-start gap-4 ${isAgreed ? 'bg-blue-50/30 border border-blue-100' : 'bg-slate-50 border border-slate-100'}`}>
                 <div onClick={() => allCompleted && setIsAgreed(!isAgreed)} className={`w-6 h-6 rounded-md border flex items-center justify-center cursor-pointer ${isAgreed ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300'} ${!allCompleted && 'opacity-30 cursor-not-allowed'}`}>
                   {isAgreed && <Check size={16} strokeWidth={4} />}
                 </div>
-                <p className={`text-[13px] font-medium leading-relaxed italic ${!allCompleted ? 'text-slate-300' : 'text-slate-500'}`}>{t.agree}</p>
+                <p className={`text-[13px] font-medium leading-relaxed italic ${!allCompleted ? 'text-slate-300' : 'text-slate-500'}`}>{tr('intern_offboarding.signature.agree')}</p>
               </div>
               <div className="w-full mb-10">
                 <div className={`aspect-[5/4] rounded-[2rem] border-2 border-dashed relative overflow-hidden ${allCompleted ? 'bg-slate-50/30 border-slate-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
@@ -359,20 +324,26 @@ const OffboardingPage: React.FC<OffboardingPageProps> = ({ lang }) => {
                   {!hasSigned && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
                       {!allCompleted ? (
-                        <><Lock size={32} className="text-slate-200 mb-3" /><p className="text-[12px] font-black text-slate-300 uppercase tracking-widest">{t.pending}</p></>
+                        <>
+                          <Lock size={32} className="text-slate-200 mb-3" />
+                          <p className="text-[12px] font-black text-slate-300 uppercase tracking-widest">{tr('intern_offboarding.signature.tasks_pending')}</p>
+                        </>
                       ) : (
-                        <><PenTool size={32} className="text-slate-200 mb-3" /><p className="text-[12px] font-black text-slate-300 uppercase tracking-widest">{t.signHere}</p></>
+                        <>
+                          <PenTool size={32} className="text-slate-200 mb-3" />
+                          <p className="text-[12px] font-black text-slate-300 uppercase tracking-widest">{tr('intern_offboarding.signature.sign_here')}</p>
+                        </>
                       )}
                     </div>
                   )}
                 </div>
               </div>
               <button disabled={!canSubmitClearance} onClick={handleSubmit} className={`w-full py-4 rounded-full font-black text-[15px] tracking-tight transition-all ${canSubmitClearance ? 'bg-blue-600 text-white shadow-xl hover:bg-blue-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}>
-                {t.submitBtn}
+                {isSubmitting ? tr('intern_offboarding.actions.submitting') : tr('intern_offboarding.actions.submit_final_clearance')}
               </button>
               <div className="mt-10 flex items-center justify-center gap-2.5 text-rose-400">
                 <Heart size={20} fill="currentColor" />
-                <span className="text-[11px] font-black uppercase tracking-widest">{t.thankYou}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest">{tr('intern_offboarding.thank_you')}</span>
               </div>
             </div>
           </div>

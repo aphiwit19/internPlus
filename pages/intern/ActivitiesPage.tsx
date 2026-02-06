@@ -12,6 +12,7 @@ import {
   UserX
 } from 'lucide-react';
 import { Language } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 import { useAppContext } from '@/app/AppContext';
 import { createLeaveRepository } from '@/app/leaveRepository';
@@ -54,38 +55,13 @@ interface ActivitiesPageProps {
   lang: Language;
 }
 
-const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
+const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const leaveRepo = useMemo(() => createLeaveRepository(), []);
-
-  const t = {
-    EN: {
-      title: "Activities & Timeline",
-      subtitle: "Your planned tasks and approved leaves.",
-      viewAll: 'All',
-      viewLeave: 'Leave',
-      viewTasks: 'Activities',
-      calendar: "Calendar Overview",
-      syncTitle: "Live Ecosystem Sync",
-      syncDesc: "Tasks and approved leaves are automatically mirrored here from your workspace and leave manager.",
-      days: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
-      absence: "ABSENCE LOG",
-      empty: "No activities yet. Planned tasks and approved leaves will appear here automatically.",
-    },
-    TH: {
-      title: "กิจกรรมและลำดับเวลา",
-      subtitle: "งานที่วางแผน และการลาที่อนุมัติแล้ว",
-      viewAll: 'ทั้งหมด',
-      viewLeave: 'วันที่ลา',
-      viewTasks: 'กิจกรรมที่ทำ',
-      calendar: "ภาพรวมปฏิทิน",
-      syncTitle: "ซิงค์ข้อมูลระบบแล้ว",
-      syncDesc: "งานและการลางานที่ได้รับอนุมัติจะถูกแสดงที่นี่โดยอัตโนมัติ",
-      days: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'],
-      absence: "บันทึกการลา",
-      empty: "ยังไม่มีกิจกรรม ระบบจะแสดงงานที่วางแผนและการลาที่อนุมัติแล้วที่นี่โดยอัตโนมัติ",
-    }
-  }[lang];
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
+  const trLng = (lng: 'en' | 'th', key: string, options?: any) => String(t(key, { ...(options ?? {}), lng }));
+  const uiLang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
 
   const [viewMode, setViewMode] = useState<'ALL' | 'LEAVE' | 'TASK'>('ALL');
 
@@ -103,8 +79,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
 
   const monthLabel = (d: Date) => {
     const m = d.getUTCMonth();
-    const en = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][m] ?? '';
-    const th = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][m] ?? '';
+    const en = String(t('intern_activities.months.short', { lng: 'en' } as any)).split('|')[m] ?? '';
+    const th = String(t('intern_activities.months.short', { lng: 'th' } as any)).split('|')[m] ?? '';
     return { EN: en, TH: th };
   };
 
@@ -140,11 +116,11 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
         };
 
         const typeTitle = (type: string) => {
-          if (type === 'SICK') return { EN: 'Sick Leave (Unpaid)', TH: 'ลาป่วย (ไม่ได้รับเบี้ยเลี้ยง)' };
-          if (type === 'PERSONAL') return { EN: 'Personal Leave (Unpaid)', TH: 'ลากิจ (ไม่ได้รับเบี้ยเลี้ยง)' };
-          if (type === 'BUSINESS') return { EN: 'Business Leave (Unpaid)', TH: 'ลาเพื่อธุรกิจ (ไม่ได้รับเบี้ยเลี้ยง)' };
-          if (type === 'VACATION') return { EN: 'Vacation Leave (Unpaid)', TH: 'ลาพักร้อน (ไม่ได้รับเบี้ยเลี้ยง)' };
-          return { EN: 'Leave (Unpaid)', TH: 'ลา (ไม่ได้รับเบี้ยเลี้ยง)' };
+          if (type === 'SICK') return { EN: trLng('en', 'intern_activities.leave_types.sick'), TH: trLng('th', 'intern_activities.leave_types.sick') };
+          if (type === 'PERSONAL') return { EN: trLng('en', 'intern_activities.leave_types.personal'), TH: trLng('th', 'intern_activities.leave_types.personal') };
+          if (type === 'BUSINESS') return { EN: trLng('en', 'intern_activities.leave_types.business'), TH: trLng('th', 'intern_activities.leave_types.business') };
+          if (type === 'VACATION') return { EN: trLng('en', 'intern_activities.leave_types.vacation'), TH: trLng('th', 'intern_activities.leave_types.vacation') };
+          return { EN: trLng('en', 'intern_activities.leave_types.generic'), TH: trLng('th', 'intern_activities.leave_types.generic') };
         };
 
         const events: ActivityEvent[] = [];
@@ -157,7 +133,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
               day,
               month: monthLabel(d),
               title: typeTitle(r.type),
-              time: 'Full Day',
+              time: tr('intern_activities.time.full_day'),
               type: 'LEAVE',
             });
           });
@@ -217,8 +193,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
             day,
             month,
             title: {
-              EN: `Task: ${title}${projectPrefix}`,
-              TH: `งาน: ${title}${projectPrefix}`,
+              EN: trLng('en', 'intern_activities.event_titles.task', { title: `${title}${projectPrefix}` } as any),
+              TH: trLng('th', 'intern_activities.event_titles.task', { title: `${title}${projectPrefix}` } as any),
             },
             time,
             type: 'TASK',
@@ -310,10 +286,10 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
           day,
           month: monthLabel(d),
           title: {
-            EN: `Evaluation Link: ${l.label}`,
-            TH: `ลิงก์ประเมิน: ${l.label}`,
+            EN: trLng('en', 'intern_activities.event_titles.evaluation_link', { label: l.label } as any),
+            TH: trLng('th', 'intern_activities.event_titles.evaluation_link', { label: l.label } as any),
           },
-          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
           type: 'TASK',
         });
       });
@@ -329,10 +305,10 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
           day,
           month: monthLabel(d),
           title: {
-            EN: `University Doc${cat}: ${f.label}`,
-            TH: `เอกสารมหาวิทยาลัย${cat}: ${f.label}`,
+            EN: trLng('en', 'intern_activities.event_titles.university_doc', { category: cat, label: f.label } as any),
+            TH: trLng('th', 'intern_activities.event_titles.university_doc', { category: cat, label: f.label } as any),
           },
-          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
           type: 'TASK',
         });
       });
@@ -346,7 +322,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
     const groups: Array<{ dateLabel: string; items: ActivityEvent[] }> = [];
     const monthName = (m: string) => m;
     const labelFor = (ev: ActivityEvent) => {
-      const month = monthName(ev.month[lang]);
+      const month = monthName(ev.month[uiLang]);
       return `${ev.day} ${month}`;
     };
 
@@ -408,7 +384,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
       }
     });
     return groups;
-  }, [lang, leaveActivities, taskActivities, evaluationActivities, viewMode, selectedDateKey, isMonthFilterEnabled, calendarDate]);
+  }, [uiLang, leaveActivities, taskActivities, evaluationActivities, viewMode, selectedDateKey, isMonthFilterEnabled, calendarDate]);
 
   const calendarYear = calendarDate.getFullYear();
   const calendarMonth = calendarDate.getMonth();
@@ -418,9 +394,9 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
   const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
 
   const calendarTitle = useMemo(() => {
-    const locale = lang === 'TH' ? 'th-TH' : 'en-US';
+    const locale = uiLang === 'TH' ? 'th-TH' : 'en-US';
     return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(calendarDate);
-  }, [calendarDate, lang]);
+  }, [calendarDate, uiLang]);
 
   const markerMap = useMemo(() => {
     const setFor = (events: ActivityEvent[]) => {
@@ -445,8 +421,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
       <div className="max-w-7xl mx-auto w-full overflow-y-auto scrollbar-hide pb-20">
         <div className="mb-12">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-400 text-sm font-medium mt-1">{t.subtitle}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">{tr('intern_activities.title')}</h1>
+          <p className="text-slate-400 text-sm font-medium mt-1">{tr('intern_activities.subtitle')}</p>
         </div>
 
         <div className="mb-10">
@@ -458,7 +434,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                 viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
-              {t.viewAll}
+              {tr('intern_activities.filters.all')}
             </button>
             <button
               type="button"
@@ -467,7 +443,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                 viewMode === 'LEAVE' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
-              {t.viewLeave}
+              {tr('intern_activities.filters.leave')}
             </button>
             <button
               type="button"
@@ -476,7 +452,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                 viewMode === 'TASK' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
-              {t.viewTasks}
+              {tr('intern_activities.filters.activities')}
             </button>
           </div>
         </div>
@@ -490,8 +466,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                     <CalendarIcon size={20} />
                   </div>
                   <div>
-                    <div className="text-sm font-black text-slate-800">{lang === 'TH' ? 'ยังไม่มีกิจกรรม' : 'No activities yet'}</div>
-                    <div className="text-xs font-bold text-slate-400 mt-1">{t.empty}</div>
+                    <div className="text-sm font-black text-slate-800">{tr('intern_activities.empty.title')}</div>
+                    <div className="text-xs font-bold text-slate-400 mt-1">{tr('intern_activities.empty.subtitle')}</div>
                   </div>
                 </div>
               </div>
@@ -505,13 +481,13 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                     <div key={item.id} className={`bg-white rounded-[1.5rem] p-6 border shadow-sm flex items-center group hover:shadow-md transition-all cursor-pointer ${item.type === 'LEAVE' ? 'border-rose-100 bg-rose-50/10' : 'border-slate-100/60'}`}>
                       <div className={`flex flex-col items-center justify-center min-w-[80px] border-r pr-8 mr-8 ${item.type === 'LEAVE' ? 'border-rose-100' : 'border-slate-100'}`}>
                         <span className={`text-2xl font-black leading-none ${item.type === 'LEAVE' ? 'text-rose-500' : 'text-slate-800'}`}>{item.day}</span>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[lang]}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{item.month[uiLang]}</span>
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {item.type === 'LEAVE' && <UserX size={14} className="text-rose-400" />}
                           <h3 className={`text-[15px] font-bold leading-tight group-hover:text-blue-600 transition-colors ${item.type === 'LEAVE' ? 'text-rose-600' : 'text-slate-800'}`}>
-                            {item.title[lang]}
+                            {item.title[uiLang]}
                           </h3>
                         </div>
                         <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-wider">{item.time}</p>
@@ -521,7 +497,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                           item.type === 'TASK' ? 'bg-slate-50 text-slate-600 border-slate-100' :
                           item.type === 'LEAVE' ? 'bg-rose-50 text-rose-600 border-rose-200' :
                           'bg-red-50 text-red-500 border-red-100'
-                        }`}>{item.type === 'LEAVE' ? t.absence : item.type}</span>
+                        }`}>{item.type === 'LEAVE' ? tr('intern_activities.labels.absence_log') : item.type}</span>
                       </div>
                     </div>
                   ))}
@@ -532,7 +508,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
 
           <div className="lg:col-span-4">
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100/60 sticky top-4">
-              <h3 className="text-lg font-black text-slate-800 mb-8">{t.calendar}</h3>
+              <h3 className="text-lg font-black text-slate-800 mb-8">{tr('intern_activities.calendar.title')}</h3>
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-6">
                   <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{calendarTitle}</h4>
@@ -545,15 +521,15 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                           ? 'bg-slate-900 text-white border-slate-900'
                           : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'
                       }`}
-                      title={lang === 'TH' ? 'กรองกิจกรรมตามเดือนที่เลือก' : 'Filter activities by this month'}
+                      title={tr('intern_activities.tooltips.filter_by_month')}
                     >
-                      {lang === 'TH' ? 'เดือน' : 'Month'}
+                      {tr('intern_activities.labels.month')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
                       className="p-1 text-slate-400 hover:text-slate-900"
-                      title={lang === 'TH' ? 'เดือนก่อนหน้า' : 'Previous month'}
+                      title={tr('intern_activities.tooltips.previous_month')}
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -561,14 +537,14 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                       type="button"
                       onClick={() => setCalendarDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
                       className="p-1 text-slate-400 hover:text-slate-900"
-                      title={lang === 'TH' ? 'เดือนถัดไป' : 'Next month'}
+                      title={tr('intern_activities.tooltips.next_month')}
                     >
                       <ChevronRight size={16} />
                     </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-2 text-center">
-                  {t.days.map((d, i) => (
+                  {(uiLang === 'TH' ? tr('intern_activities.days.th') : tr('intern_activities.days.en')).split('|').map((d, i) => (
                     <div key={`${d}-${i}`} className="text-[10px] font-black text-slate-300 py-2">
                       {d}
                     </div>
@@ -615,8 +591,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang }) => {
                     <CalendarIcon size={16} />
                   </div>
                   <div>
-                    <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{t.syncTitle}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed font-medium">{t.syncDesc}</p>
+                    <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{tr('intern_activities.sync.title')}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed font-medium">{tr('intern_activities.sync.description')}</p>
                   </div>
                 </div>
               </div>

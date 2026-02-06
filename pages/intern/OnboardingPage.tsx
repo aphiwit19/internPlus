@@ -18,6 +18,7 @@ import { Language } from '@/types';
 import { PageId } from '@/pageTypes';
 import { firestoreDb } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 
 type ProcessType = 'DOC_UPLOAD' | 'NDA_SIGN' | 'MODULE_LINK' | 'EXTERNAL_URL';
 
@@ -83,7 +84,9 @@ interface OnboardingPageProps {
   lang: Language;
 }
 
-const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => {
+const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang: _lang }) => {
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [configSteps, setConfigSteps] = useState<ConfigRoadmapStep[] | null>(null);
   const [roadmapPage, setRoadmapPage] = useState(1);
 
@@ -102,35 +105,51 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
       setConfigSteps(data.onboardingSteps);
     });
   }, []);
-  const t = {
-    EN: {
-      title: "Internship Roadmap",
-      subtitle: "Follow this journey designed by your supervisor to complete your program.",
-      stepsDone: "STEPS DONE",
-      step: "Step",
-      details: "View Details",
-      start: "Start Milestone",
-      locked: "Locked",
-      action: "Action"
-    },
-    TH: {
-      title: "แผนผังการฝึกงาน",
-      subtitle: "เดินตามแผนที่ที่ที่ปรึกษาของคุณกำหนดเพื่อจบโปรแกรมให้สมบูรณ์",
-      stepsDone: "ขั้นตอนสำเร็จ",
-      step: "ขั้นตอนที่",
-      details: "ดูรายละเอียด",
-      start: "เริ่มดำเนินการ",
-      locked: "ล็อคอยู่",
-      action: "ดำเนินการ"
-    }
-  }[lang];
+
+  const fallbackSteps: ConfigRoadmapStep[] = useMemo(
+    () => [
+      {
+        id: '1',
+        title: tr('intern_onboarding.default_steps.submit_documents'),
+        active: true,
+        type: 'DOC_UPLOAD',
+        targetPage: 'profile',
+        attachedDocuments: ['Standard_Verification_Pack.pdf', 'Educational_Consent_Form.pdf'],
+      },
+      {
+        id: '2',
+        title: tr('intern_onboarding.default_steps.sign_policy_nda'),
+        active: true,
+        type: 'NDA_SIGN',
+        targetPage: 'training',
+        attachedDocuments: ['Company_NDA_v2024.pdf', 'IT_Security_Policy.pdf'],
+      },
+      {
+        id: '3',
+        title: tr('intern_onboarding.default_steps.check_first_project_assignment'),
+        active: true,
+        type: 'MODULE_LINK',
+        targetPage: 'assignment',
+        attachedDocuments: [],
+      },
+      {
+        id: '4',
+        title: tr('intern_onboarding.default_steps.mid_term_performance_sync'),
+        active: true,
+        type: 'MODULE_LINK',
+        targetPage: 'feedback',
+        attachedDocuments: [],
+      },
+    ],
+    [i18n.language],
+  );
 
   const orderedConfigSteps = useMemo(() => {
-    const source = configSteps ?? DEFAULT_ONBOARDING_STEPS;
+    const source = configSteps ?? fallbackSteps;
     return source
       .filter((s) => s.active !== false)
       .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-  }, [configSteps]);
+  }, [configSteps, fallbackSteps]);
 
   const isUsingFallback = configSteps === null;
 
@@ -161,18 +180,14 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
   const getStepDescription = (s: ConfigRoadmapStep, index: number) => {
     if (index === 0) {
       if (requiredDocs.length > 0) {
-        return lang === 'EN' ? `Required templates: ${requiredDocs.join(', ')}` : `เอกสารที่ต้องใช้: ${requiredDocs.join(', ')}`;
+        return tr('intern_onboarding.descriptions.required_templates', { list: requiredDocs.join(', ') } as any);
       }
-      return lang === 'EN'
-        ? 'Upload required documents and manage your files.'
-        : 'อัปโหลดเอกสารที่กำหนด และจัดการไฟล์ของคุณ';
+      return tr('intern_onboarding.descriptions.upload_required_documents');
     }
     if ((s.attachedDocuments ?? []).length > 0) {
-      return lang === 'EN'
-        ? `Templates: ${(s.attachedDocuments ?? []).join(', ')}`
-        : `แม่แบบ: ${(s.attachedDocuments ?? []).join(', ')}`;
+      return tr('intern_onboarding.descriptions.templates', { list: (s.attachedDocuments ?? []).join(', ') } as any);
     }
-    return lang === 'EN' ? 'View details and proceed to the required action.' : 'ดูรายละเอียดและดำเนินการตามขั้นตอนที่กำหนด';
+    return tr('intern_onboarding.descriptions.view_details_and_proceed');
   };
 
   const ROADMAP_STEPS: RoadmapStep[] = useMemo(() => {
@@ -182,7 +197,9 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
       const status: RoadmapStep['status'] = idx <= 1 ? 'completed' : idx === 2 ? 'next-action' : 'locked';
       const isDocUpload = s.type === 'DOC_UPLOAD';
       const targetPage = isDocUpload ? 'documents' : s.targetPage;
-      const actionLabel = status === 'next-action' ? t.start : t.details;
+      const actionLabel = status === 'next-action'
+        ? tr('intern_onboarding.actions.start_milestone')
+        : tr('intern_onboarding.actions.view_details');
 
       return {
         id: s.id,
@@ -196,7 +213,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
         targetPage,
       };
     });
-  }, [orderedConfigSteps, requiredDocs, lang, t.details, t.start]);
+  }, [orderedConfigSteps, requiredDocs, i18n.language]);
 
   const ROADMAP_PAGE_SIZE = 2;
 
@@ -225,12 +242,12 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative">
       <div className="p-6 md:p-10 pb-4 max-w-5xl mx-auto w-full flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-xs md:text-sm mt-1">{t.subtitle}</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_onboarding.title')}</h1>
+          <p className="text-slate-500 text-xs md:text-sm mt-1">{tr('intern_onboarding.subtitle')}</p>
         </div>
         <div className="bg-blue-50 text-blue-600 px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase border border-blue-100 flex items-center gap-2 w-fit">
           <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-          {completedCount} / {totalSteps} {t.stepsDone}
+          {completedCount} / {totalSteps} {tr('intern_onboarding.steps_done')}
         </div>
       </div>
 
@@ -241,11 +258,11 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
             <div className="bg-white border border-slate-100 rounded-2xl p-8 text-slate-600">
               <div className="text-sm font-bold">
                 {isUsingFallback
-                  ? (lang === 'EN' ? 'No deployed roadmap config found. Showing default roadmap.' : 'ไม่พบการตั้งค่าที่ถูกปรับใช้ แสดงค่าเริ่มต้น')
-                  : (lang === 'EN' ? 'No steps are currently enabled by admin.' : 'ยังไม่มีขั้นตอนที่เปิดใช้งานโดยแอดมิน')}
+                  ? tr('intern_onboarding.empty.no_deployed_config_showing_default')
+                  : tr('intern_onboarding.empty.no_steps_enabled')}
               </div>
               <div className="text-xs text-slate-400 mt-2">
-                {lang === 'EN' ? 'Ask an admin to enable steps and deploy config in System Settings.' : 'ให้แอดมินเปิดใช้งานขั้นตอนและกดปรับใช้ในหน้า System Settings'}
+                {tr('intern_onboarding.empty.ask_admin_enable_and_deploy')}
               </div>
             </div>
           ) : (
@@ -287,7 +304,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                 }`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1.5">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{t.step} {step.stepNumber}</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{tr('intern_onboarding.step_label')} {step.stepNumber}</span>
                     </div>
                     <h3 className={`text-base md:text-lg font-bold tracking-tight ${
                       step.status === 'completed' ? 'text-slate-600' : 'text-slate-900'
@@ -300,7 +317,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                   <div className="flex-shrink-0">
                     {step.status === 'locked' ? (
                       <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 text-[10px] font-bold cursor-not-allowed">
-                        <Lock size={12} /> {t.locked}
+                        <Lock size={12} /> {tr('intern_onboarding.status.locked')}
                       </div>
                     ) : (
                       <button 
@@ -318,7 +335,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang }) => 
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
                       >
-                        {step.actionLabel || t.action}
+                        {step.actionLabel || tr('intern_onboarding.action_fallback')}
                       </button>
                     )}
                   </div>

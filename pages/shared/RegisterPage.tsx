@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 interface RegisterPageProps {
   isLoading?: boolean;
@@ -10,6 +11,7 @@ interface RegisterPageProps {
 }
 
 const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, onRegister, onContinue }) => {
+  const { t } = useTranslation();
   const [isInitializing, setIsInitializing] = useState(false);
   const [isVerifyingDetails, setIsVerifyingDetails] = useState(false);
 
@@ -56,12 +58,11 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
           </div>
           
           <h2 className="text-6xl font-black tracking-tight leading-[1.05] mb-8">
-            The future of <br />
-            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Internship Mastery.</span>
+            {t('login.hero_title_line_1')} <br />
+            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">{t('login.hero_title_highlight')}</span>
           </h2>
           <p className="text-slate-400 text-lg leading-relaxed max-w-sm font-medium">
-            A unified ecosystem for modern trainees, mentors, and administrators. 
-            Onboarding, tracking, and certification simplified.
+            {t('login.hero_description')}
           </p>
         </div>
 
@@ -80,23 +81,23 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 to="/login"
                 className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-10 hover:text-slate-900 transition-colors w-fit group"
               >
-                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> BACK TO LOGIN
+                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> {t('register.back_to_login')}
               </Link>
 
-              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Registration Disabled</h3>
+              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">{t('register.registration_disabled_title')}</h3>
               <p className="text-slate-400 text-[15px] mb-10 font-medium">
-                Accounts are created by administrators. Please contact your admin to be invited, then set your password via email.
+                {t('register.registration_disabled_desc')}
               </p>
 
               <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-600 text-sm font-bold mb-10">
-                If you already have an account, please sign in from the login page.
+                {t('register.registration_disabled_note')}
               </div>
 
               <Link
                 to="/login"
                 className="w-full py-6 bg-[#111827] text-white rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all hover:bg-blue-600 shadow-2xl flex items-center justify-center gap-3 active:scale-95"
               >
-                GO TO LOGIN <ChevronRight size={20} />
+                {t('register.go_to_login')} <ChevronRight size={20} />
               </Link>
             </div>
           ) : isVerifyingDetails ? (
@@ -106,8 +107,8 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 <UserCheck size={40} />
               </div>
               
-              <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Identity Verified</h3>
-              <p className="text-slate-400 text-[14px] mb-10 font-medium">Please confirm your assigned internship details.</p>
+              <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">{t('register.identity_verified_title')}</h3>
+              <p className="text-slate-400 text-[14px] mb-10 font-medium">{t('register.identity_verified_subtitle')}</p>
 
               <div className="w-full space-y-4 mb-12">
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-left relative group hover:border-blue-200 transition-all">
@@ -115,9 +116,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                     <Briefcase size={48} strokeWidth={1.5} />
                   </div>
                   <div className="relative z-10">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Assigned Position</p>
-                    <h4 className="text-lg font-black text-slate-900">Intern</h4>
-                    <p className="text-[11px] font-bold text-blue-600 mt-1">Unknown Division</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{t('register.assigned_position_label')}</p>
+                    <h4 className="text-lg font-black text-slate-900">{t('register.assigned_position_value')}</h4>
+                    <p className="text-[11px] font-bold text-blue-600 mt-1">{t('register.assigned_division_unknown')}</p>
                   </div>
                 </div>
 
@@ -126,9 +127,9 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                     <Calendar size={48} strokeWidth={1.5} />
                   </div>
                   <div className="relative z-10">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Internship Period</p>
-                    <h4 className="text-lg font-black text-slate-900">TBD</h4>
-                    <p className="text-[11px] font-bold text-slate-500 mt-1">6 Months Total Program</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{t('register.internship_period_label')}</p>
+                    <h4 className="text-lg font-black text-slate-900">{t('register.internship_period_value')}</h4>
+                    <p className="text-[11px] font-bold text-slate-500 mt-1">{t('register.program_duration')}</p>
                   </div>
                 </div>
               </div>
@@ -137,11 +138,11 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 onClick={onContinue}
                 className="w-full py-6 bg-[#111827] text-white rounded-full font-black text-[15px] uppercase tracking-widest transition-all hover:bg-blue-600 shadow-2xl flex items-center justify-center gap-3 active:scale-95"
               >
-                CONTINUE <ChevronRight size={20} />
+                {t('register.continue')} <ChevronRight size={20} />
               </button>
 
               <div className="mt-10 flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                <CheckCircle2 size={16} className="text-emerald-500" /> Secure Onboarding Active
+                <CheckCircle2 size={16} className="text-emerald-500" /> {t('register.secure_onboarding_active')}
               </div>
             </div>
 
@@ -152,24 +153,24 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 to="/login"
                 className="flex items-center gap-2 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mb-10 hover:text-slate-900 transition-colors w-fit group"
               >
-                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> BACK TO LOGIN
+                <ArrowLeft className="transition-transform group-hover:-translate-x-1" size={14} strokeWidth={3} /> {t('register.back_to_login')}
               </Link>
               
-              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">Join the Program</h3>
-              <p className="text-slate-400 text-[15px] mb-14 font-medium">Verify your invitation to initialize your profile.</p>
+              <h3 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">{t('register.join_program_title')}</h3>
+              <p className="text-slate-400 text-[15px] mb-14 font-medium">{t('register.join_program_subtitle')}</p>
 
               {(isLoading || isInitializing) && (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
-                  Processing...
+                  {t('register.processing')}
                 </div>
               )}
 
               <div className="space-y-12">
                 <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">FULL NAME</label>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('register.full_name_label')}</label>
                   <input
                     type="text"
-                    placeholder="Your name"
+                    placeholder={t('register.full_name_placeholder')}
                     className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
                     value={joinName}
                     onChange={(e) => setJoinName(e.target.value)}
@@ -178,10 +179,10 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('register.email_label')}</label>
                   <input
                     type="email"
-                    placeholder="name@example.com"
+                    placeholder={t('register.email_placeholder')}
                     className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
                     value={joinEmail}
                     onChange={(e) => setJoinEmail(e.target.value)}
@@ -190,10 +191,10 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
+                  <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('register.password_label')}</label>
                   <input
                     type="password"
-                    placeholder="Password"
+                    placeholder={t('register.password_placeholder')}
                     className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
                     value={joinPassword}
                     onChange={(e) => setJoinPassword(e.target.value)}
@@ -214,18 +215,22 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ isLoading, errorMessage, on
                   {isInitializing ? (
                     <div className="flex items-center gap-3">
                        <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></div>
-                       INITIALIZING...
+                       {t('register.initializing')}
                     </div>
                   ) : (
                     <>
-                      <Sparkles size={20} /> INITIALIZE SESSION
+                      <Sparkles size={20} /> {t('register.initialize_session')}
                     </>
                   )}
                 </button>
                 
                 <p className="text-[11px] text-center text-slate-400 font-medium leading-relaxed italic max-w-xs mx-auto px-4 mt-6">
-                  By joining, you agree to comply with internPlus <br />
-                  Internal Security and Data Management Policies.
+                  {t('register.disclaimer').split('\n').map((line, idx) => (
+                    <React.Fragment key={idx}>
+                      {line}
+                      {idx === 0 ? <br /> : null}
+                    </React.Fragment>
+                  ))}
                 </p>
               </div>
             </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
@@ -32,8 +33,10 @@ interface DocumentsPageProps {
   lang: Language;
 }
 
-const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
+const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
 
   const DOCS_PER_PAGE = 5;
@@ -43,6 +46,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const [requiredPage, setRequiredPage] = useState(1);
 
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
+  const MAX_DOC_MB = Math.round(MAX_DOC_BYTES / (1024 * 1024));
 
   const [activeRequiredLabels, setActiveRequiredLabels] = useState<string[]>([]);
   const [allStepLabels, setAllStepLabels] = useState<string[]>([]);
@@ -58,43 +62,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
   const fileSlotInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingSlotLabel, setPendingSlotLabel] = useState<string | null>(null);
   const [slotUrlDrafts, setSlotUrlDrafts] = useState<Record<string, string>>({});
-
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          breadcrumb: 'SETTINGS > DOCUMENTS',
-          title: 'Document Vault',
-          subtitle: 'Upload, update, download, and manage your internship documents.',
-          add: 'Add Document',
-          cancel: 'Cancel',
-          save: 'Save',
-          label: 'Document Name',
-          choose: 'Choose File',
-          upload: 'Upload',
-          replace: 'Replace',
-          download: 'Download',
-          remove: 'Delete',
-          empty: 'No documents yet',
-        },
-        TH: {
-          breadcrumb: 'ตั้งค่า > เอกสาร',
-          title: 'คลังเอกสาร',
-          subtitle: 'อัปโหลด แก้ไข ดาวน์โหลด และจัดการเอกสารของคุณ',
-          add: 'เพิ่มเอกสาร',
-          cancel: 'ยกเลิก',
-          save: 'บันทึก',
-          label: 'ชื่อเอกสาร',
-          choose: 'เลือกไฟล์',
-          upload: 'อัปโหลด',
-          replace: 'แทนที่ไฟล์',
-          download: 'ดาวน์โหลด',
-          remove: 'ลบ',
-          empty: 'ยังไม่มีเอกสาร',
-        },
-      }[lang]),
-    [lang],
-  );
 
   useEffect(() => {
     if (!user) return;
@@ -187,9 +154,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     if (!user) return;
     if (file.size > MAX_DOC_BYTES) {
       setUploadError(
-        lang === 'TH'
-          ? `ไฟล์ "${file.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-          : `File "${file.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+        tr('intern_documents.errors.file_too_large', { name: file.name, mb: MAX_DOC_MB } as any),
       );
       return;
     }
@@ -230,7 +195,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       console.error('Document upload failed', e);
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_documents.errors.upload_failed')}`);
     } finally {
       setIsUploading(false);
     }
@@ -241,7 +206,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     const v = url.trim();
     if (!v) return;
     if (!v.startsWith('http://') && !v.startsWith('https://')) {
-      setUploadError(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+      setUploadError(tr('intern_documents.errors.url_must_start_with_http'));
       return;
     }
 
@@ -277,7 +242,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       console.error('Document link save failed', e);
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_documents.errors.save_failed')}`);
     } finally {
       setIsUploading(false);
     }
@@ -289,7 +254,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     const linkValue = newUrl.trim();
     if (!newFile && !linkValue) return;
     if (isBlockedNewLabel) {
-      setUploadError(lang === 'TH' ? 'ไม่สามารถเพิ่มเอกสารที่ถูกควบคุมโดยแอดมินได้' : 'This document name is controlled by admin.' );
+      setUploadError(tr('intern_documents.errors.admin_controlled_name'));
       return;
     }
     if (newFile) {
@@ -308,7 +273,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
     const item = documents.find((d) => d.id === docId);
     if (!item) return;
 
-    if (!window.confirm(lang === 'TH' ? 'ลบเอกสารนี้หรือไม่?' : 'Delete this document?')) return;
+    if (!window.confirm(tr('intern_documents.confirm_delete'))) return;
 
     if (item.storagePath) {
       await deleteObject(storageRef(firebaseStorage, item.storagePath));
@@ -370,14 +335,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
 
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
         <div className="animate-in fade-in slide-in-from-left-4">
-          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] mb-2">{t.breadcrumb}</p>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
-          <p className="text-slate-400 text-sm font-medium mt-3">{t.subtitle}</p>
+          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] mb-2">{tr('intern_documents.breadcrumb')}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{tr('intern_documents.title')}</h1>
+          <p className="text-slate-400 text-sm font-medium mt-3">{tr('intern_documents.subtitle')}</p>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-2">
-            <ShieldCheck size={16} /> SECURE
+            <ShieldCheck size={16} /> {tr('intern_documents.secure_badge')}
           </div>
           <button
             onClick={() => setIsAdding(true)}
@@ -386,7 +351,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
             }`}
             disabled={isUploading}
           >
-            <Plus size={18} strokeWidth={2.5} /> {t.add}
+            <Plus size={18} strokeWidth={2.5} /> {tr('intern_documents.actions.add_document')}
           </button>
         </div>
       </div>
@@ -398,11 +363,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                    {lang === 'EN' ? 'REQUIRED DOCUMENTS' : 'เอกสารที่ต้องแนบ'}
+                    {tr('intern_documents.required.title')}
                   </div>
                 </div>
                 <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest">
-                  {activeRequiredLabels.length} {lang === 'EN' ? 'ITEMS' : 'รายการ'}
+                  {tr('intern_documents.required.items_with_count', { count: activeRequiredLabels.length } as any)}
                 </div>
               </div>
 
@@ -426,9 +391,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                             {label}
                           </p>
                           <div className="text-[11px] font-bold text-slate-500">
-                            {lang === 'TH'
-                              ? `ขนาดไฟล์สูงสุด ${Math.round(MAX_DOC_BYTES / (1024 * 1024))}MB`
-                              : `Max ${Math.round(MAX_DOC_BYTES / (1024 * 1024))}MB file size`}
+                            {tr('intern_documents.hints.max_file_size', { mb: MAX_DOC_MB } as any)}
                           </div>
 
                           <div className="mt-3 flex items-center gap-2">
@@ -441,18 +404,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                                 }))
                               }
                               className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
-                              placeholder={
-                                lang === 'TH'
-                                  ? 'แนบลิงก์ Drive/URL (http/https)'
-                                  : 'Attach Drive/URL link (http/https)'
-                              }
+                              placeholder={tr('intern_documents.placeholders.attach_drive_url')}
                             />
                             <button
                               type="button"
                               onClick={() => void handleSlotSaveLink(label)}
                               disabled={!((slotUrlDrafts[label] ?? '').trim()) || isUploading}
                               className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center border border-slate-100 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={lang === 'TH' ? 'บันทึกลิงก์' : 'Save link'}
+                              title={tr('intern_documents.actions.save_link')}
                             >
                               <ExternalLink size={16} />
                             </button>
@@ -466,14 +425,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                             <button
                               onClick={() => handleUploadForSlot(label)}
                               className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                              title={t.replace}
+                              title={tr('intern_documents.actions.replace')}
                             >
                               <RefreshCw size={16} />
                             </button>
                             <button
                               onClick={() => void handleDeleteDocument(item!.id)}
                               className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
-                              title={t.remove}
+                              title={tr('intern_documents.actions.delete')}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -482,7 +441,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                           <button
                             onClick={() => handleUploadForSlot(label)}
                             className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                            title={t.upload}
+                            title={tr('intern_documents.actions.upload')}
                           >
                             <Upload size={18} />
                           </button>
@@ -500,7 +459,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                     onClick={() => setRequiredPage((p) => Math.max(1, p - 1))}
                     disabled={requiredPage <= 1}
                     className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                    aria-label="Previous page"
+                    aria-label={tr('intern_documents.pagination.previous_page')}
                   >
                     {'<'}
                   </button>
@@ -529,7 +488,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                     onClick={() => setRequiredPage((p) => Math.min(requiredPageCount, p + 1))}
                     disabled={requiredPage >= requiredPageCount}
                     className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                    aria-label="Next page"
+                    aria-label={tr('intern_documents.pagination.next_page')}
                   >
                     {'>'}
                   </button>
@@ -542,20 +501,20 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                  {lang === 'EN' ? 'ALL DOCUMENTS' : 'เอกสารทั้งหมด'}
+                  {tr('intern_documents.all.title')}
                 </div>
                 <div className="text-sm font-black text-slate-900 mt-2">
-                  {lang === 'EN' ? 'All documents.' : 'เอกสารทั้งหมด'}
+                  {tr('intern_documents.all.subtitle')}
                 </div>
               </div>
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                {visibleDocuments.length} {lang === 'EN' ? 'FILES' : 'ไฟล์'}
+                {tr('intern_documents.all.files_with_count', { count: visibleDocuments.length } as any)}
               </div>
             </div>
 
             {visibleDocuments.length === 0 ? (
               <div className="pt-6 text-center">
-                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('intern_documents.empty')}</p>
               </div>
             ) : (
               <div className="mt-6 space-y-3">
@@ -575,7 +534,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                         <button
                           onClick={() => void handleDownloadDocument(d.id)}
                           className="text-[12px] font-black truncate text-slate-800 hover:underline text-left"
-                          title={t.download}
+                          title={tr('intern_documents.actions.download')}
                         >
                           {d.fileName}
                         </button>
@@ -586,14 +545,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                       <button
                         onClick={() => handleUploadForSlot(d.label)}
                         className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                        title={t.replace}
+                        title={tr('intern_documents.actions.replace')}
                       >
                         <RefreshCw size={16} />
                       </button>
                       <button
                         onClick={() => void handleDeleteDocument(d.id)}
                         className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
-                        title={t.remove}
+                        title={tr('intern_documents.actions.delete')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -608,7 +567,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                       onClick={() => setOtherDocsPage((p) => Math.max(1, p - 1))}
                       disabled={otherDocsPage <= 1}
                       className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                      aria-label="Previous page"
+                      aria-label={tr('intern_documents.pagination.previous_page')}
                     >
                       {'<'}
                     </button>
@@ -637,7 +596,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                       onClick={() => setOtherDocsPage((p) => Math.min(otherDocsPageCount, p + 1))}
                       disabled={otherDocsPage >= otherDocsPageCount}
                       className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                      aria-label="Next page"
+                      aria-label={tr('intern_documents.pagination.next_page')}
                     >
                       {'>'}
                     </button>
@@ -656,7 +615,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
             <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">{t.add}</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('intern_documents.actions.add_document')}</h3>
                 </div>
                 <button
                   onClick={() => setIsAdding(false)}
@@ -668,12 +627,12 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
 
               <div className="p-8">
                 <label className="space-y-2 block">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.label}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_documents.fields.document_name')}</div>
                   <input
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                    placeholder={lang === 'EN' ? 'Enter document name' : 'กรอกชื่อเอกสาร'}
+                    placeholder={tr('intern_documents.placeholders.document_name')}
                   />
                 </label>
 
@@ -688,9 +647,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                       }
                       if (f.size > MAX_DOC_BYTES) {
                         window.alert(
-                          lang === 'TH'
-                            ? `ไฟล์ "${f.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-                            : `File "${f.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+                          tr('intern_documents.errors.file_too_large', { name: f.name, mb: MAX_DOC_MB } as any),
                         );
                         setNewFile(null);
                         return;
@@ -703,21 +660,19 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                 </div>
 
                 <div className="mt-2 text-[11px] font-bold text-slate-500">
-                  {lang === 'TH'
-                    ? 'ขนาดไฟล์สูงสุด 20MB ต่อไฟล์ (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
-                    : 'Max 20MB per file (if larger, attach a Drive/URL link instead).'}
+                  {tr('intern_documents.hints.max_per_file', { mb: MAX_DOC_MB } as any)}
                 </div>
 
                 <div className="mt-6">
                   <label className="space-y-2 block">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      {lang === 'TH' ? 'หรือแนบลิงก์ (Drive/URL)' : 'Or attach link (Drive/URL)'}
+                      {tr('intern_documents.hints.or_attach_link')}
                     </div>
                     <input
                       value={newUrl}
                       onChange={(e) => setNewUrl(e.target.value)}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                      placeholder={lang === 'TH' ? 'วางลิงก์ที่แชร์ได้ (http/https)' : 'Paste a shareable link (http/https)'}
+                      placeholder={tr('intern_documents.placeholders.shareable_link')}
                     />
                   </label>
                 </div>
@@ -727,14 +682,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang }) => {
                     onClick={() => setIsAdding(false)}
                     className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
                   >
-                    {t.cancel}
+                    {tr('intern_documents.actions.cancel')}
                   </button>
                   <button
                     onClick={() => void handleAddDocument()}
                     className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
                     disabled={!normalizedNewLabel || (!newFile && !newUrl.trim()) || isBlockedNewLabel}
                   >
-                    {t.upload}
+                    {tr('intern_documents.actions.upload')}
                   </button>
                 </div>
               </div>

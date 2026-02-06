@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { PageId } from '@/pageTypes';
 import { NAV_ITEMS } from '@/constants';
 import { PostProgramAccessLevel, UserRole } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
@@ -50,6 +51,7 @@ export default function RolePage() {
   const navigate = useNavigate();
   const { roleSlug, pageId } = useParams<{ roleSlug: RoleSlug; pageId: string }>();
   const { user, activeRole, lang } = useAppContext();
+  const { t } = useTranslation();
 
   const roleFromRoute = roleSlug ? slugToRole(roleSlug) : null;
 
@@ -80,13 +82,13 @@ export default function RolePage() {
         <div className="h-full w-full flex items-center justify-center p-10 bg-slate-50">
           <div className="max-w-xl w-full bg-white border border-slate-100 rounded-[2.5rem] p-10 shadow-sm text-center">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
-              {lang === 'EN' ? 'Access Revoked' : 'ถูกระงับการเข้าถึง'}
+              {t('role_page.access_revoked')}
             </div>
             <div className="text-2xl font-black text-slate-900 mb-4">
-              {lang === 'EN' ? 'Your account access has been revoked.' : 'บัญชีของคุณถูกระงับการเข้าถึงแล้ว'}
+              {t('role_page.access_revoked_title')}
             </div>
             <div className="text-sm text-slate-500 font-medium">
-              {lang === 'EN' ? 'Please contact HR for further assistance.' : 'กรุณาติดต่อฝ่ายบุคคลเพื่อขอความช่วยเหลือเพิ่มเติม'}
+              {t('role_page.access_revoked_help')}
             </div>
           </div>
         </div>

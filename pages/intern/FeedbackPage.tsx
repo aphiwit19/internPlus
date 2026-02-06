@@ -19,6 +19,7 @@ import {
 import { Language, PerformanceMetrics, UserProfile } from '@/types';
 import { collection, deleteField, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
@@ -66,8 +67,6 @@ const computeOverall = (p: Pick<PerformanceMetrics, 'technical' | 'communication
 
 interface FeedbackMilestone {
   id: string;
-  label: { EN: string; TH: string };
-  period: { EN: string; TH: string };
   status: 'pending' | 'submitted' | 'reviewed' | 'locked';
   internReflection?: string;
   internProgramFeedback?: string;
@@ -96,7 +95,9 @@ interface FeedbackPageProps {
   user?: UserProfile;
 }
 
-const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
+const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
+  const { t, i18n } = useTranslation();
+  const uiLang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
   const { user: authedUser } = useAppContext();
   const [lastVisit] = useState<number>(() => {
     const stored = localStorage.getItem('lastFeedbackPageVisit');
@@ -104,79 +105,21 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
   });
   const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
   const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
-  const t = {
-    EN: {
-      title: "Feedback Hub",
-      subtitle: "Unified 2-way feedback between you and your mentor.",
-      milestone_label: "ASSESSMENT PERIOD",
-      submitMilestone: "Submit 2-Way Review",
-      videoReflect: "Self-Reflection Video",
-      uploadVideo: "Upload Summary Vlog",
-      maxSize: "Max 50MB • MP4",
-      internReflectionLabel: "Part 1: Your Self-Reflection",
-      internProgramLabel: "Part 2: Program & Mentorship Feedback",
-      placeholderReflect: "What have you achieved since the last milestone?",
-      placeholderProgram: "How is your relationship with your mentor?",
-      selfEvalHeader: "Self Evaluation",
-      selfEvalSubtitle: "Score yourself and submit a summary for admin review.",
-      selfEvalScoreSheet: "Score Sheet",
-      selfEvalSummary: "Executive Summary",
-      selfEvalPlaceholder: "Write a self-summary for admin review...",
-      supervisorHeader: "Mentor's Assessment",
-      points: "Points / 100",
-      mentor: "Supervisor",
-      pendingReview: "Review Pending",
-      pendingDesc: "Your reflection has been sent. Mentor will review soon.",
-      lockedTitle: "Access Restricted",
-      lockedDesc: "Submit your reflection to unlock mentor feedback.",
-      programRatingLabel: "Rate Mentorship Quality",
-      milestoneHeader: "Milestone Details",
-      week: "Week",
-      month: "Month",
-      submittedTag: "SUBMITTED",
-      pendingTag: "NOT SUBMITTED"
-    },
-    TH: {
-      title: "ศูนย์ข้อมูลคำติชม",
-      subtitle: "ระบบสื่อสารแบบ 2 ทางระหว่างคุณและที่ปรึกษา",
-      milestone_label: "ช่วงเวลาการประเมิน",
-      submitMilestone: "ส่งการประเมินแบบ 2 ทาง",
-      videoReflect: "วิดีโอสะท้อนผลการเรียนรู้",
-      uploadVideo: "อัปโหลดวิดีโอสรุปงาน",
-      maxSize: "สูงสุด 50MB • MP4",
-      internReflectionLabel: "ส่วนที่ 1: การสะท้อนตัวตนของคุณ",
-      internProgramLabel: "ส่วนที่ 2: ความคิดเห็นต่อที่ปรึกษา",
-      placeholderReflect: "คุณประสบความสำเร็จอะไรบ้าง?",
-      placeholderProgram: "ความสัมพันธ์กับที่ปรึกษาเป็นอย่างไร?",
-      selfEvalHeader: "ประเมินตนเอง",
-      selfEvalSubtitle: "ให้คะแนนตัวเองและส่งบทสรุปให้แอดมินตรวจสอบ",
-      selfEvalScoreSheet: "แบบประเมินคะแนน",
-      selfEvalSummary: "บทสรุปสำหรับผู้บริหาร",
-      selfEvalPlaceholder: "เขียนสรุปการประเมินตนเองเพื่อส่งให้แอดมิน...",
-      supervisorHeader: "การประเมินจากที่ปรึกษา",
-      points: "คะแนน / 100",
-      mentor: "ที่ปรึกษา",
-      pendingReview: "รอการตรวจสอบ",
-      pendingDesc: "ส่งการสะท้อนตัวตนแล้ว ที่ปรึกษาจะประเมินเร็วๆ นี้",
-      lockedTitle: "การเข้าถึงถูกจำกัด",
-      lockedDesc: "ส่งสรุปผลงานของคุณก่อนเพื่อดูคำติชม",
-      programRatingLabel: "ให้คะแนนคุณภาพการดูแลงาน",
-      milestoneHeader: "รายละเอียดช่วงการประเมิน",
-      week: "สัปดาห์",
-      month: "เดือน",
-      submittedTag: "ส่งแล้ว",
-      pendingTag: "ยังไม่ส่ง"
-    }
-  }[lang];
-
   const isFinalized = (status?: FeedbackMilestone['status']) => status === 'submitted' || status === 'reviewed';
+
+  const milestoneLabel = (id: string) => {
+    const weekMatch = /^week-(\d+)$/.exec(id);
+    if (weekMatch) return String(t('intern_feedback.milestone.week_label', { n: Number(weekMatch[1]) } as any));
+    const monthMatch = /^month-(\d+)$/.exec(id);
+    if (monthMatch) return String(t('intern_feedback.milestone.month_label', { n: Number(monthMatch[1]) } as any));
+    return id;
+  };
+
   const buildWeekMilestones = () => {
     const arr: FeedbackMilestone[] = [];
     for (let i = 1; i <= 4; i += 1) {
       arr.push({
         id: `week-${i}`,
-        label: { EN: `Week ${i}`, TH: `สัปดาห์ที่ ${i}` },
-        period: { EN: `Week ${i}`, TH: `สัปดาห์ที่ ${i}` },
         status: 'pending',
       });
     }
@@ -197,12 +140,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
     overallComments: string;
     workPerformance: string;
   }>(() => ({
-    technical: lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY',
-    communication: lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION',
-    punctuality: lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY',
-    initiative: lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE',
-    overallComments: lang === 'TH' ? 'ภาพรวมและความคิดเห็น' : 'OVERALL EVALUATION & COMMENTS',
-    workPerformance: lang === 'TH' ? 'ผลงานการทำงาน' : 'WORK PERFORMANCE',
+    technical: String(t('intern_feedback.eval_labels.technical')),
+    communication: String(t('intern_feedback.eval_labels.communication')),
+    punctuality: String(t('intern_feedback.eval_labels.punctuality')),
+    initiative: String(t('intern_feedback.eval_labels.initiative')),
+    overallComments: String(t('intern_feedback.eval_labels.overall_comments')),
+    workPerformance: String(t('intern_feedback.eval_labels.work_performance')),
   }));
 
   useEffect(() => {
@@ -212,7 +155,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       (snap) => {
         if (!snap.exists()) return;
         const data = snap.data() as any;
-        const next = data?.evaluationLabels?.[lang];
+        const next = data?.evaluationLabels?.[uiLang];
         if (!next) return;
         setEvaluationLabels((prev) => ({
           technical: typeof next?.technical === 'string' ? next.technical : prev.technical,
@@ -227,7 +170,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
         // ignore
       },
     );
-  }, [lang]);
+  }, [uiLang]);
 
   const [tempProgramRating, setTempProgramRating] = useState(0);
   const [tempReflection, setTempReflection] = useState('');
@@ -313,8 +256,6 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       for (let i = 1; i <= monthCount; i += 1) {
         monthBase.push({
           id: `month-${i}`,
-          label: { EN: `Month ${i}`, TH: `เดือนที่ ${i}` },
-          period: { EN: `Month ${i}`, TH: `เดือนที่ ${i}` },
           status: 'pending',
         });
       }
@@ -475,10 +416,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       let nextVideoUrl: string | undefined;
       if (pendingVideo) {
         if (pendingVideo.size > MAX_VIDEO_BYTES) {
-          const msg =
-            lang === 'TH'
-              ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-              : 'Video exceeds 50MB. Please attach a Drive/URL link instead.';
+          const msg = String(t('intern_feedback.errors.video_exceeds_limit'));
           setSubmitError(msg);
           setVideoSizeError(msg);
           setIsSubmitting(false);
@@ -505,9 +443,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
         const tooLarge = pendingAttachments.find((f) => f.size > MAX_ATTACHMENT_BYTES) ?? null;
         if (tooLarge) {
           setSubmitError(
-            lang === 'TH'
-              ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-              : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+            String(t('intern_feedback.errors.attachment_exceeds_limit', { name: tooLarge.name } as any)),
           );
           setIsSubmitting(false);
           return;
@@ -577,7 +513,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
       setPendingAttachmentLinks([]);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setSubmitError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Submit failed'}`);
+      setSubmitError(`${e?.code ?? 'unknown'}: ${e?.message ?? String(t('intern_feedback.errors.submit_failed_fallback'))}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -590,8 +526,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
           <div className="space-y-8 mb-12">
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
               <div className="space-y-3">
-                <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{t.title}</h1>
-                <p className="text-slate-500 text-base font-medium">{t.subtitle}</p>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">{t('intern_feedback.title')}</h1>
+                <p className="text-slate-500 text-base font-medium">{t('intern_feedback.subtitle')}</p>
               </div>
               <div className="inline-flex w-fit bg-white p-1.5 rounded-[1.75rem] border border-slate-100 shadow-xl shadow-slate-200/40">
                 <button
@@ -600,7 +536,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     viewMode === 'FORM' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
-                  Feedback & Self Evaluation
+                  {t('intern_feedback.tab_form')}
                 </button>
                 <button
                   onClick={() => setViewMode('HISTORY')}
@@ -608,7 +544,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     viewMode === 'HISTORY' ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
-                  History
+                  {t('intern_feedback.tab_history')}
                 </button>
               </div>
             </div>
@@ -645,14 +581,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         {hasNewEvaluation && (
                           <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse z-10"></span>
                         )}
-                        <span>{m.label[lang]}</span>
+                        <span>{milestoneLabel(m.id)}</span>
                         {isFinalized(m.status) && (
                           <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
                             activeId === m.id
                               ? 'bg-white/20 text-white border border-white/30'
                               : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                           }`}>
-                            {t.submittedTag}
+                            {t('intern_feedback.tags.submitted')}
                           </span>
                         )}
                       </button>
@@ -667,12 +603,10 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
             <div className="bg-white rounded-[3.5rem] p-10 border border-slate-100 shadow-sm">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{lang === 'TH' ? 'ประวัติการประเมิน' : 'Evaluation History'}</div>
-                  <div className="mt-2 text-3xl font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ผลประเมินย้อนหลัง (Week/Month)' : 'Results by Week/Month'}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t('intern_feedback.history.eyebrow')}</div>
+                  <div className="mt-2 text-3xl font-black text-slate-900 tracking-tight">{t('intern_feedback.history.title')}</div>
                   <div className="mt-3 text-sm font-bold text-slate-500">
-                    {lang === 'TH'
-                      ? 'กดที่รายการเพื่อไปยังสัปดาห์/เดือนนั้น'
-                      : 'Click an item to jump to that week/month'}
+                    {t('intern_feedback.history.subtitle')}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -684,7 +618,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         historyTrack === 'week' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
                       }`}
                     >
-                      {lang === 'TH' ? 'สัปดาห์' : 'WEEK'}
+                      {t('intern_feedback.history.filter_week')}
                     </button>
                     <button
                       type="button"
@@ -693,7 +627,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         historyTrack === 'month' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
                       }`}
                     >
-                      {lang === 'TH' ? 'เดือน' : 'MONTH'}
+                      {t('intern_feedback.history.filter_month')}
                     </button>
                     <button
                       type="button"
@@ -702,7 +636,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         historyTrack === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
                       }`}
                     >
-                      {lang === 'TH' ? 'ทั้งหมด' : 'ALL'}
+                      {t('intern_feedback.history.filter_all')}
                     </button>
                   </div>
                   <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{historyItems.length}</div>
@@ -711,7 +645,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
               {historyItems.length === 0 ? (
                 <div className="py-16 text-center">
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{lang === 'TH' ? 'ยังไม่มีการประเมิน' : 'NO EVALUATIONS YET'}</div>
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">{t('intern_feedback.history.empty')}</div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -728,18 +662,20 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     >
                       <div className="flex items-start justify-between gap-6">
                         <div className="min-w-0">
-                          <div className="text-lg font-black text-slate-900 truncate">{m.label[lang]}</div>
+                          <div className="text-lg font-black text-slate-900 truncate">{milestoneLabel(m.id)}</div>
                           <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            {submittedDate ? `${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${submittedDate}` : (lang === 'TH' ? 'ยังไม่ส่ง' : 'Not submitted')}
-                            {reviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${reviewedDate}` : ''}
+                            {submittedDate
+                              ? `${t('intern_feedback.milestone.submitted_prefix')} ${submittedDate}`
+                              : t('intern_feedback.milestone.not_submitted')}
+                            {reviewedDate ? `  •  ${t('intern_feedback.milestone.reviewed_prefix')} ${reviewedDate}` : ''}
                           </div>
                           <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            {lang === 'TH' ? 'Program Satisfaction (Supervisor)' : 'Program Satisfaction (Supervisor)'}
+                            {t('intern_feedback.history.program_satisfaction_supervisor')}
                             {`  •  ${Math.max(0, Math.min(5, Number(m.supervisorProgramSatisfactionRating) || 0))}/5`}
                           </div>
                         </div>
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex-shrink-0">
-                          {m.id.startsWith('month-') ? (lang === 'TH' ? 'MONTH' : 'MONTH') : (lang === 'TH' ? 'WEEK' : 'WEEK')}
+                          {m.id.startsWith('month-') ? t('intern_feedback.history.filter_month') : t('intern_feedback.history.filter_week')}
                         </div>
                       </div>
                     </button>
@@ -761,8 +697,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                       <Zap size={28} strokeWidth={2.5} />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{active.period[lang]}</h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t.milestoneHeader}</p>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{milestoneLabel(active.id)}</h3>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t('intern_feedback.milestone.header')}</p>
                     </div>
                   </div>
                   <button
@@ -770,7 +706,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     className="px-10 py-4 bg-blue-600 text-white rounded-full font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     disabled={isSubmitting || !effectiveUser}
                   >
-                    {isSubmitting ? (lang === 'TH' ? 'กำลังส่ง...' : 'Submitting...') : t.submitMilestone}
+                    {isSubmitting ? t('intern_feedback.milestone.submitting') : t('intern_feedback.milestone.submit_2_way_review')}
                   </button>
                 </div>
 
@@ -782,11 +718,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
                    <div className="space-y-4">
-                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Video size={14}/> {t.videoReflect}</h4>
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Video size={14}/> {t('intern_feedback.video.header')}</h4>
                       <div className="text-[11px] font-bold text-slate-500">
-                        {lang === 'TH'
-                          ? 'ขนาดไฟล์วิดีโอสูงสุด 50MB (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
-                          : 'Max video size 50MB (if larger, attach a Drive/URL link instead).'}
+                        {t('intern_feedback.video.helper')}
                       </div>
                       {active.videoStoragePath ? (
                         <div
@@ -797,9 +731,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             <Play size={40} className="text-white fill-white" />
                           </div>
                           <div className="absolute bottom-5 left-6 right-6 flex items-center justify-between text-white/70 text-[10px] font-black uppercase tracking-widest">
-                            <span className="truncate">{active.videoFileName || 'Video'}</span>
+                            <span className="truncate">{active.videoFileName || t('intern_feedback.video.link_label')}</span>
                             <span className="flex items-center gap-2">
-                              <ExternalLink size={14} /> OPEN
+                              <ExternalLink size={14} /> {t('intern_feedback.video.open')}
                             </span>
                           </div>
                         </div>
@@ -812,9 +746,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             <Play size={40} className="text-white fill-white" />
                           </div>
                           <div className="absolute bottom-5 left-6 right-6 flex items-center justify-between text-white/70 text-[10px] font-black uppercase tracking-widest">
-                            <span className="truncate">{lang === 'TH' ? 'Video Link' : 'Video Link'}</span>
+                            <span className="truncate">{t('intern_feedback.video.link_label')}</span>
                             <span className="flex items-center gap-2">
-                              <ExternalLink size={14} /> OPEN
+                              <ExternalLink size={14} /> {t('intern_feedback.video.open')}
                             </span>
                           </div>
                         </div>
@@ -835,10 +769,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                                 return;
                               }
                               if (f.size > MAX_VIDEO_BYTES) {
-                                const msg =
-                                  lang === 'TH'
-                                    ? `ไฟล์วิดีโอมีขนาดเกิน 50MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-                                    : 'Video exceeds 50MB. Please attach a Drive/URL link instead.';
+                                const msg = String(t('intern_feedback.errors.video_exceeds_limit'));
                                 setVideoSizeError(msg);
                                 if (videoInputRef.current) videoInputRef.current.value = '';
                                 setPendingVideo(null);
@@ -855,13 +786,13 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             }}
                           />
                           <Video size={32} className="text-slate-300 mb-2" />
-                          <p className="text-[10px] font-black text-slate-400 uppercase">{pendingVideo ? pendingVideo.name : t.uploadVideo}</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase">{pendingVideo ? pendingVideo.name : t('intern_feedback.video.upload_vlog')}</p>
                         </div>
                       )}
 
                       {videoSizeError ? (
                         <div className="mt-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-[2rem] p-5">
-                          <div className="text-[10px] font-black uppercase tracking-widest">{lang === 'TH' ? 'วิดีโอใหญ่เกินไป' : 'Video too large'}</div>
+                          <div className="text-[10px] font-black uppercase tracking-widest">{t('intern_feedback.video.file_too_large')}</div>
                           <div className="mt-2 text-sm font-bold break-words">{videoSizeError}</div>
                           <div className="mt-4 flex flex-col sm:flex-row gap-3">
                             <button
@@ -877,14 +808,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                               }}
                               className="px-5 py-3 rounded-2xl bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 transition-all"
                             >
-                              {lang === 'TH' ? 'แนบลิงก์แทน' : 'Attach link instead'}
+                              {t('intern_feedback.video.attach_link_instead')}
                             </button>
                             <button
                               type="button"
                               onClick={() => setVideoSizeError(null)}
                               className="px-5 py-3 rounded-2xl bg-white border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all"
                             >
-                              {lang === 'TH' ? 'ปิด' : 'Dismiss'}
+                              {t('intern_feedback.video.dismiss')}
                             </button>
                           </div>
                         </div>
@@ -892,7 +823,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
                       <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          {lang === 'TH' ? 'หรือแนบลิงก์วิดีโอ (Drive/URL)' : 'Or attach video link (Drive/URL)'}
+                          {t('intern_feedback.video.or_attach_link')}
                         </div>
                         <div className="flex gap-3">
                           <input
@@ -902,7 +833,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                               setPendingVideoUrl(e.target.value);
                             }}
                             className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
-                            placeholder={lang === 'TH' ? 'วางลิงก์วิดีโอที่แชร์ได้ (http/https)' : 'Paste a shareable video link (http/https)'}
+                            placeholder={t('intern_feedback.video.link_placeholder')}
                           />
                           <button
                             type="button"
@@ -910,7 +841,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                               const v = pendingVideoUrl.trim();
                               if (!v) return;
                               if (!v.startsWith('http://') && !v.startsWith('https://')) {
-                                window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+                                window.alert(String(t('intern_feedback.video.invalid_url_alert')));
                                 return;
                               }
                               setVideoSizeError(null);
@@ -919,13 +850,13 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             }}
                             className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
                           >
-                            {lang === 'TH' ? 'ใช้ลิงก์' : 'Use'}
+                            {t('intern_feedback.video.use_link')}
                           </button>
                         </div>
                       </div>
                    </div>
                    <div className="space-y-6">
-                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Heart size={14}/> {t.programRatingLabel}</h4>
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Heart size={14}/> {t('intern_feedback.program_rating.header')}</h4>
                       <div className="flex gap-4">
                          {[1,2,3,4,5].map(star => (
                            <button 
@@ -945,18 +876,16 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                 </div>
 
                 <div className="mb-12">
-                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><FileText size={14}/> {lang === 'TH' ? 'แนบไฟล์' : 'Attachments'}</h4>
+                  <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><FileText size={14}/> {t('intern_feedback.attachments.header')}</h4>
                   <div className="text-[11px] font-bold text-slate-500 mt-2">
-                    {lang === 'TH'
-                      ? 'ขนาดไฟล์แนบสูงสุด 20MB ต่อไฟล์ (ถ้าใหญ่กว่านี้ให้แนบลิงก์ Drive/URL แทน)'
-                      : 'Max 20MB per attachment file (if larger, attach a Drive/URL link instead).'}
+                    {t('intern_feedback.attachments.helper')}
                   </div>
                   <div className="mt-4 flex items-center gap-4 flex-wrap">
                     <button
                       onClick={() => attachmentsInputRef.current?.click()}
                       className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2"
                     >
-                      <Upload size={16} /> {lang === 'TH' ? 'เลือกไฟล์' : 'Choose Files'}
+                      <Upload size={16} /> {t('intern_feedback.attachments.choose_files')}
                     </button>
                     <input
                       ref={attachmentsInputRef}
@@ -972,9 +901,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         const tooLarge = files.find((f) => f.size > MAX_ATTACHMENT_BYTES) ?? null;
                         if (tooLarge) {
                           window.alert(
-                            lang === 'TH'
-                              ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน 20MB กรุณาแนบลิงก์ (Drive/URL) แทน`
-                              : `File "${tooLarge.name}" exceeds 20MB. Please attach a Drive/URL link instead.`,
+                            String(t('intern_feedback.errors.attachment_exceeds_limit', { name: tooLarge.name } as any)),
                           );
                           if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
                           setPendingAttachments([]);
@@ -985,21 +912,21 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     />
                     {pendingAttachments.length > 0 && (
                       <div className="text-[11px] font-black text-slate-500">
-                        {pendingAttachments.length} {lang === 'TH' ? 'ไฟล์ที่เลือก' : 'files selected'}
+                        {String(t('intern_feedback.attachments.files_selected', { count: pendingAttachments.length } as any))}
                       </div>
                     )}
                   </div>
 
                   <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-[2rem] space-y-3">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      {lang === 'TH' ? 'แนบลิงก์ (Drive/URL)' : 'Attach Link (Drive/URL)'}
+                      {t('intern_feedback.attachments.attach_link')}
                     </div>
                     <div className="flex gap-3">
                       <input
                         value={attachmentLinkDraft}
                         onChange={(e) => setAttachmentLinkDraft(e.target.value)}
                         className="flex-1 bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5"
-                        placeholder={lang === 'TH' ? 'วางลิงก์ Google Drive หรือ URL ที่แชร์ได้' : 'Paste a shareable Google Drive link or URL'}
+                        placeholder={t('intern_feedback.attachments.link_placeholder')}
                       />
                       <button
                         type="button"
@@ -1007,7 +934,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                           const v = attachmentLinkDraft.trim();
                           if (!v) return;
                           if (!v.startsWith('http://') && !v.startsWith('https://')) {
-                            window.alert(lang === 'TH' ? 'กรุณาใส่ลิงก์ที่ขึ้นต้นด้วย http/https' : 'Please enter a URL starting with http/https');
+                            window.alert(String(t('intern_feedback.video.invalid_url_alert')));
                             return;
                           }
                           setPendingAttachmentLinks((prev) => Array.from(new Set([...prev, v])));
@@ -1015,14 +942,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                         }}
                         className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all"
                       >
-                        {lang === 'TH' ? 'เพิ่มลิงก์' : 'Add'}
+                        {t('intern_feedback.attachments.add_link')}
                       </button>
                     </div>
                   </div>
 
                   {(Array.isArray(active.attachmentLinks) && active.attachmentLinks.length > 0) || pendingAttachmentLinks.length > 0 ? (
                     <div className="mt-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">LINKS</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">{t('intern_feedback.attachments.links')}</div>
                       <div className="space-y-2">
                         {[...(Array.isArray(active.attachmentLinks) ? active.attachmentLinks : []), ...pendingAttachmentLinks]
                           .map((u) => (typeof u === 'string' ? u.trim() : ''))
@@ -1043,7 +970,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                                 </div>
                               </div>
                               <div className="text-blue-600 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
-                                <ExternalLink size={14} /> OPEN
+                                <ExternalLink size={14} /> {t('intern_feedback.video.open')}
                               </div>
                             </button>
                           ))}
@@ -1064,12 +991,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                               <FileText size={18} />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">ATTACHMENT</p>
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5">{t('intern_feedback.attachments.attachment')}</p>
                               <p className="text-[12px] font-black truncate text-slate-800">{a.fileName}</p>
                             </div>
                           </div>
                           <div className="text-blue-600 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest flex-shrink-0">
-                            <ExternalLink size={14} /> OPEN
+                            <ExternalLink size={14} /> {t('intern_feedback.video.open')}
                           </div>
                         </button>
                       ))}
@@ -1079,19 +1006,19 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
                 <div className="space-y-10">
                    <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100">
-                      <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><User size={14}/> {t.internReflectionLabel}</h4>
+                      <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><User size={14}/> {t('intern_feedback.reflection.header')}</h4>
                       <textarea
                         className="w-full bg-white border border-slate-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]"
-                        placeholder={t.placeholderReflect}
+                        placeholder={t('intern_feedback.reflection.placeholder')}
                         value={tempReflection}
                         onChange={(e) => setTempReflection(e.target.value)}
                       />
                    </div>
                    <div className="p-8 bg-blue-50/30 rounded-[2rem] border border-blue-100/50">
-                      <h4 className="text-[11px] font-black text-blue-700 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><MessageSquare size={14}/> {t.internProgramLabel}</h4>
+                      <h4 className="text-[11px] font-black text-blue-700 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><MessageSquare size={14}/> {t('intern_feedback.program_feedback.header')}</h4>
                       <textarea
                         className="w-full bg-white border border-blue-200 rounded-2xl p-6 text-sm font-medium outline-none focus:ring-4 focus:ring-blue-500/5 min-h-[120px]"
-                        placeholder={t.placeholderProgram}
+                        placeholder={t('intern_feedback.program_feedback.placeholder')}
                         value={tempProgramFeedback}
                         onChange={(e) => setTempProgramFeedback(e.target.value)}
                       />
@@ -1120,24 +1047,24 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                   <div className="absolute -top-4 -right-4 z-20">
                     <span className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-[11px] font-black uppercase tracking-widest rounded-full shadow-2xl animate-pulse">
                       <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
-                      NEW
+                      {t('intern_feedback.tags.new')}
                     </span>
                   </div>
                 )}
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-10">
-                    <h3 className="text-xl font-bold tracking-tight">{t.supervisorHeader}</h3>
+                    <h3 className="text-xl font-bold tracking-tight">{t('intern_feedback.mentor_assessment.header')}</h3>
                     <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/10">
                       <Star size={20} className="text-amber-400 fill-amber-400" />
                     </div>
                   </div>
 
                   <div className="mb-8">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.milestone_label}</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t('intern_feedback.milestone.assessment_period')}</div>
                     <div className="mt-2 text-sm font-black text-white">
-                      {active.label[lang]}
-                      {active.submissionDate ? `  •  ${lang === 'TH' ? 'ส่ง' : 'Submitted'} ${active.submissionDate}` : ''}
-                      {active.supervisorReviewedDate ? `  •  ${lang === 'TH' ? 'ประเมิน' : 'Reviewed'} ${active.supervisorReviewedDate}` : ''}
+                      {milestoneLabel(active.id)}
+                      {active.submissionDate ? `  •  ${t('intern_feedback.milestone.submitted_prefix')} ${active.submissionDate}` : ''}
+                      {active.supervisorReviewedDate ? `  •  ${t('intern_feedback.milestone.reviewed_prefix')} ${active.supervisorReviewedDate}` : ''}
                     </div>
                   </div>
 
@@ -1145,12 +1072,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                     <div className="space-y-10 animate-in fade-in duration-700">
                       <div className="flex items-end gap-3">
                         <span className="text-6xl font-black tracking-tighter">{activeSupervisorScore}</span>
-                        <span className="text-blue-400 font-black text-[9px] uppercase tracking-[0.2em] mb-1.5">{t.points}</span>
+                        <span className="text-blue-400 font-black text-[9px] uppercase tracking-[0.2em] mb-1.5">{t('intern_feedback.mentor_assessment.points')}</span>
                       </div>
 
                       <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/10">
                         <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-4">
-                          {lang === 'TH' ? 'Program Satisfaction (Supervisor)' : 'PROGRAM SATISFACTION (SUPERVISOR)'}
+                          {t('intern_feedback.mentor_assessment.program_satisfaction_label')}
                         </div>
                         <div className="flex items-center gap-2">
                           {[1, 2, 3, 4, 5].map((s) => (
@@ -1197,14 +1124,14 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                   ) : active.status === 'submitted' ? (
                     <div className="py-20 flex flex-col items-center text-center">
                       <div className="w-20 h-20 bg-white/5 rounded-[2rem] flex items-center justify-center mb-8 animate-pulse"><Clock size={40} className="text-blue-400" /></div>
-                      <h4 className="text-xl font-bold mb-2">{t.pendingReview}</h4>
-                      <p className="text-slate-400 text-xs leading-relaxed max-w-[240px]">{t.pendingDesc}</p>
+                      <h4 className="text-xl font-bold mb-2">{t('intern_feedback.mentor_assessment.pending_title')}</h4>
+                      <p className="text-slate-400 text-xs leading-relaxed max-w-[240px]">{t('intern_feedback.mentor_assessment.pending_desc')}</p>
                     </div>
                   ) : (
                     <div className="py-20 flex flex-col items-center text-center opacity-40">
                       <ShieldCheck size={48} className="mb-6 text-slate-600" />
-                      <h4 className="text-xl font-bold mb-2">{t.lockedTitle}</h4>
-                      <p className="text-slate-400 text-xs leading-relaxed max-w-[240px]">{t.lockedDesc}</p>
+                      <h4 className="text-xl font-bold mb-2">{t('intern_feedback.mentor_assessment.locked_title')}</h4>
+                      <p className="text-slate-400 text-xs leading-relaxed max-w-[240px]">{t('intern_feedback.mentor_assessment.locked_desc')}</p>
                     </div>
                   )}
                 </div>
@@ -1215,8 +1142,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
               <div className="p-8 md:p-10 bg-slate-50 rounded-[2.5rem] border border-slate-100">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
                   <div>
-                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t.selfEvalHeader}</h3>
-                    <p className="text-slate-500 text-xs md:text-sm font-medium mt-2">{t.selfEvalSubtitle}</p>
+                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t('intern_feedback.self_eval.header')}</h3>
+                    <p className="text-slate-500 text-xs md:text-sm font-medium mt-2">{t('intern_feedback.self_eval.subtitle')}</p>
                   </div>
                   <div className="w-12 h-12 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0">
                     <BarChart3 size={22} />
@@ -1225,7 +1152,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                   <div className="lg:col-span-8 bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-6">{t.selfEvalScoreSheet}</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-6">{t('intern_feedback.self_eval.score_sheet')}</div>
                     <div className="space-y-7">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
                         <ScoreInput
@@ -1256,8 +1183,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                             <StickyNote size={18} />
                           </div>
                           <div>
-                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.selfEvalSummary}</div>
-                            <div className="text-sm font-black text-slate-900">{lang === 'TH' ? 'ข้อความสรุปที่ส่งให้แอดมิน' : 'Summary sent to Admin'}</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t('intern_feedback.self_eval.executive_summary')}</div>
+                            <div className="text-sm font-black text-slate-900">{t('intern_feedback.self_eval.summary_to_admin')}</div>
                           </div>
                         </div>
                         <textarea
@@ -1265,7 +1192,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                           onChange={(e) => setTempSelfSummary(e.target.value)}
                           rows={6}
                           className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                          placeholder={t.selfEvalPlaceholder}
+                          placeholder={t('intern_feedback.self_eval.placeholder')}
                         />
                       </div>
                     </div>
@@ -1274,18 +1201,18 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang, user }) => {
                   <div className="lg:col-span-4 bg-[#3B49DF] rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col">
                     <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -mr-36 -mt-36 blur-3xl"></div>
                     <div className="relative z-10 flex flex-col h-full">
-                      <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70">{t.selfEvalSummary}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] opacity-70">{t('intern_feedback.self_eval.executive_summary')}</div>
                       <div className="flex flex-col items-center justify-center gap-8 flex-1 py-8">
                         <div className="w-44 h-44 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
                           <span className="text-7xl font-black tracking-tighter leading-none">{displaySelfPerformance.overallRating}</span>
                           <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">
-                            {lang === 'TH' ? 'คะแนนเฉลี่ย' : 'AVG SCORE'}
+                            {t('intern_feedback.self_eval.avg_score')}
                           </span>
                         </div>
                         <p className="text-base leading-relaxed text-indigo-50 italic font-medium text-center">
                           {tempSelfSummary
                             ? `\"${tempSelfSummary}\"`
-                            : `\"${lang === 'TH' ? 'เขียนสรุปการประเมินตนเองเพื่อให้แอดมินตรวจสอบ' : 'Write a self-summary for admin review'}\"`}
+                            : `\"${t('intern_feedback.self_eval.empty_summary_quote')}\"`}
                         </p>
                       </div>
                     </div>

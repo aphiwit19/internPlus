@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { CheckCircle2, Upload, Loader2 } from 'lucide-react';
 import { DocumentStatus } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 interface DocumentCardProps {
   doc: DocumentStatus;
@@ -8,6 +9,7 @@ interface DocumentCardProps {
 }
 
 const DocumentCard: React.FC<DocumentCardProps> = ({ doc, onUpload }) => {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = React.useState(false);
 
@@ -46,7 +48,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({ doc, onUpload }) => {
         <div className="overflow-hidden">
           <h5 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">{doc.label}</h5>
           <p className={`text-[11px] font-bold truncate ${doc.isUploaded ? 'text-slate-800' : 'text-slate-500'}`}>
-            {doc.fileName || 'Not Uploaded'}
+            {doc.fileName || t('common.not_uploaded')}
           </p>
         </div>
       </div>

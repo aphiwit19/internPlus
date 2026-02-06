@@ -32,6 +32,7 @@ import { firestoreDb, firebaseAuth, firebaseStorage } from '@/firebase';
 import { toast } from 'sonner';
 import { arrayUnion, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 interface UniDocument {
   id: string;
@@ -126,123 +127,40 @@ interface EvaluationPageProps {
   lang: Language;
 }
 
-const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
+const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
-  const t = {
-    EN: {
-      title: "University Evaluation",
-      subtitle: "Manage documents and links required by your educational institution.",
-      portalSync: "University Portal Sync",
-      apptTitle: 'Appointment Request',
-      apptSub: 'Propose a meeting date/time and track the request status.',
-      apptDate: 'Date',
-      apptTime: 'Time',
-      apptMode: 'Meeting Mode',
-      apptModeOnline: 'Online',
-      apptModeCompany: 'Company',
-      apptNote: 'Note (optional)',
-      apptSupervisorNote: 'Supervisor note',
-      apptSave: 'Save Appointment',
-      apptSend: 'Send Request',
-      linksTitle: "Supervisor Evaluation Links",
-      linksSub: "Paste external form links for your supervisor to fill.",
-      addLink: "Add New Evaluation Link",
-      linkLabel: "Link Label",
-      linkUrl: "Paste URL here...",
-      saveLink: "Save Link",
-      deliveryTitle: "Evaluation Delivery Details",
-      deliverySub: "Provide contact info and instructions for where final documents should be sent.",
-      recipient: "Recipient Name / Professor",
-      dept: "University Department",
-      method: "Delivery Method",
-      methodEmail: "Digital (Email)",
-      methodPost: "Postal Mail (Hard Copy)",
-      methodCarry: "Hand-carry by Intern",
-      emailLabel: "Recipient Email Address",
-      addressLabel: "Physical Mailing Address",
-      instLabel: "Additional Instructions",
-      saveInst: "Save Delivery Instructions",
-      saving: "Saving Instructions...",
-      docsTitle: "University Documentation",
-      docsSub: "Upload files required for your academic credit or final sign-off.",
-      companyInfo: "Company Info",
-      officialName: "Official Name",
-      taxId: "Tax ID / Reg",
-      deptName: "Department",
-      mentorRef: "Mentor Reference",
-      finalTasks: "Final Tasks",
-      importantNote: "Most universities require these forms 2 weeks before your end date.",
-      catSending: "Sending",
-      catEval: "Evaluation",
-      catReq: "Requirement",
-      catOther: "Other"
-    },
-    TH: {
-      title: "การประเมินผลจากมหาวิทยาลัย",
-      subtitle: "จัดการเอกสารและลิงก์ที่สถาบันการศึกษาของคุณกำหนด",
-      portalSync: "ซิงค์ข้อมูลกับมหาวิทยาลัย",
-      apptTitle: 'ขอเข้าพบ',
-      apptSub: 'กำหนดวัน/เวลา และติดตามสถานะการขอเข้าพบ',
-      apptDate: 'วันที่',
-      apptTime: 'เวลา',
-      apptMode: 'รูปแบบการเข้าพบ',
-      apptModeOnline: 'ออนไลน์',
-      apptModeCompany: 'บริษัท',
-      apptNote: 'หมายเหตุ (ถ้ามี)',
-      apptSupervisorNote: 'หมายเหตุจากพี่เลี้ยง',
-      apptSave: 'บันทึกการขอเข้าพบ',
-      apptSend: 'ส่งคำขอเข้าพบ',
-      linksTitle: "ลิงก์การประเมินสำหรับที่ปรึกษา",
-      linksSub: "วางลิงก์แบบฟอร์มภายนอกเพื่อให้ที่ปรึกษาของคุณกรอกข้อมูล",
-      addLink: "เพิ่มลิงก์การประเมินใหม่",
-      linkLabel: "หัวข้อลิงก์",
-      linkUrl: "วาง URL ที่นี่...",
-      saveLink: "บันทึกลิงก์สำหรับที่ปรึกษา",
-      deliveryTitle: "รายละเอียดการนำส่งผลการประเมิน",
-      deliverySub: "ระบุข้อมูลการติดต่อและคำแนะนำในการจัดส่งเอกสารประเมินผลตัวจริง",
-      recipient: "ชื่อผู้รับ / อาจารย์",
-      dept: "คณะ / ภาควิชา",
-      method: "รูปแบบการนำส่ง",
-      methodEmail: "ดิจิทัล (อีเมล)",
-      methodPost: "ไปรษณีย์ (ฉบับจริง)",
-      methodCarry: "นักศึกษานำส่งด้วยตัวเอง",
-      emailLabel: "อีเมลของผู้รับ",
-      addressLabel: "ที่อยู่ในการจัดส่ง",
-      instLabel: "คำแนะนำเพิ่มเติม",
-      saveInst: "บันทึกคำแนะนำสำหรับที่ปรึกษา",
-      saving: "กำลังบันทึกข้อมูล...",
-      docsTitle: "เอกสารของมหาวิทยาลัย",
-      docsSub: "อัปโหลดไฟล์ที่จำเป็นสำหรับการขอหน่วยกิตหรือการอนุมัติขั้นสุดท้าย",
-      companyInfo: "ข้อมูลบริษัท",
-      officialName: "ชื่อบริษัทอย่างเป็นทางการ",
-      taxId: "เลขประจำตัวผู้เสียภาษี",
-      deptName: "แผนก",
-      mentorRef: "ข้อมูลที่ปรึกษา",
-      finalTasks: "รายการตรวจสอบสุดท้าย",
-      importantNote: "มหาวิทยาลัยส่วนใหญ่ต้องการเอกสารเหล่านี้ 2 สัปดาห์ก่อนวันสิ้นสุดการฝึกงาน",
-      catSending: "การส่งตัว",
-      catEval: "การประเมิน",
-      catReq: "ข้อกำหนด",
-      catOther: "อื่นๆ"
-    }
-  }[lang];
+  const { t, i18n } = useTranslation();
+  const lang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
+  const tr = (key: string, options?: any) => String(t(key, options));
+
+  const meetingModeLabel = (mode?: UniversityEvaluationDoc['appointmentRequest'] extends { mode?: infer X } ? X : any) => {
+    return (mode ?? 'ONLINE') === 'COMPANY' ? tr('intern_evaluation.appointment.mode_company') : tr('intern_evaluation.appointment.mode_online');
+  };
+
+  const categoryLabel = (category?: UniDocument['category']) => {
+    if (category === 'Sending') return tr('intern_evaluation.categories.sending');
+    if (category === 'Evaluation') return tr('intern_evaluation.categories.evaluation');
+    if (category === 'Requirement') return tr('intern_evaluation.categories.requirement');
+    if (category === 'Other') return tr('intern_evaluation.categories.other');
+    return String(category ?? '');
+  };
 
   const baseDocs = useMemo<UniDocument[]>(
     () => [
       {
         id: '1',
-        name: lang === 'EN' ? 'University Request Letter' : 'หนังสือขอความอนุเคราะห์จากมหาวิทยาลัย',
+        name: String(t('intern_evaluation.base_docs.request_letter')),
         category: 'Sending',
         status: 'empty',
       },
       {
         id: '2',
-        name: lang === 'EN' ? 'Formal Evaluation Form' : 'แบบฟอร์มการประเมินผลงาน',
+        name: String(t('intern_evaluation.base_docs.formal_evaluation_form')),
         category: 'Evaluation',
         status: 'empty',
       },
     ],
-    [lang],
+    [lang, t],
   );
 
   const [links, setLinks] = useState<UniversityEvaluationLink[]>([]);
@@ -347,25 +265,20 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
   const appointmentStatusLabel = useMemo(() => {
     const s = String(appointmentRequest.status ?? 'DRAFT');
     const isCancelled = s === 'CANCELLED';
-    if (lang === 'TH') return isCancelled ? 'ยกเลิกนัด' : 'ขอนัดหมาย';
-    return isCancelled ? 'Cancelled' : 'Appointment Requested';
+    return isCancelled
+      ? tr('intern_evaluation.appointment.status_cancelled_short')
+      : tr('intern_evaluation.appointment.status_requested_short');
   }, [appointmentRequest.status, lang]);
 
   const supervisorRespondedBanner = useMemo(() => {
     const s = String(appointmentRequest.status ?? '');
     if (s !== 'CONFIRMED' && s !== 'RESCHEDULED' && s !== 'CANCELLED') return null;
     const title =
-      lang === 'TH'
-        ? s === 'CONFIRMED'
-          ? 'พี่เลี้ยงยืนยันนัดหมายแล้ว'
-          : s === 'RESCHEDULED'
-            ? 'พี่เลี้ยงเลื่อนนัด'
-            : 'พี่เลี้ยงยกเลิกนัด'
-        : s === 'CONFIRMED'
-          ? 'Supervisor confirmed the appointment'
-          : s === 'RESCHEDULED'
-            ? 'Supervisor rescheduled the appointment'
-            : 'Supervisor cancelled the appointment';
+      s === 'CONFIRMED'
+        ? tr('intern_evaluation.notifications.supervisor_confirmed')
+        : s === 'RESCHEDULED'
+          ? tr('intern_evaluation.notifications.supervisor_rescheduled')
+          : tr('intern_evaluation.notifications.supervisor_cancelled');
     const note = String(appointmentRequest.supervisorNote ?? '').trim();
     const subtitle = note ? note : null;
     const toneClass =
@@ -396,11 +309,11 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
 
   const supervisorStatusLabel = useMemo(() => {
     const s = String(appointmentRequest.status ?? '');
-    if (s === 'CONFIRMED') return lang === 'TH' ? 'ยืนยันนัดหมาย' : 'Confirmed';
-    if (s === 'RESCHEDULED') return lang === 'TH' ? 'เลื่อนนัด' : 'Rescheduled';
-    if (s === 'CANCELLED') return lang === 'TH' ? 'ยกเลิกนัด' : 'Cancelled';
-    if (s === 'REQUESTED') return lang === 'TH' ? 'ขอนัดหมาย' : 'Requested';
-    return lang === 'TH' ? '—' : '—';
+    if (s === 'CONFIRMED') return tr('intern_evaluation.appointment.status_confirmed');
+    if (s === 'RESCHEDULED') return tr('intern_evaluation.appointment.status_rescheduled');
+    if (s === 'CANCELLED') return tr('intern_evaluation.appointment.status_cancelled');
+    if (s === 'REQUESTED') return tr('intern_evaluation.appointment.status_requested');
+    return tr('intern_evaluation.common.dash');
   }, [appointmentRequest.status, lang]);
 
   useEffect(() => {
@@ -447,18 +360,12 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
           } else if (shouldNotify) {
             const title =
               nextStatus === 'CONFIRMED'
-                ? lang === 'TH'
-                  ? 'พี่เลี้ยงยืนยันนัดหมายแล้ว'
-                  : 'Supervisor confirmed the appointment'
+                ? tr('intern_evaluation.notifications.supervisor_confirmed')
                 : nextStatus === 'RESCHEDULED'
-                  ? lang === 'TH'
-                    ? 'พี่เลี้ยงเลื่อนนัดหมาย'
-                    : 'Supervisor rescheduled the appointment'
-                  : lang === 'TH'
-                    ? 'พี่เลี้ยงยกเลิกนัดหมาย'
-                    : 'Supervisor cancelled the appointment';
+                  ? tr('intern_evaluation.notifications.supervisor_rescheduled')
+                  : tr('intern_evaluation.notifications.supervisor_cancelled');
 
-            const detail = `${String(nextAr.date ?? '--')} ${String(nextAr.time ?? '--')} • ${(nextAr.mode ?? 'ONLINE') === 'COMPANY' ? (lang === 'TH' ? 'บริษัท' : 'Company') : lang === 'TH' ? 'ออนไลน์' : 'Online'}`;
+            const detail = `${String(nextAr.date ?? '--')} ${String(nextAr.time ?? '--')} • ${meetingModeLabel(nextAr.mode)}`;
             const description = String(nextAr.supervisorNote ?? '').trim();
 
             toast(title, {
@@ -473,7 +380,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load evaluation'}`);
+        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.failed_to_load')}`);
       },
     );
   }, [lang, user]);
@@ -500,7 +407,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       );
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setSaveError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save failed'}`);
+      setSaveError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.save_failed')}`);
     } finally {
       setIsSaving(false);
     }
@@ -570,11 +477,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
   const submitDeliveryDetails = async () => {
     setDeliverySubmitError(null);
     if (!canSubmitDeliveryDetails) {
-      setDeliverySubmitError(
-        lang === 'TH'
-          ? 'กรุณากรอกข้อมูลในส่วนรายละเอียดการจัดส่งให้ครบทุกช่องก่อนกดบันทึก'
-          : 'Please complete all Delivery Details fields before saving.',
-      );
+      setDeliverySubmitError(tr('intern_evaluation.delivery.errors.complete_all_fields'));
       return;
     }
 
@@ -595,17 +498,11 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       setSubmittedAt(new Date());
       
       toast.success(
-        lang === 'TH' 
-          ? 'บันทึกรายละเอียดการจัดส่งเรียบร้อยแล้ว' 
-          : 'Delivery details saved successfully',
+        tr('intern_evaluation.delivery.toast.saved'),
         { duration: 3000 }
       );
     } catch (error) {
-      setDeliverySubmitError(
-        lang === 'TH'
-          ? 'เกิดข้อผิดพลาดในการบันทึก กรุณาลองใหม่อีกครั้ง'
-          : 'Failed to save delivery details. Please try again.',
-      );
+      setDeliverySubmitError(tr('intern_evaluation.delivery.errors.save_failed'));
     }
   };
 
@@ -648,7 +545,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
     if (!user) return;
     const item = files.find((x) => x.id === docId);
     if (!item) return;
-    if (!window.confirm(lang === 'TH' ? 'ลบเอกสารนี้หรือไม่?' : 'Delete this document?')) return;
+    if (!window.confirm(tr('intern_evaluation.docs.confirm_delete'))) return;
 
     setUploadError(null);
     try {
@@ -702,7 +599,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       await persist({ files: nextFiles, pendingChanges: true });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.upload_failed')}`);
     } finally {
       setUploadingDocId(null);
     }
@@ -747,7 +644,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
       setNewDocFile(null);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.upload_failed')}`);
     } finally {
       setUploadingDocId(null);
     }
@@ -822,8 +719,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
         ) : null}
 
         <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div><h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1><p className="text-slate-500 text-sm mt-1">{t.subtitle}</p></div>
-          <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-2"><GraduationCap size={16} /> {t.portalSync}</div>
+          <div><h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_evaluation.title')}</h1><p className="text-slate-500 text-sm mt-1">{tr('intern_evaluation.subtitle')}</p></div>
+          <div className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-2"><GraduationCap size={16} /> {tr('intern_evaluation.portal_sync')}</div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto pb-24 scrollbar-hide pr-1">
           <div className="lg:col-span-8 space-y-8">
@@ -834,8 +731,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <CalendarDays size={22} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-black tracking-tight text-slate-900">{t.apptTitle}</h2>
-                    <p className="text-xs text-slate-500 mt-1 font-medium">{t.apptSub}</p>
+                    <h2 className="text-xl font-black tracking-tight text-slate-900">{tr('intern_evaluation.appointment.title')}</h2>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">{tr('intern_evaluation.appointment.subtitle')}</p>
                   </div>
                 </div>
 
@@ -848,7 +745,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     onClick={() => setOpenSection((s) => (s === 'appointment' ? 'none' : 'appointment'))}
                     className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
                     aria-label="Toggle appointment section"
-                    title={openSection === 'appointment' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                    title={openSection === 'appointment' ? tr('intern_evaluation.common.collapse') : tr('intern_evaluation.common.expand')}
                   >
                     <ChevronDown size={18} className={`transition-transform ${openSection === 'appointment' ? 'rotate-180' : ''}`} />
                   </button>
@@ -864,17 +761,17 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       {appointmentRequest.time ? appointmentRequest.time : '--'}
                     </div>
                     <div className="px-4 py-2 rounded-2xl bg-blue-50 border border-blue-100 text-[10px] font-black uppercase tracking-widest text-slate-900">
-                      {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
+                      {meetingModeLabel(appointmentRequest.mode)}
                     </div>
                     <div className="ml-auto hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
                       <Clock size={14} />
-                      {lang === 'TH' ? 'พร้อมส่งเมื่อกรอกวันและเวลา' : 'Ready when date & time are set'}
+                      {tr('intern_evaluation.appointment.ready_hint')}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptDate}</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('intern_evaluation.appointment.date')}</label>
                       <input
                         type="date"
                         value={appointmentRequest.date ?? ''}
@@ -883,7 +780,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptTime}</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('intern_evaluation.appointment.time')}</label>
                       <input
                         type="time"
                         value={appointmentRequest.time ?? ''}
@@ -892,7 +789,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptMode}</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('intern_evaluation.appointment.meeting_mode')}</label>
                       <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-200">
                         <button
                           type="button"
@@ -903,7 +800,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               : 'text-slate-500 hover:text-slate-900'
                           }`}
                         >
-                          {t.apptModeOnline}
+                          {tr('intern_evaluation.appointment.mode_online')}
                         </button>
                         <button
                           type="button"
@@ -914,13 +811,13 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               : 'text-slate-500 hover:text-slate-900'
                           }`}
                         >
-                          {t.apptModeCompany}
+                          {tr('intern_evaluation.appointment.mode_company')}
                         </button>
                       </div>
                     </div>
 
                     <div className="md:col-span-3">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{t.apptNote}</label>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">{tr('intern_evaluation.appointment.note_optional')}</label>
                       <textarea
                         value={appointmentRequest.note ?? ''}
                         onChange={(e) => setAppointmentRequest((prev) => ({ ...prev, note: e.target.value }))}
@@ -937,7 +834,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-200 hover:bg-blue-700 disabled:opacity-50 md:col-span-2"
                     >
                       <CalendarDays size={16} />
-                      {t.apptSend}
+                      {tr('intern_evaluation.appointment.send_request')}
                     </button>
                   </div>
 
@@ -945,7 +842,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <div className="mt-8">
                       <div className="flex items-center justify-between gap-4 mb-3">
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em]">
-                          {lang === 'TH' ? 'ประวัติการขอเข้าพบ' : 'Appointment History'}
+                          {tr('intern_evaluation.appointment.history.title')}
                         </div>
                         <button
                           type="button"
@@ -953,12 +850,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline"
                         >
                           {showAppointmentHistory
-                            ? lang === 'TH'
-                              ? 'ซ่อนประวัติ'
-                              : 'Hide history'
-                            : lang === 'TH'
-                              ? `ดูประวัติ (${appointmentHistory.length})`
-                              : `View history (${appointmentHistory.length})`}
+                            ? tr('intern_evaluation.appointment.history.hide')
+                            : tr('intern_evaluation.appointment.history.view_with_count', { count: appointmentHistory.length } as any)}
                         </button>
                       </div>
 
@@ -972,12 +865,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                     <div className="flex flex-wrap items-center gap-2">
                                       <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-700">
                                         {h.actor === 'SUPERVISOR'
-                                          ? lang === 'TH'
-                                            ? 'พี่เลี้ยง'
-                                            : 'Supervisor'
-                                          : lang === 'TH'
-                                            ? 'นักศึกษา'
-                                            : 'Intern'}
+                                          ? tr('intern_evaluation.appointment.history.actor_supervisor')
+                                          : tr('intern_evaluation.appointment.history.actor_intern')}
                                       </div>
                                       <div className="text-[11px] font-black text-slate-700">
                                         {(h.date ? String(h.date) : '--') + ' ' + (h.time ? String(h.time) : '--')}
@@ -986,13 +875,13 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                       <div className="px-3 py-2 rounded-xl bg-white border border-slate-200">
                                         <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                          {lang === 'TH' ? 'สถานะ' : 'Status'}
+                                          {tr('intern_evaluation.appointment.history.status_label')}
                                         </div>
                                         <div className="text-[11px] font-black text-slate-800 mt-1">{String(h.status ?? '—')}</div>
                                       </div>
                                       <div className="px-3 py-2 rounded-xl bg-white border border-slate-200">
                                         <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                          {lang === 'TH' ? 'รูปแบบ' : 'Mode'}
+                                          {tr('intern_evaluation.appointment.history.mode_label')}
                                         </div>
                                         <div className="text-[11px] font-black text-slate-800 mt-1">{String(h.mode ?? '--')}</div>
                                       </div>
@@ -1002,7 +891,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                 {String(h.supervisorNote ?? '').trim() ? (
                                   <div className="mt-3 p-3 rounded-xl bg-white border border-slate-200">
                                     <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                      {lang === 'TH' ? 'หมายเหตุจากพี่เลี้ยง' : 'Supervisor note'}
+                                      {tr('intern_evaluation.appointment.history.supervisor_note_label')}
                                     </div>
                                     <div className="mt-1 text-xs font-bold text-slate-700 whitespace-pre-wrap">{String(h.supervisorNote)}</div>
                                   </div>
@@ -1068,8 +957,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <LinkIcon size={20} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">{t.linksTitle}</h2>
-                    <p className="text-xs text-slate-400 mt-1">{t.linksSub}</p>
+                    <h2 className="text-xl font-bold text-slate-900">{tr('intern_evaluation.links.title')}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{tr('intern_evaluation.links.subtitle')}</p>
                   </div>
                 </div>
                 <button
@@ -1077,7 +966,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   onClick={() => setOpenSection((s) => (s === 'links' ? 'none' : 'links'))}
                   className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
                   aria-label="Toggle links section"
-                  title={openSection === 'links' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                  title={openSection === 'links' ? tr('intern_evaluation.common.collapse') : tr('intern_evaluation.common.expand')}
                 >
                   <ChevronDown size={18} className={`transition-transform ${openSection === 'links' ? 'rotate-180' : ''}`} />
                 </button>
@@ -1086,20 +975,20 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
               {openSection === 'links' ? (
                 <>
                   <div className="bg-blue-50/30 p-6 rounded-[1.5rem] border border-blue-100/50">
-                    <h4 className="text-[10px] font-black text-blue-400 uppercase mb-4">{t.addLink}</h4>
+                    <h4 className="text-[10px] font-black text-blue-400 uppercase mb-4">{tr('intern_evaluation.links.add_link')}</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <input
                         type="text"
                         value={newLinkLabel}
                         onChange={(e) => setNewLinkLabel(e.target.value)}
-                        placeholder={t.linkLabel}
+                        placeholder={tr('intern_evaluation.links.link_label_placeholder')}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
                       />
                       <input
                         type="url"
                         value={newLinkUrl}
                         onChange={(e) => setNewLinkUrl(e.target.value)}
-                        placeholder={t.linkUrl}
+                        placeholder={tr('intern_evaluation.links.url_placeholder')}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
                       />
                     </div>
@@ -1109,7 +998,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       disabled={!user || !canAddLink || isSaving}
                       className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      {isSaving ? <Clock size={16} className="animate-spin" /> : <Plus size={16} />} {t.saveLink}
+                      {isSaving ? <Clock size={16} className="animate-spin" /> : <Plus size={16} />} {tr('intern_evaluation.links.save_link')}
                     </button>
                   </div>
 
@@ -1127,7 +1016,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               target="_blank"
                               rel="noreferrer"
                               className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                              title="Open"
+                              title={tr('intern_evaluation.common.open')}
                             >
                               <ExternalLink size={16} />
                             </a>
@@ -1135,7 +1024,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               type="button"
                               onClick={() => void handleDeleteLink(l.id)}
                               className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                              title="Delete"
+                              title={tr('intern_evaluation.common.delete')}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -1197,8 +1086,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <FileText size={20} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">{t.docsTitle}</h2>
-                    <p className="text-xs text-slate-400 mt-1">{t.docsSub}</p>
+                    <h2 className="text-xl font-bold text-slate-900">{tr('intern_evaluation.docs.title')}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{tr('intern_evaluation.docs.subtitle')}</p>
                   </div>
                 </div>
                 <button
@@ -1206,7 +1095,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   onClick={() => setOpenSection((s) => (s === 'docs' ? 'none' : 'docs'))}
                   className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
                   aria-label="Toggle documents section"
-                  title={openSection === 'docs' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                  title={openSection === 'docs' ? tr('intern_evaluation.common.collapse') : tr('intern_evaluation.common.expand')}
                 >
                   <ChevronDown size={18} className={`transition-transform ${openSection === 'docs' ? 'rotate-180' : ''}`} />
                 </button>
@@ -1221,7 +1110,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         onClick={() => setIsAddingDoc(true)}
                         className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2"
                       >
-                        <Plus size={16} /> {lang === 'TH' ? 'เพิ่มเอกสารเพิ่มเติม' : 'Add Additional Document'}
+                        <Plus size={16} /> {tr('intern_evaluation.docs.add_additional_document')}
                       </button>
                     ) : null}
                   </div>
@@ -1233,7 +1122,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           type="text"
                           value={newDocLabel}
                           onChange={(e) => setNewDocLabel(e.target.value)}
-                          placeholder={lang === 'TH' ? 'ชื่อเอกสาร' : 'Document name'}
+                          placeholder={tr('intern_evaluation.docs.document_name_placeholder')}
                           className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
                         />
                         <select
@@ -1241,10 +1130,10 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           onChange={(e) => setNewDocCategory(e.target.value as UniDocument['category'])}
                           className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold"
                         >
-                          <option value="Sending">{t.catSending}</option>
-                          <option value="Evaluation">{t.catEval}</option>
-                          <option value="Requirement">{t.catReq}</option>
-                          <option value="Other">{t.catOther}</option>
+                          <option value="Sending">{tr('intern_evaluation.categories.sending')}</option>
+                          <option value="Evaluation">{tr('intern_evaluation.categories.evaluation')}</option>
+                          <option value="Requirement">{tr('intern_evaluation.categories.requirement')}</option>
+                          <option value="Other">{tr('intern_evaluation.categories.other')}</option>
                         </select>
                         <input
                           type="file"
@@ -1263,7 +1152,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           }}
                           className="w-full py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs"
                         >
-                          {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                          {tr('intern_evaluation.common.cancel')}
                         </button>
                         <button
                           type="button"
@@ -1272,7 +1161,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {uploadingDocId ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}{' '}
-                          {lang === 'TH' ? 'อัปโหลด' : 'Upload'}
+                          {tr('intern_evaluation.common.upload')}
                         </button>
                       </div>
                     </div>
@@ -1293,7 +1182,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                             {doc.status === 'uploaded' ? <FileCheck size={24} /> : <FileText size={24} />}
                           </div>
                           <div className="overflow-hidden">
-                            <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">{doc.category}</p>
+                            <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5">{categoryLabel(doc.category)}</p>
                             <p className="text-sm font-bold text-slate-800 truncate">{doc.name}</p>
                           </div>
                         </div>
@@ -1304,7 +1193,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               type="button"
                               onClick={() => void handleDownload(doc.id)}
                               className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                              title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
+                              title={tr('intern_evaluation.docs.view_download')}
                             >
                               <Download size={18} />
                             </button>
@@ -1312,7 +1201,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                               type="button"
                               onClick={() => void handleDeleteFile(doc.id)}
                               className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                              title={lang === 'TH' ? 'ลบ' : 'Delete'}
+                              title={tr('intern_evaluation.common.delete')}
                             >
                               <Trash2 size={18} />
                             </button>
@@ -1323,7 +1212,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                             onClick={() => openUpload(doc)}
                             disabled={!user || uploadingDocId === doc.id}
                             className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-600 text-white shadow-lg disabled:opacity-50"
-                            title={lang === 'TH' ? 'อัปโหลด' : 'Upload'}
+                            title={tr('intern_evaluation.common.upload')}
                           >
                             {uploadingDocId === doc.id ? <Clock size={18} className="animate-spin" /> : <Upload size={18} />}
                           </button>
@@ -1335,7 +1224,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   {customFiles.length > 0 ? (
                     <div className="mt-6 space-y-3">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                        {lang === 'TH' ? 'เอกสารเพิ่มเติมที่อัปโหลดแล้ว' : 'Additional Uploaded Documents'}
+                        {tr('intern_evaluation.docs.additional_uploaded_documents')}
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {displayedCustomFiles.map((f) => (
@@ -1348,7 +1237,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                 <FileCheck size={22} />
                               </div>
                               <div className="overflow-hidden min-w-0">
-                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5 truncate">{f.category ?? 'Other'}</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase mb-1.5 truncate">{categoryLabel((f.category ?? 'Other') as any)}</p>
                                 <p className="text-sm font-bold text-slate-800 truncate">{f.label}</p>
                                 <p className="text-[11px] font-bold text-slate-400 truncate">{f.fileName}</p>
                               </div>
@@ -1359,7 +1248,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                 type="button"
                                 onClick={() => void handleDownload(f.id)}
                                 className="w-10 h-10 rounded-xl flex items-center justify-center bg-slate-50 text-slate-500 hover:bg-blue-600 hover:text-white transition-all"
-                                title={lang === 'TH' ? 'ดู/ดาวน์โหลด' : 'View/Download'}
+                                title={tr('intern_evaluation.docs.view_download')}
                               >
                                 <Download size={18} />
                               </button>
@@ -1367,7 +1256,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                                 type="button"
                                 onClick={() => void handleDeleteFile(f.id)}
                                 className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white transition-all"
-                                title={lang === 'TH' ? 'ลบ' : 'Delete'}
+                                title={tr('intern_evaluation.common.delete')}
                               >
                                 <Trash2 size={18} />
                               </button>
@@ -1430,8 +1319,8 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     <Truck size={20} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">{t.deliveryTitle}</h2>
-                    <p className="text-xs text-slate-400 mt-1">{t.deliverySub}</p>
+                    <h2 className="text-xl font-bold text-slate-900">{tr('intern_evaluation.delivery.title')}</h2>
+                    <p className="text-xs text-slate-400 mt-1">{tr('intern_evaluation.delivery.subtitle')}</p>
                   </div>
                 </div>
                 <button
@@ -1439,7 +1328,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   onClick={() => setOpenSection((s) => (s === 'delivery' ? 'none' : 'delivery'))}
                   className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center"
                   aria-label="Toggle delivery section"
-                  title={openSection === 'delivery' ? (lang === 'TH' ? 'พับ' : 'Collapse') : lang === 'TH' ? 'ขยาย' : 'Expand'}
+                  title={openSection === 'delivery' ? tr('intern_evaluation.common.collapse') : tr('intern_evaluation.common.expand')}
                 >
                   <ChevronDown size={18} className={`transition-transform ${openSection === 'delivery' ? 'rotate-180' : ''}`} />
                 </button>
@@ -1454,14 +1343,14 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                           <Check size={18} />
                         </div>
                         <div>
-                          <p>{lang === 'TH' ? 'ส่งข้อมูลเรียบร้อยแล้ว' : 'Submitted successfully'}</p>
+                          <p>{tr('intern_evaluation.delivery.submitted_successfully')}</p>
                           {submittedAtLabel ? (
                             <p className="text-[11px] font-black text-emerald-600/80">{submittedAtLabel}</p>
                           ) : null}
                         </div>
                       </div>
                       <div className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest">
-                        {pendingChanges ? (lang === 'TH' ? 'มีการแก้ไข รอยืนยันส่ง' : 'changes pending') : 'submitted'}
+                        {pendingChanges ? tr('intern_evaluation.delivery.status_changes_pending') : tr('intern_evaluation.delivery.status_submitted')}
                       </div>
                     </div>
                   ) : null}
@@ -1469,7 +1358,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div className="space-y-4">
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.recipient}</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.recipient')}</label>
                         <input
                           type="text"
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
@@ -1479,7 +1368,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.dept}</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.department')}</label>
                         <input
                           type="text"
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
@@ -1489,23 +1378,23 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.method}</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.method')}</label>
                         <select
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
                           value={deliveryDetails.method}
                           disabled={isFinalSubmitted}
                           onChange={(e) => setDeliveryDetails((prev) => ({ ...prev, method: e.target.value }))}
                         >
-                          <option value="Email">{t.methodEmail}</option>
-                          <option value="Postal Mail">{t.methodPost}</option>
-                          <option value="Hand-carry">{t.methodCarry}</option>
+                          <option value="Email">{tr('intern_evaluation.delivery.methods.email')}</option>
+                          <option value="Postal Mail">{tr('intern_evaluation.delivery.methods.postal_mail')}</option>
+                          <option value="Hand-carry">{tr('intern_evaluation.delivery.methods.hand_carry')}</option>
                         </select>
                       </div>
                     </div>
                     <div className="space-y-4">
                       {deliveryDetails.method === 'Email' ? (
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.emailLabel}</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.email')}</label>
                           <input
                             type="email"
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs"
@@ -1516,7 +1405,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         </div>
                       ) : (
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.addressLabel}</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.address')}</label>
                           <textarea
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[112px] resize-none"
                             value={deliveryDetails.address}
@@ -1526,9 +1415,9 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                         </div>
                       )}
                       <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{t.instLabel}</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">{tr('intern_evaluation.delivery.fields.instructions')}</label>
                         <textarea
-                          placeholder="..."
+                          placeholder={tr('intern_evaluation.delivery.fields.instructions_placeholder')}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs h-[52px] resize-none"
                           value={deliveryDetails.instructions}
                           disabled={isFinalSubmitted}
@@ -1544,7 +1433,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                     className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-2xl text-xs font-bold shadow-xl disabled:opacity-50"
                   >
                     {isFinalSubmitted ? <Check size={16} /> : isSaving ? <Clock size={16} className="animate-spin" /> : <Save size={16} />}{' '}
-                    {isFinalSubmitted ? (lang === 'TH' ? 'ส่งแล้ว' : 'Submitted') : t.saveInst}
+                    {isFinalSubmitted ? tr('intern_evaluation.delivery.button_submitted') : tr('intern_evaluation.delivery.save_instructions')}
                   </button>
                 </>
               ) : null}
@@ -1561,7 +1450,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                   <div className="flex items-start gap-4">
                     <div className="min-w-0">
                       <div className="text-[10px] font-black uppercase tracking-[0.35em] opacity-70">
-                        {lang === 'TH' ? 'แจ้งเตือน' : 'Notification'}
+                        {tr('intern_evaluation.common.notification')}
                       </div>
                       <div className="mt-2 text-[16px] leading-snug">{supervisorRespondedBanner.title}</div>
                     </div>
@@ -1582,7 +1471,7 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
                       {appointmentRequest.time ? appointmentRequest.time : '--'}
                     </div>
                     <div className="px-4 py-2 rounded-2xl bg-white/70 border border-white/60 text-[10px] font-black uppercase tracking-widest text-slate-900">
-                      {(appointmentRequest.mode ?? 'ONLINE') === 'COMPANY' ? t.apptModeCompany : t.apptModeOnline}
+                      {meetingModeLabel(appointmentRequest.mode)}
                     </div>
                   </div>
                 </div>
@@ -1591,16 +1480,16 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang }) => {
 
             <section className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
               <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center"><Building2 size={20} className="text-blue-400" /></div><h3 className="text-lg font-bold">{t.companyInfo}</h3></div>
+                <div className="flex items-center gap-3 mb-8"><div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center"><Building2 size={20} className="text-blue-400" /></div><h3 className="text-lg font-bold">{tr('intern_evaluation.sidebar.company_info')}</h3></div>
                 <div className="space-y-6">
-                  <div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{t.officialName}</p><p className="text-xs font-bold">vannessplus</p></div>
-                  <div className="grid grid-cols-2 gap-4"><div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{t.taxId}</p><p className="text-xs font-bold">0123456789012</p></div><div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{t.deptName}</p><p className="text-xs font-bold">Product Design</p></div></div>
+                  <div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{tr('intern_evaluation.sidebar.official_name')}</p><p className="text-xs font-bold">vannessplus</p></div>
+                  <div className="grid grid-cols-2 gap-4"><div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{tr('intern_evaluation.sidebar.tax_id')}</p><p className="text-xs font-bold">0123456789012</p></div><div><p className="text-[9px] font-black text-slate-500 uppercase mb-1.5">{tr('intern_evaluation.sidebar.department')}</p><p className="text-xs font-bold">Product Design</p></div></div>
                 </div>
               </div>
             </section>
             <section className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
-              <div className="flex items-center gap-3 mb-6"><div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center"><ClipboardCheck size={18} /></div><h3 className="text-base font-bold text-slate-900">{t.finalTasks}</h3></div>
-              <div className="mt-8 p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-3"><Info size={16} className="text-blue-500 shrink-0 mt-0.5" /><p className="text-[10px] text-slate-500 font-medium leading-relaxed">{t.importantNote}</p></div>
+              <div className="flex items-center gap-3 mb-6"><div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center"><ClipboardCheck size={18} /></div><h3 className="text-base font-bold text-slate-900">{tr('intern_evaluation.sidebar.final_tasks')}</h3></div>
+              <div className="mt-8 p-5 bg-slate-50 rounded-2xl border border-slate-100 flex items-start gap-3"><Info size={16} className="text-blue-500 shrink-0 mt-0.5" /><p className="text-[10px] text-slate-500 font-medium leading-relaxed">{tr('intern_evaluation.sidebar.important_note')}</p></div>
             </section>
           </div>
         </div>

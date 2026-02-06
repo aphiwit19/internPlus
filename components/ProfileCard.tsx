@@ -4,6 +4,7 @@ import { UserProfile, Language } from '@/types';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { firestoreDb, firebaseStorage } from '@/firebase';
+import { useTranslation } from 'react-i18next';
 
 interface ProfileCardProps {
   user: UserProfile;
@@ -11,9 +12,18 @@ interface ProfileCardProps {
   enableAvatarUpload?: boolean;
 }
 
-const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUpload }) => {
+const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang: _lang, enableAvatarUpload }) => {
+  const { t } = useTranslation();
   const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
   const [avatarUploadError, setAvatarUploadError] = React.useState<string | null>(null);
+
+  const primaryRole = user.roles[0] ?? 'INTERN';
+  const primaryRoleLabel =
+    primaryRole === 'HR_ADMIN'
+      ? t('roles.hr_admin')
+      : primaryRole === 'SUPERVISOR'
+        ? t('roles.supervisor')
+        : t('roles.intern');
 
   const handleAvatarSelected = async (file: File | null) => {
     if (!enableAvatarUpload || !file) return;
@@ -22,13 +32,13 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
 
     const isImage = file.type.startsWith('image/');
     if (!isImage) {
-      setAvatarUploadError(lang === 'TH' ? 'กรุณาเลือกไฟล์รูปภาพเท่านั้น' : 'Please select an image file.');
+      setAvatarUploadError(t('profile_card.errors.image_only'));
       return;
     }
 
     const MAX_BYTES = 5 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      setAvatarUploadError(lang === 'TH' ? 'ไฟล์รูปต้องมีขนาดไม่เกิน 5MB' : 'Image must be 5MB or smaller.');
+      setAvatarUploadError(t('profile_card.errors.image_max_5mb'));
       return;
     }
 
@@ -45,30 +55,11 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
       });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? t('common.upload_failed')}`);
     } finally {
       setIsUploadingAvatar(false);
     }
   };
-
-  const t = {
-    EN: {
-      position: 'Current Position',
-      period: 'Internship Period',
-      dept: 'Department',
-      email: 'Email',
-      phone: 'Phone',
-      id: 'Student ID'
-    },
-    TH: {
-      position: 'ตำแหน่งปัจจุบัน',
-      period: 'ระยะเวลาฝึกงาน',
-      dept: 'แผนก',
-      email: 'อีเมล',
-      phone: 'เบอร์โทรศัพท์',
-      id: 'รหัสนักศึกษา'
-    }
-  }[lang];
 
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col items-center relative h-full transition-all group">
@@ -115,7 +106,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
       <div className="text-center mb-10">
         <h2 className="text-3xl font-black text-slate-900 leading-tight tracking-tight">{user.name}</h2>
         <div className="flex items-center justify-center gap-2 mt-2">
-          <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em]">{user.roles[0] ?? 'INTERN'}</p>
+          <p className="text-blue-600 font-black text-[11px] uppercase tracking-[0.2em]">{primaryRoleLabel}</p>
           <span className="w-1.5 h-1.5 bg-slate-200 rounded-full"></span>
           <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest">{user.systemId}</p>
         </div>
@@ -126,16 +117,16 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
         <div className="bg-[#F8FAFC] p-5 rounded-[1.75rem] border border-slate-100 flex flex-col justify-center transition-all hover:bg-white hover:shadow-lg hover:border-blue-100 group/item">
           <div className="flex items-center gap-2 text-slate-400 mb-2">
             <div className="w-1.5 h-4 bg-blue-600 rounded-full opacity-40 group-hover/item:opacity-100 transition-opacity"></div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t.position}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('profile_card.labels.current_position')}</span>
           </div>
-          <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.position || 'Not Assigned'}</p>
+          <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.position || t('common.not_assigned')}</p>
         </div>
         <div className="bg-[#F8FAFC] p-5 rounded-[1.75rem] border border-slate-100 flex flex-col justify-center transition-all hover:bg-white hover:shadow-lg hover:border-blue-100 group/item">
           <div className="flex items-center gap-2 text-slate-400 mb-2">
             <div className="w-1.5 h-4 bg-indigo-600 rounded-full opacity-40 group-hover/item:opacity-100 transition-opacity"></div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t.period}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('profile_card.labels.internship_period')}</span>
           </div>
-          <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.internPeriod || 'TBD'}</p>
+          <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.internPeriod || t('common.tbd')}</p>
         </div>
       </div>
 
@@ -146,7 +137,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
              <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover/row:text-blue-600 transition-colors">
                <GraduationCap size={16} />
              </div>
-             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t.dept}</span>
+             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t('profile_card.labels.department')}</span>
           </div>
           <span className="text-[12px] font-black text-slate-800">{user.department}</span>
         </div>
@@ -156,7 +147,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
              <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover/row:text-blue-600 transition-colors">
                <Mail size={16} />
              </div>
-             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t.email}</span>
+             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t('profile_card.labels.email')}</span>
           </div>
           <span className="text-[12px] font-black text-slate-800 truncate max-w-[140px] text-right">{user.email}</span>
         </div>
@@ -166,7 +157,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
              <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover/row:text-blue-600 transition-colors">
                <Phone size={16} />
              </div>
-             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t.phone}</span>
+             <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{t('profile_card.labels.phone')}</span>
           </div>
           <span className="text-[12px] font-black text-slate-800">{user.phone || '--'}</span>
         </div>
@@ -174,7 +165,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang, enableAvatarUploa
       
       {/* Bottom Footer Decor */}
       <div className="mt-12 flex items-center gap-2 text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">
-        <MapPin size={10} /> HQ OPERATIONS SF
+        <MapPin size={10} /> {t('common.hq_operations_sf')}
       </div>
     </div>
   );

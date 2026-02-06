@@ -2,6 +2,7 @@ import React from 'react';
 
 import LeaveRequestCore from '@/pages/shared/LeaveRequestCore';
 import { Language, UserRole } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 interface SupervisorLeaveRequestPageProps {
   lang: Language;
@@ -9,22 +10,15 @@ interface SupervisorLeaveRequestPageProps {
 }
 
 const LeaveRequestPage: React.FC<SupervisorLeaveRequestPageProps> = ({ lang, role }) => {
+  const { t } = useTranslation();
   return (
     <LeaveRequestCore
       lang={lang}
       role={role}
-      headerTitle={lang === 'EN' ? 'Supervisor Approval Center' : 'ศูนย์อนุมัติ (หัวหน้างาน)'}
-      headerSubtitle={
-        lang === 'EN'
-          ? 'Monitor and manage intern absences across your assigned group.'
-          : 'ตรวจสอบและจัดการคำขอลาของอินเทิร์นในทีมที่คุณดูแล'
-      }
-      protocolTitle={lang === 'EN' ? 'Supervisor Protocol' : 'แนวทางสำหรับหัวหน้างาน'}
-      protocolSubtitle={
-        lang === 'EN'
-          ? "Evaluate requests based on remaining quota and project deadlines. Approved leave is 'Without Pay' per policy."
-          : 'พิจารณาคำขอตามโควตาคงเหลือและเส้นตายงาน การลาที่อนุมัติเป็นลาไม่รับค่าจ้างตามนโยบาย'
-      }
+      headerTitle={t('leave.approval_center_title')}
+      headerSubtitle={t('leave.approval_center_subtitle')}
+      protocolTitle={t('leave.protocol_title')}
+      protocolSubtitle={t('leave.protocol_subtitle')}
       sidePanel={null}
     />
   );

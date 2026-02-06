@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Calendar, UserCheck, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getDefaultAvatarUrl } from '@/app/avatar';
+import { useTranslation } from 'react-i18next';
 
 interface LoginPageProps {
   isLoading?: boolean;
@@ -12,6 +13,7 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -38,12 +40,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
           </div>
           
           <h2 className="text-6xl font-black tracking-tight leading-[1.05] mb-8">
-            The future of <br />
-            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Internship Mastery.</span>
+            {t('login.hero_title_line_1')} <br />
+            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">{t('login.hero_title_highlight')}</span>
           </h2>
           <p className="text-slate-400 text-lg leading-relaxed max-w-sm font-medium">
-            A unified ecosystem for modern trainees, mentors, and administrators. 
-            Onboarding, tracking, and certification simplified.
+            {t('login.hero_description')}
           </p>
         </div>
 
@@ -57,21 +58,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
           )}
           
           <div className="animate-in fade-in duration-500">
-            <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Welcome Back</h3>
-            <p className="text-slate-500 text-sm mb-12 font-medium">Sign in with your email and password to continue.</p>
+            <h3 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">{t('login.welcome_back')}</h3>
+            <p className="text-slate-500 text-sm mb-12 font-medium">{t('login.subtitle')}</p>
 
             {isLoading && (
               <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-500 text-sm font-bold mb-6">
-                Processing...
+                {t('login.processing')}
               </div>
             )}
 
             <div className="space-y-5">
               <div>
-                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">EMAIL</label>
+                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.email_label')}</label>
                 <input
                   type="email"
-                  placeholder="name@example.com"
+                  placeholder={t('login.email_placeholder')}
                   className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -80,10 +81,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
               </div>
 
               <div>
-                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">PASSWORD</label>
+                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.password_label')}</label>
                 <input
                   type="password"
-                  placeholder="Password"
+                  placeholder={t('login.password_placeholder')}
                   className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -99,7 +100,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
                   isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
                 }`}
               >
-                SIGN IN <ChevronRight size={20} />
+                {t('login.sign_in')} <ChevronRight size={20} />
               </button>
             </div>
 
@@ -108,7 +109,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
                 to="/register"
                 className="text-blue-600 font-black text-[13px] uppercase tracking-widest hover:underline active:scale-95 transition-all"
               >
-                Create an account
+                {t('login.create_account')}
               </Link>
             </div>
           </div>

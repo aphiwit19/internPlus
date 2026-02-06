@@ -38,31 +38,35 @@ import { useAppContext } from '@/app/AppContext';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { getUserProfileByUid } from '@/app/firestoreUserRepository';
 import { pageIdToPath } from '@/app/routeUtils';
+import { useTranslation } from 'react-i18next';
 
 type InternProfileExtraDoc = {
   supervisorId?: string;
   supervisorName?: string;
 };
 
-const INITIAL_DOCUMENTS: DocumentStatus[] = [
-  { id: '1', label: 'NATIONAL ID / PASSPORT', fileName: 'Alex_Rivera_Passport.pdf', isUploaded: true, icon: <CreditCard size={18} /> },
-  { id: '2', label: 'RESUME / CV', fileName: 'Alex_Rivera_UX_Resume.pdf', isUploaded: true, icon: <FileText size={18} /> },
-  { id: '3', label: 'ACADEMIC TRANSCRIPT', isUploaded: false, icon: <GraduationCap size={18} /> },
-  { id: '4', label: 'CERTIFICATE', isUploaded: false, icon: <Award size={18} /> },
-  { id: '5', label: 'HOUSE REGISTRATION', isUploaded: false, icon: <Home size={18} /> },
-  { id: '6', label: 'BANKBOOK COVER', isUploaded: false, icon: <Layout size={18} /> },
-  { id: '7', label: 'OTHER', isUploaded: false, icon: <Plus size={18} /> }
-];
-
 interface ProfilePageProps {
   lang: Language;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const navigate = useNavigate();
-  const [docList, setDocList] = useState<DocumentStatus[]>(INITIAL_DOCUMENTS);
-  const [summary] = useState(`Dedicated Junior UI/UX Designer with a focus on creating intuitive digital experiences. Currently undergoing intensive training in the Product Design department at internPlus, focusing on user-centered methodologies and scalable design systems.`);
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
+
+  const buildInitialDocuments = (): DocumentStatus[] => [
+    { id: '1', label: tr('intern_profile.documents.national_id_passport'), fileName: 'Alex_Rivera_Passport.pdf', isUploaded: true, icon: <CreditCard size={18} /> },
+    { id: '2', label: tr('intern_profile.documents.resume_cv'), fileName: 'Alex_Rivera_UX_Resume.pdf', isUploaded: true, icon: <FileText size={18} /> },
+    { id: '3', label: tr('intern_profile.documents.academic_transcript'), isUploaded: false, icon: <GraduationCap size={18} /> },
+    { id: '4', label: tr('intern_profile.documents.certificate'), isUploaded: false, icon: <Award size={18} /> },
+    { id: '5', label: tr('intern_profile.documents.house_registration'), isUploaded: false, icon: <Home size={18} /> },
+    { id: '6', label: tr('intern_profile.documents.bankbook_cover'), isUploaded: false, icon: <Layout size={18} /> },
+    { id: '7', label: tr('intern_profile.documents.other'), isUploaded: false, icon: <Plus size={18} /> },
+  ];
+
+  const [docList, setDocList] = useState<DocumentStatus[]>(() => buildInitialDocuments());
+  const [summary] = useState(() => tr('intern_profile.summary_text'));
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
@@ -137,39 +141,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
     };
   }, [supervisorProfile]);
 
-  const t = {
-    EN: {
-      breadcrumb: "SETTINGS > ACCOUNT",
-      title: "My Profile & Identity",
-      subtitle: "Review your professional details and secure document storage.",
-      progressTitle: "Onboarding Progress",
-      summaryTitle: "Professional Summary",
-      edit: "EDIT",
-      skills: "CORE SKILLS",
-      goal: "GOAL",
-      langs: "LANGUAGES",
-      supervisorTitle: "Supervisor",
-      assigned: "ASSIGNED SUPPORT",
-      btnMessage: "SEND MESSAGE"
-    },
-    TH: {
-      breadcrumb: "ตั้งค่า > บัญชี",
-      title: "โปรไฟล์และตัวตนของฉัน",
-      subtitle: "ตรวจสอบรายละเอียดส่วนตัวและคลังเอกสารที่ปลอดภัย",
-      progressTitle: "ความคืบหน้าการรับเข้าทำงาน",
-      summaryTitle: "สรุปประวัติวิชาชีพ",
-      edit: "แก้ไข",
-      skills: "ทักษะหลัก",
-      goal: "เป้าหมาย",
-      langs: "ภาษา",
-      supervisorTitle: "ที่ปรึกษา",
-      assigned: "ผู้ดูแลที่ได้รับมอบหมาย",
-      btnMessage: "ส่งข้อความ"
-    }
-  }[lang];
-
   const handleRemoveDoc = (id: string) => {
-    if (window.confirm("Remove this document?")) {
+    if (window.confirm(tr('intern_profile.confirm_remove_document'))) {
       setDocList(prev => prev.map(doc => doc.id === id ? { ...doc, isUploaded: false, fileName: undefined } : doc));
     }
   };
@@ -211,13 +184,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
 
     const isImage = file.type.startsWith('image/');
     if (!isImage) {
-      setAvatarUploadError(lang === 'TH' ? 'กรุณาเลือกไฟล์รูปภาพเท่านั้น' : 'Please select an image file.');
+      setAvatarUploadError(tr('intern_profile.errors.image_only'));
       return;
     }
 
     const MAX_BYTES = 5 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      setAvatarUploadError(lang === 'TH' ? 'ไฟล์รูปต้องมีขนาดไม่เกิน 5MB' : 'Image must be 5MB or smaller.');
+      setAvatarUploadError(tr('intern_profile.errors.image_max_mb', { mb: 5 } as any));
       return;
     }
 
@@ -234,7 +207,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setAvatarUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_profile.errors.upload_failed')}`);
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -253,7 +226,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       />
       {isEditing && (
         <EditProfileModal
-          lang={lang}
+          lang={_lang}
           form={editForm}
           onChange={setEditForm}
           onClose={() => setIsEditing(false)}
@@ -270,9 +243,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
         <div className="animate-in fade-in slide-in-from-left-4">
-          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] mb-2">{t.breadcrumb}</p>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
-          <p className="text-slate-400 text-sm font-medium mt-3">{t.subtitle}</p>
+          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] mb-2">{tr('intern_profile.breadcrumb')}</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{tr('intern_profile.title')}</h1>
+          <p className="text-slate-400 text-sm font-medium mt-3">{tr('intern_profile.subtitle')}</p>
         </div>
       </div>
 
@@ -306,25 +279,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                <div className="w-full space-y-4 mb-10">
                   <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] flex flex-col">
                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1.5 flex items-center gap-2">
-                       <div className="w-1 h-3 bg-blue-600 rounded-full"></div> POSITION
+                       <div className="w-1 h-3 bg-blue-600 rounded-full"></div> {tr('intern_profile.labels.position')}
                      </span>
                      <p className="text-[13px] font-black text-slate-800">{user.position}</p>
                   </div>
                   <div className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] flex flex-col">
                      <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1.5 flex items-center gap-2">
-                       <div className="w-1 h-3 bg-indigo-600 rounded-full"></div> PERIOD
+                       <div className="w-1 h-3 bg-indigo-600 rounded-full"></div> {tr('intern_profile.labels.period')}
                      </span>
                      <p className="text-[13px] font-black text-slate-800">{user.internPeriod}</p>
                   </div>
                </div>
 
                <div className="w-full space-y-6 px-1">
-                  <InfoRow label="Student ID" value={user.systemId} highlight />
-                  <InfoRow label="Dept." value={user.department} />
-                  <InfoRow label="Email" value={user.email} />
-                  <InfoRow label="Phone" value={user.phone || ''} />
-                  <InfoRow label="Bank" value={user.bankName || '-'} />
-                  <InfoRow label="Account" value={user.bankAccountNumber || '-'} />
+                  <InfoRow label={tr('intern_profile.fields.student_id')} value={user.systemId} highlight />
+                  <InfoRow label={tr('intern_profile.fields.department')} value={user.department} />
+                  <InfoRow label={tr('intern_profile.fields.email')} value={user.email} />
+                  <InfoRow label={tr('intern_profile.fields.phone')} value={user.phone || ''} />
+                  <InfoRow label={tr('intern_profile.fields.bank')} value={user.bankName || '-'} />
+                  <InfoRow label={tr('intern_profile.fields.account')} value={user.bankAccountNumber || '-'} />
                </div>
             </div>
           </div>
@@ -334,17 +307,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                 <div className="bg-[#0B0F19] rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden">
                    <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6">
                       <div>
-                        <h3 className="text-xl font-black tracking-tight">{t.progressTitle}</h3>
-                        <p className="text-slate-400 text-xs font-bold mt-1">Completed {uploadedCount} of {docList.length} document uploads.</p>
+                        <h3 className="text-xl font-black tracking-tight">{tr('intern_profile.progress.title')}</h3>
+                        <p className="text-slate-400 text-xs font-bold mt-1">{tr('intern_profile.progress.completed_of_total', { done: uploadedCount, total: docList.length } as any)}</p>
                       </div>
                    </div>
                    <div className="relative h-2.5 w-full bg-slate-800 rounded-full overflow-hidden mb-6">
                       <div className="h-full bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
                    </div>
                    <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                      <span>INITIATED</span>
-                      <span className="text-blue-400">{progressPercent}% COMPLETED</span>
-                      <span>VERIFIED</span>
+                      <span>{tr('intern_profile.progress.initiated')}</span>
+                      <span className="text-blue-400">{tr('intern_profile.progress.percent_completed', { percent: progressPercent } as any)}</span>
+                      <span>{tr('intern_profile.progress.verified')}</span>
                    </div>
                 </div>
 
@@ -352,16 +325,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                    <div className="flex items-center justify-between mb-10">
                       <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
                         <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
-                        {t.summaryTitle}
+                        {tr('intern_profile.summary.title')}
                       </h3>
-                      <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{t.edit}</button>
+                      <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{tr('intern_profile.actions.edit')}</button>
                    </div>
                    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-12 italic opacity-80">
                      "{summary}"
                    </p>
                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{t.skills}</h5>
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.core_skills')}</h5>
                          <div className="flex flex-wrap gap-2">
                             {['UI Design', 'Figma', 'React'].map(s => (
                               <span key={s} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-blue-600 shadow-sm">{s}</span>
@@ -369,19 +342,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
                          </div>
                       </div>
                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{t.goal}</h5>
-                         <p className="text-[11px] font-bold text-slate-600 leading-relaxed">To master the transition from high-fidelity designs to production code.</p>
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.goal')}</h5>
+                         <p className="text-[11px] font-bold text-slate-600 leading-relaxed">{tr('intern_profile.summary.goal_text')}</p>
                       </div>
                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
-                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{t.langs}</h5>
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.languages')}</h5>
                          <div className="space-y-3">
                             <div className="flex justify-between text-[11px] font-bold">
-                               <span className="text-slate-800">English</span>
-                               <span className="text-blue-500">Advanced</span>
+                               <span className="text-slate-800">{tr('intern_profile.languages.english')}</span>
+                               <span className="text-blue-500">{tr('intern_profile.languages.advanced')}</span>
                             </div>
                             <div className="flex justify-between text-[11px] font-bold">
-                               <span className="text-slate-800">Spanish</span>
-                               <span className="text-blue-500">Native</span>
+                               <span className="text-slate-800">{tr('intern_profile.languages.spanish')}</span>
+                               <span className="text-blue-500">{tr('intern_profile.languages.native')}</span>
                             </div>
                          </div>
                       </div>
@@ -396,18 +369,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang }) => {
               onClick={() => navigate(pageIdToPath('INTERN', 'documents'))}
               className="w-full mb-6 py-4 bg-blue-600 text-white rounded-[1.75rem] border border-blue-600 flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
             >
-              <CreditCard size={18} /> Document Vault
+              <CreditCard size={18} /> {tr('intern_profile.actions.document_vault')}
             </button>
             {supervisorCardData ? (
-              <SupervisorCard supervisor={supervisorCardData} lang={lang} />
+              <SupervisorCard supervisor={supervisorCardData} lang={_lang} />
             ) : (
               <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm h-fit">
                 <div className="mb-10">
-                  <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">{t.supervisorTitle}</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t.assigned}</p>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">{tr('intern_profile.supervisor.title')}</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{tr('intern_profile.supervisor.assigned_support')}</p>
                 </div>
                 <div className="py-14 text-center">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">No supervisor assigned</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('intern_profile.supervisor.none_assigned')}</p>
                 </div>
               </div>
             )}
@@ -443,35 +416,9 @@ const EditProfileModal: React.FC<{
   }) => void;
   onClose: () => void;
   onSave: () => void;
-}> = ({ lang, form, onChange, onClose, onSave }) => {
-  const t = {
-    EN: {
-      title: 'Edit Profile',
-      save: 'Save',
-      cancel: 'Cancel',
-      name: 'Name',
-      phone: 'Phone',
-      department: 'Department',
-      position: 'Position',
-      studentId: 'Student ID',
-      internPeriod: 'Intern Period',
-      bankName: 'Bank',
-      bankAccountNumber: 'Bank Account Number',
-    },
-    TH: {
-      title: 'แก้ไขโปรไฟล์',
-      save: 'บันทึก',
-      cancel: 'ยกเลิก',
-      name: 'ชื่อ',
-      phone: 'เบอร์โทร',
-      department: 'แผนก',
-      position: 'ตำแหน่ง',
-      studentId: 'รหัสนักศึกษา',
-      internPeriod: 'ช่วงฝึกงาน',
-      bankName: 'ธนาคาร',
-      bankAccountNumber: 'เลขบัญชี',
-    },
-  }[lang];
+}> = ({ lang: _lang, form, onChange, onClose, onSave }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   return (
     <>
@@ -480,7 +427,7 @@ const EditProfileModal: React.FC<{
         <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
           <div className="p-8 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h3 className="text-xl font-black text-slate-900 tracking-tight">{t.title}</h3>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('intern_profile.edit_modal.title')}</h3>
             </div>
             <button onClick={onClose} className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all">
               <X size={18} />
@@ -488,21 +435,21 @@ const EditProfileModal: React.FC<{
           </div>
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label={t.name} value={form.name} onChange={(v) => onChange({ ...form, name: v })} />
-              <Field label={t.phone} value={form.phone} onChange={(v) => onChange({ ...form, phone: v })} />
-              <Field label={t.department} value={form.department} onChange={(v) => onChange({ ...form, department: v })} />
-              <Field label={t.position} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
-              <Field label={t.studentId} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
-              <Field label={t.internPeriod} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
-              <Field label={t.bankName} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
-              <Field label={t.bankAccountNumber} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.name')} value={form.name} onChange={(v) => onChange({ ...form, name: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.phone')} value={form.phone} onChange={(v) => onChange({ ...form, phone: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.department')} value={form.department} onChange={(v) => onChange({ ...form, department: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.position')} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.student_id')} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.intern_period')} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.bank')} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
+              <Field label={tr('intern_profile.edit_modal.fields.bank_account_number')} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
             </div>
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">
-                {t.cancel}
+                {tr('intern_profile.edit_modal.actions.cancel')}
               </button>
               <button onClick={onSave} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20">
-                {t.save}
+                {tr('intern_profile.edit_modal.actions.save')}
               </button>
             </div>
           </div>

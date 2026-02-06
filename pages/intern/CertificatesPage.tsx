@@ -14,6 +14,7 @@ import {
  import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp, where } from 'firebase/firestore';
  import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { Language } from '@/types';
+import { useTranslation } from 'react-i18next';
 
  import { useAppContext } from '@/app/AppContext';
  import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -57,88 +58,29 @@ interface CertificatesPageProps {
   lang: Language;
 }
 
-const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
+const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
-
-  const t = {
-    EN: {
-      title: "Certificates",
-      subtitle: "Request and download your official internship completion documents.",
-      completionTitle: "Certificate of Completion",
-      completionDesc: "Official document certifying your successful completion of the internPlus program with high honors.",
-      letterTitle: "Internship Recommendation Letter",
-      letterDesc: "A formal letter from your supervisor detailing your contributions, skills, and professional growth.",
-      download: "Download Signed PDF",
-      hrReview: "Awaiting issuance",
-      request: "Request Document",
-      requesting: "Requesting...",
-      issued: "Issued",
-      fileReady: "File Ready",
-      loadError: "Failed to load certificate requests.",
-      requestError: "Failed to request certificate.",
-      verification: "Digital Seal & Verification",
-      verificationSub: "All issued certificates are cryptographically signed and sealed.",
-      seal: "Company Seal",
-      authentic: "Authentic internPlus Emboss",
-      authorized: "Authorized",
-      signatures: "HR & Mentor Signature",
-      validator: "Public QR Validator",
-      guide: "Offboarding Guide",
-      step1: "Ensure all tasks in Assignment are marked as completed.",
-      step2: "Submit your final University Evaluation forms.",
-      step3: "Requests usually take 3-5 business days.",
-      noteTitle: "Important Note",
-      noteDesc: "Physical certificates can be collected from HQ after digital issuance."
-    },
-    TH: {
-      title: "ใบรับรอง",
-      subtitle: "ขอและดาวน์โหลดเอกสารรับรองการฝึกงานอย่างเป็นทางการของคุณ",
-      completionTitle: "วุฒิบัตรการฝึกงาน",
-      completionDesc: "เอกสารอย่างเป็นทางการเพื่อรับรองการฝึกงานที่ internPlus ของคุณเสร็จสมบูรณ์พร้อมผลการประเมินระดับดีเยี่ยม",
-      letterTitle: "จดหมายรับรองการฝึกงาน",
-      letterDesc: "จดหมายรับรองอย่างเป็นทางการจากที่ปรึกษา ซึ่งระบุถึงผลงาน ทักษะ และการเติบโตทางวิชาชีพของคุณ",
-      download: "ดาวน์โหลดไฟล์ PDF",
-      hrReview: "รอการออกเอกสาร",
-      request: "ขอเอกสาร",
-      requesting: "กำลังส่งคำขอ...",
-      issued: "ออกเอกสารแล้ว",
-      fileReady: "ไฟล์พร้อมดาวน์โหลด",
-      loadError: "ไม่สามารถโหลดรายการคำขอใบรับรองได้",
-      requestError: "ไม่สามารถส่งคำขอใบรับรองได้",
-      verification: "ตราประทับดิจิทัลและการตรวจสอบ",
-      verificationSub: "ใบรับรองทั้งหมดได้รับการลงลายมือชื่อและประทับตราแบบเข้ารหัส",
-      seal: "ตราประทับบริษัท",
-      authentic: "ตราประทับนูน internPlus แท้",
-      authorized: "ได้รับอนุญาตแล้ว",
-      signatures: "ลายเซ็น HR และที่ปรึกษา",
-      validator: "ตรวจสอบผ่าน QR Code",
-      guide: "คู่มือการพ้นสภาพ",
-      step1: "ตรวจสอบว่างานทั้งหมดในส่วน Assignment เสร็จสมบูรณ์แล้ว",
-      step2: "ส่งเอกสารการประเมินผลจากมหาวิทยาลัยให้ครบถ้วน",
-      step3: "การดำเนินการปกติใช้เวลา 3-5 วันทำการ",
-      noteTitle: "หมายเหตุสำคัญ",
-      noteDesc: "สามารถรับใบรับรองฉบับจริงได้ที่สำนักงานใหญ่หลังจากออกฉบับดิจิทัลแล้ว"
-    }
-  }[lang];
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const BASE_CERTIFICATES: CertificateItem[] = useMemo(
     () => [
       {
         id: 'cert-completion',
         type: 'COMPLETION',
-        title: t.completionTitle,
-        description: t.completionDesc,
+        title: tr('intern_certificates.items.completion.title'),
+        description: tr('intern_certificates.items.completion.description'),
         status: 'requestable',
       },
       {
         id: 'cert-recommendation',
         type: 'RECOMMENDATION',
-        title: t.letterTitle,
-        description: t.letterDesc,
+        title: tr('intern_certificates.items.recommendation.title'),
+        description: tr('intern_certificates.items.recommendation.description'),
         status: 'requestable',
       },
     ],
-    [t.completionDesc, t.completionTitle, t.letterDesc, t.letterTitle],
+    [i18n.language],
   );
 
   const [certs, setCerts] = useState<CertificateItem[]>(BASE_CERTIFICATES);
@@ -176,10 +118,10 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setLoadError(`${t.loadError} ${e?.code ?? ''} ${e?.message ?? ''}`.trim());
+        setLoadError(`${tr('intern_certificates.errors.load_failed')} ${e?.code ?? ''} ${e?.message ?? ''}`.trim());
       },
     );
-  }, [user]);
+  }, [user, i18n.language]);
 
   const effectiveCerts = useMemo(() => {
     const byType = new Map<string, (CertificateRequestDoc & { id: string })>();
@@ -225,7 +167,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
 
     const existing = latestRequestByType.get(cert.type) ?? null;
     if (existing && existing.status === 'REQUESTED') {
-      setRequestError(lang === 'TH' ? 'คุณได้ส่งคำขอเอกสารนี้แล้ว กรุณารอการออกเอกสาร' : 'You already requested this document. Please wait for issuance.');
+      setRequestError(tr('intern_certificates.errors.already_requested'));
       return;
     }
 
@@ -245,7 +187,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
       } satisfies CertificateRequestDoc);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setRequestError(`${t.requestError} ${e?.code ?? ''} ${e?.message ?? ''}`.trim());
+      setRequestError(`${tr('intern_certificates.errors.request_failed')} ${e?.code ?? ''} ${e?.message ?? ''}`.trim());
     } finally {
       setIsRequesting(null);
     }
@@ -284,8 +226,8 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
         ) : null}
 
         <div className="mb-12">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-sm mt-1">{t.subtitle}</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_certificates.title')}</h1>
+          <p className="text-slate-500 text-sm mt-1">{tr('intern_certificates.subtitle')}</p>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-24 overflow-y-auto scrollbar-hide">
           <div className="lg:col-span-8 space-y-8">
@@ -306,7 +248,7 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
                             onClick={() => void handleDownload(cert)}
                             className="w-full bg-blue-600 text-white py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm shadow-xl hover:bg-blue-700 active:scale-95"
                           >
-                            {t.download}
+                            {tr('intern_certificates.actions.download_signed_pdf')}
                           </button>
                         ) : null}
 
@@ -316,18 +258,18 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
                             onClick={() => handleOpenLink(cert)}
                             className="w-full bg-white border border-slate-200 text-slate-700 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm hover:bg-slate-50 active:scale-95"
                           >
-                            {lang === 'TH' ? 'เปิดลิ้งค์' : 'Open Link'}
+                            {tr('intern_certificates.actions.open_link')}
                           </button>
                         ) : null}
 
                         {!((cert.issuedPdfPath ?? cert.storagePath) || cert.attachmentLink) ? (
                           <div className="w-full bg-slate-50 text-slate-400 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs border border-slate-100 italic">
-                            {lang === 'TH' ? 'ยังไม่มีไฟล์หรือลิ้งค์' : 'No file or link yet'}
+                            {tr('intern_certificates.empty.no_file_or_link_yet')}
                           </div>
                         ) : null}
                       </div>
                     ) : cert.status === 'pending' ? (
-                      <div className="w-full bg-slate-50 text-slate-400 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs border border-slate-100 italic"><Clock size={16} className="animate-spin" /> {t.hrReview}</div>
+                      <div className="w-full bg-slate-50 text-slate-400 py-3.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs border border-slate-100 italic"><Clock size={16} className="animate-spin" /> {tr('intern_certificates.status.awaiting_issuance')}</div>
                     ) : (
                       <button
                         type="button"
@@ -340,11 +282,11 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
                       >
                         {isRequesting === cert.id ? (
                           <>
-                            <Clock size={16} className="animate-spin" /> {t.requesting}
+                            <Clock size={16} className="animate-spin" /> {tr('intern_certificates.actions.requesting')}
                           </>
                         ) : (
                           <>
-                            {t.request} <ArrowRight size={16} />
+                            {tr('intern_certificates.actions.request_document')} <ArrowRight size={16} />
                           </>
                         )}
                       </button>
@@ -356,26 +298,26 @@ const CertificatesPage: React.FC<CertificatesPageProps> = ({ lang }) => {
             <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
               <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><ShieldCheck size={24} /></div>
-                <div><h3 className="text-lg font-bold text-slate-900">{t.verification}</h3><p className="text-xs text-slate-500">{t.verificationSub}</p></div>
+                <div><h3 className="text-lg font-bold text-slate-900">{tr('intern_certificates.verification.title')}</h3><p className="text-xs text-slate-500">{tr('intern_certificates.verification.subtitle')}</p></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><Stamp className="mx-auto mb-2 text-blue-400" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.seal}</p><p className="text-[11px] font-bold text-slate-800">{t.authentic}</p></div>
-                <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><CheckCircle2 className="mx-auto mb-2 text-emerald-500" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{t.authorized}</p><p className="text-[11px] font-bold text-slate-800">{t.signatures}</p></div>
+                <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><Stamp className="mx-auto mb-2 text-blue-400" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{tr('intern_certificates.verification.company_seal')}</p><p className="text-[11px] font-bold text-slate-800">{tr('intern_certificates.verification.authentic_emboss')}</p></div>
+                <div className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 text-center"><CheckCircle2 className="mx-auto mb-2 text-emerald-500" size={24} /><p className="text-[10px] font-black text-slate-400 uppercase mb-1">{tr('intern_certificates.verification.authorized')}</p><p className="text-[11px] font-bold text-slate-800">{tr('intern_certificates.verification.signatures')}</p></div>
               </div>
             </div>
           </div>
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden h-fit">
-              <h4 className="text-xl font-bold mb-8 relative z-10">{t.guide}</h4>
+              <h4 className="text-xl font-bold mb-8 relative z-10">{tr('intern_certificates.guide.title')}</h4>
               <div className="space-y-6 relative z-10">
-                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">1</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{t.step1}</p></div>
-                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">2</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{t.step2}</p></div>
-                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">3</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{t.step3}</p></div>
+                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">1</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{tr('intern_certificates.guide.step_1')}</p></div>
+                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">2</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{tr('intern_certificates.guide.step_2')}</p></div>
+                <div className="flex items-start gap-4"><div className="w-8 h-8 bg-white/10 rounded-xl flex items-center justify-center text-blue-400">3</div><p className="text-xs text-slate-300 leading-relaxed font-medium">{tr('intern_certificates.guide.step_3')}</p></div>
               </div>
             </div>
             <div className="bg-amber-50 rounded-[2rem] p-8 border border-amber-100">
-              <div className="flex items-center gap-3 mb-4"><Info size={20} className="text-amber-500" /><h4 className="font-bold text-amber-900 text-sm">{t.noteTitle}</h4></div>
-              <p className="text-xs text-amber-700/80 leading-relaxed font-medium">{t.noteDesc}</p>
+              <div className="flex items-center gap-3 mb-4"><Info size={20} className="text-amber-500" /><h4 className="font-bold text-amber-900 text-sm">{tr('intern_certificates.note.title')}</h4></div>
+              <p className="text-xs text-amber-700/80 leading-relaxed font-medium">{tr('intern_certificates.note.description')}</p>
             </div>
           </div>
         </div>

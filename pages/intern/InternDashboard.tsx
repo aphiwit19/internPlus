@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, Language, PerformanceMetrics } from '@/types';
 import { PageId } from '@/pageTypes';
+import { useTranslation } from 'react-i18next';
 
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { firestoreDb } from '@/firebase';
@@ -36,7 +37,8 @@ interface InternDashboardProps {
   lang: Language;
 }
 
-const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lang }) => {
+const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lang: _lang }) => {
+  const { t } = useTranslation();
   const [assignedProjects, setAssignedProjects] = useState<Array<{ id: string; title?: string; description?: string; tasks?: SubTask[] }>>([]);
   const [personalProjects, setPersonalProjects] = useState<Array<{ id: string; title?: string; description?: string; tasks?: SubTask[] }>>([]);
   const [attendanceStats, setAttendanceStats] = useState<{ totalDays: number; presentDays: number }>({ totalDays: 0, presentDays: 0 });
@@ -352,7 +354,6 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
     const start = parsed.start;
     const months = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + (now.getUTCMonth() - start.getUTCMonth()) + 1;
     const safe = Math.max(1, months);
-    if (lang === 'TH') return `เดือนที่ ${safe}`;
     const suffix = (n: number) => {
       const mod100 = n % 100;
       if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
@@ -362,8 +363,8 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       if (mod10 === 3) return `${n}rd`;
       return `${n}th`;
     };
-    return `${suffix(safe)} month`;
-  }, [lang, user.internPeriod]);
+    return String(t('intern_dashboard.month_label', { ordinal: suffix(safe), month: safe } as any));
+  }, [t, user.internPeriod]);
 
   const daysLeftValue = useMemo(() => {
     const now = new Date();
@@ -380,9 +381,8 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
     const d = daysBetweenCeil(new Date(), new Date(nextTask.plannedEndMs));
     if (!Number.isFinite(d)) return '-';
     const safe = Math.max(0, d);
-    if (lang === 'TH') return `ครบกำหนดใน ${safe} วัน`;
-    return `Due in ${safe} days`;
-  }, [lang, nextTask?.plannedEndMs]);
+    return t('intern_dashboard.due_in_days', { days: safe });
+  }, [t, nextTask?.plannedEndMs]);
 
   const effectiveSupervisorPerformance = useMemo(() => {
     return milestoneSupervisorPerformance ?? DEFAULT_PERFORMANCE;
@@ -423,90 +423,21 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
   const summaryMessage = useMemo(() => {
     const c = typeof completionPercent === 'number' ? completionPercent : null;
     const a = typeof attendancePercent === 'number' ? attendancePercent : null;
-    if (lang === 'TH') {
-      if (c !== null && a !== null) {
-        if (c >= 80 && a >= 90) return 'ผลงานและการเข้างานดีมาก รักษามาตรฐานนี้ต่อเนื่อง';
-        if (c >= 60 && a >= 80) return 'กำลังทำได้ดี แนะนำให้เร่งปิดงานให้มากขึ้นเพื่อเพิ่มความคืบหน้า';
-        return 'แนะนำให้โฟกัสการเข้างานและปิดงานตามแผนเพื่อเพิ่มผลลัพธ์';
-      }
-      if (c !== null) return 'แนะนำให้เร่งปิดงานตามแผนเพื่อเพิ่มความคืบหน้า';
-      if (a !== null) return 'รักษาการเข้างานให้สม่ำเสมอเพื่อสะสมผลงาน';
-      return 'เริ่มต้นอัปเดตงานใน Assignment เพื่อให้ระบบสรุปผลได้';
-    }
     if (c !== null && a !== null) {
-      if (c >= 80 && a >= 90) return 'Strong progress and consistency. Keep the momentum.';
-      if (c >= 60 && a >= 80) return 'Good trajectory. Focus on closing tasks to boost completion.';
-      return 'Focus on attendance consistency and meeting task deadlines.';
+      if (c >= 80 && a >= 90) return t('intern_dashboard.summary.both_high');
+      if (c >= 60 && a >= 80) return t('intern_dashboard.summary.both_mid');
+      return t('intern_dashboard.summary.both_low');
     }
-    if (c !== null) return 'Focus on closing tasks to improve completion.';
-    if (a !== null) return 'Stay consistent with attendance to build momentum.';
-    return 'Start updating tasks in Assignment to see your dashboard insights.';
-  }, [attendancePercent, completionPercent, lang]);
-
-  const t = {
-    EN: {
-      welcome: "Welcome back",
-      personal: "Personal Dashboard",
-      period: "Internship Period",
-      currentMonth: "4th month",
-      as: "as a",
-      completion: "Completion",
-      rating: "Rating",
-      daysLeft: "Days Left",
-      attendance: "Attendance",
-      analysis: "Performance Analysis",
-      updated: "Updated Weekly",
-      technical: "Technical Execution",
-      collaboration: "Team Collaboration",
-      punctuality: "Deadline Punctuality",
-      solving: "Problem Solving",
-      assignment: "Current Assignment",
-      due: "Due in 5 days",
-      planner: "Open Planner",
-      summary: "Executive Summary",
-      avgGrade: "AVG GRADE",
-      tasksVerified: "Tasks Verified",
-      achievements: "Achievements",
-      ontime: "On-time Ratio",
-      mentor: "Your Primary Mentor",
-      comm: "Mentor Communication",
-      policy: "Request Policy Sync",
-    },
-    TH: {
-      welcome: "ยินดีต้อนรับกลับมา",
-      personal: "แดชบอร์ดส่วนตัว",
-      period: "ระยะเวลาการฝึกงาน",
-      currentMonth: "เดือนที่ 4",
-      as: "ในตำแหน่ง",
-      completion: "ความคืบหน้า",
-      rating: "คะแนนเฉลี่ย",
-      daysLeft: "วันที่เหลือ",
-      attendance: "การเข้างาน",
-      analysis: "การวิเคราะห์ผลงาน",
-      updated: "อัปเดตรายสัปดาห์",
-      technical: "ทักษะด้านเทคนิค",
-      collaboration: "การทำงานร่วมกัน",
-      punctuality: "ความตรงต่อเวลา",
-      solving: "การแก้ปัญหา",
-      assignment: "งานที่ได้รับมอบหมาย",
-      due: "ครบกำหนดใน 5 วัน",
-      planner: "เปิดเครื่องมือวางแผน",
-      summary: "สรุปผลงาน",
-      avgGrade: "เกรดเฉลี่ย",
-      tasksVerified: "งานที่ตรวจสอบแล้ว",
-      achievements: "ความสำเร็จ",
-      ontime: "อัตราตรงเวลา",
-      mentor: "ที่ปรึกษาหลักของคุณ",
-      comm: "การติดต่อที่ปรึกษา",
-      policy: "ขอซิงค์นโยบาย",
-    }
-  }[lang];
+    if (c !== null) return t('intern_dashboard.summary.completion_only');
+    if (a !== null) return t('intern_dashboard.summary.attendance_only');
+    return t('intern_dashboard.summary.none');
+  }, [attendancePercent, completionPercent, t]);
 
   const stats = [
-    { label: t.completion, value: completionPercent === null ? '-' : `${completionPercent}%`, icon: <Target className="text-blue-600" />, color: 'blue' },
-    { label: t.rating, value: overallRating === null ? '-' : overallRating.toFixed(2), icon: <Star className="text-amber-500" />, color: 'amber' },
-    { label: t.daysLeft, value: daysLeftValue, icon: <Calendar className="text-indigo-600" />, color: 'indigo' },
-    { label: t.attendance, value: attendancePercent === null ? '-' : `${attendancePercent}%`, icon: <Clock className="text-emerald-600" />, color: 'emerald' },
+    { label: t('intern_dashboard.completion'), value: completionPercent === null ? '-' : `${completionPercent}%`, icon: <Target className="text-blue-600" />, color: 'blue' },
+    { label: t('intern_dashboard.rating'), value: overallRating === null ? '-' : overallRating.toFixed(2), icon: <Star className="text-amber-500" />, color: 'amber' },
+    { label: t('intern_dashboard.days_left'), value: daysLeftValue, icon: <Calendar className="text-indigo-600" />, color: 'indigo' },
+    { label: t('intern_dashboard.attendance'), value: attendancePercent === null ? '-' : `${attendancePercent}%`, icon: <Clock className="text-emerald-600" />, color: 'emerald' },
   ];
 
   return (
@@ -515,20 +446,20 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mb-2">
-              internPlus <ArrowRight size={10} strokeWidth={3} /> {t.personal}
+              internPlus <ArrowRight size={10} strokeWidth={3} /> {t('intern_dashboard.personal_dashboard')}
             </div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">
-              {t.welcome}, <span className="text-blue-600">{user.name.split(' ')[0]}!</span>
+              {t('intern_dashboard.welcome_back')}, <span className="text-blue-600">{user.name.split(' ')[0]}!</span>
             </h1>
             <p className="text-slate-500 text-sm font-medium pt-2">
-              {lang === 'EN' ? `You are currently in your ` : `คุณอยู่ในช่วง `}
-              <span className="font-bold text-slate-900">{internMonthLabel ?? t.currentMonth}</span> 
-              {lang === 'EN' ? ` as a ${user.position}.` : ` ในตำแหน่ง ${user.position}`}
+              {t('intern_dashboard.you_are_currently_in')}{' '}
+              <span className="font-bold text-slate-900">{String(internMonthLabel ?? t('intern_dashboard.current_month_fallback'))}</span>{' '}
+              {t('intern_dashboard.as_a_role_position', { position: user.position ?? '' })}
             </p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
             <div className="text-right">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t.period}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('intern_dashboard.internship_period')}</p>
               <p className="text-xs font-black text-slate-900">{user.internPeriod}</p>
             </div>
             <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
@@ -556,7 +487,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
             <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm h-full flex flex-col">
               <div className="flex items-center justify-between mb-12">
                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                  <BarChart3 className="text-blue-600" size={24} /> {t.analysis}
+                  <BarChart3 className="text-blue-600" size={24} /> {t('intern_dashboard.performance_analysis')}
                 </h3>
                 <div className="flex items-center gap-3">
                   {(mentorProfile?.name || user.supervisorName) && (
@@ -567,32 +498,36 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                         alt=""
                       />
                       <div className="text-[10px] font-black uppercase tracking-widest">
-                        {lang === 'TH' ? 'Supervisor' : 'Supervisor'}
+                        {t('roles.supervisor')}
                       </div>
                       <div className="text-[10px] font-bold text-slate-500 truncate max-w-[140px]">
                         {mentorProfile?.name ?? user.supervisorName}
                       </div>
                     </div>
                   )}
-                  <span className="px-4 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-blue-100">{t.updated}</span>
+                  <span className="px-4 py-1.5 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-blue-100">{t('intern_dashboard.updated_weekly')}</span>
                 </div>
               </div>
 
               <div className="-mt-6 mb-10">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                  {lang === 'TH' ? 'แบบประเมินล่าสุดจาก Supervisor' : 'Latest Supervisor Evaluation'}
+                  {t('intern_dashboard.latest_supervisor_evaluation')}
                 </div>
                 <div className="mt-2">
                   {milestoneSupervisorMeta ? (
                     (() => {
                       const track = String(milestoneSupervisorMeta.id).startsWith('month-') ? 'MONTH' : 'WEEK';
+                      const trackLabel =
+                        track === 'MONTH'
+                          ? t('intern_dashboard.supervisor_eval.track_month')
+                          : t('intern_dashboard.supervisor_eval.track_week');
                       const status = String(milestoneSupervisorMeta.status ?? '').toLowerCase();
                       const statusLabel =
                         status === 'reviewed'
-                          ? 'REVIEWED'
+                          ? t('intern_dashboard.supervisor_eval.status_reviewed')
                           : status === 'submitted'
-                            ? 'SUBMITTED'
-                            : 'UNKNOWN';
+                            ? t('intern_dashboard.supervisor_eval.status_submitted')
+                            : t('intern_dashboard.supervisor_eval.status_unknown');
 
                       const statusClass =
                         status === 'reviewed'
@@ -607,36 +542,36 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                             {milestoneSupervisorMeta.id}
                           </span>
                           <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-700 uppercase tracking-widest">
-                            {track}
+                            {trackLabel}
                           </span>
                           <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-black uppercase tracking-widest ${statusClass}`}>
                             {statusLabel}
                           </span>
                           {milestoneSupervisorMeta.submissionDate && (
                             <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white text-[10px] font-bold text-slate-600">
-                              {lang === 'TH' ? 'ส่ง' : 'Submitted'} {milestoneSupervisorMeta.submissionDate}
+                              {t('intern_dashboard.submitted')} {milestoneSupervisorMeta.submissionDate}
                             </span>
                           )}
                           {milestoneSupervisorMeta.reviewedDate && (
                             <span className="px-2.5 py-1 rounded-xl border border-slate-200 bg-white text-[10px] font-bold text-slate-600">
-                              {lang === 'TH' ? 'ประเมิน' : 'Reviewed'} {milestoneSupervisorMeta.reviewedDate}
+                              {t('intern_dashboard.reviewed')} {milestoneSupervisorMeta.reviewedDate}
                             </span>
                           )}
                         </div>
                       );
                     })()
                   ) : (
-                    <div className="mt-2 text-sm font-black text-slate-300">{lang === 'TH' ? 'ยังไม่มีแบบประเมินจาก Supervisor' : 'No supervisor evaluations yet'}</div>
+                    <div className="mt-2 text-sm font-black text-slate-300">{t('intern_dashboard.no_supervisor_evaluations_yet')}</div>
                   )}
                 </div>
               </div>
 
               <div className="flex-1 flex items-center">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 w-full">
-                  <PerformanceBar label={t.technical} score={performance.technical} color="blue" />
-                  <PerformanceBar label={t.collaboration} score={performance.communication} color="indigo" />
-                  <PerformanceBar label={t.punctuality} score={performance.punctuality} color="emerald" />
-                  <PerformanceBar label={t.solving} score={performance.initiative} color="rose" />
+                  <PerformanceBar label={t('intern_dashboard.technical_execution')} score={performance.technical} color="blue" />
+                  <PerformanceBar label={t('intern_dashboard.team_collaboration')} score={performance.communication} color="indigo" />
+                  <PerformanceBar label={t('intern_dashboard.deadline_punctuality')} score={performance.punctuality} color="emerald" />
+                  <PerformanceBar label={t('intern_dashboard.problem_solving')} score={performance.initiative} color="rose" />
                 </div>
               </div>
             </div>
@@ -645,18 +580,18 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
           <div className="lg:col-span-4">
             <div className="bg-[#3B49DF] rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col h-full">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-              <h4 className="text-xl font-black mb-10 tracking-tight relative z-10">{t.summary}</h4>
+              <h4 className="text-xl font-black mb-10 tracking-tight relative z-10">{t('intern_dashboard.executive_summary')}</h4>
               <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
                 <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
                   <span className="text-6xl font-black tracking-tighter leading-none">{effectiveSupervisorPerformance.overallRating}</span>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">
-                    {lang === 'TH' ? 'คะแนนเฉลี่ย' : 'AVG SCORE'}
+                    {t('intern_dashboard.avg_score')}
                   </span>
                 </div>
                 <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
                   {(effectiveSupervisorSummary || selfSummary)
                     ? `\"${effectiveSupervisorSummary || selfSummary}\"`
-                    : `\"${lang === 'TH' ? 'ยังไม่มีข้อความสรุปจาก Supervisor' : 'No supervisor summary yet'}\"`}
+                    : `\"${t('intern_dashboard.no_supervisor_summary_yet')}\"`}
                 </p>
               </div>
 
@@ -669,7 +604,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                       alt=""
                     />
                     <div className="min-w-0">
-                      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-100/70">{lang === 'TH' ? 'Supervisor' : 'Supervisor'}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-100/70">{t('roles.supervisor')}</div>
                       <div className="text-sm font-black text-white truncate">{mentorProfile?.name ?? user.supervisorName}</div>
                       <div className="text-[11px] font-bold text-indigo-100/80 truncate">{mentorProfile?.position ?? ''}</div>
                     </div>
@@ -684,7 +619,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
               <div className="absolute top-0 right-0 w-48 h-48 bg-blue-50 rounded-full blur-3xl -mr-24 -mt-24 opacity-0 group-hover:opacity-60 transition-opacity"></div>
               <div className="flex items-center justify-between mb-8 relative z-10">
                 <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                  <Briefcase className="text-indigo-600" size={24} /> {t.assignment}
+                  <Briefcase className="text-indigo-600" size={24} /> {t('intern_dashboard.current_assignment')}
                 </h3>
                 <span className="text-xs font-bold text-slate-400">{dueLabel}</span>
               </div>
@@ -703,7 +638,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                     onClick={() => onNavigate('assignment')}
                     className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
                   >
-                    {t.planner} <ArrowRight size={14} />
+                    {t('intern_dashboard.open_planner')} <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
@@ -712,7 +647,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
 
           <div className="lg:col-span-4 space-y-8">
             <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6">{t.mentor}</h4>
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6">{t('intern_dashboard.your_primary_mentor')}</h4>
               <div className="flex items-center gap-4 mb-8">
                 <img src={mentorProfile?.avatar ?? user.avatar} className="w-14 h-14 rounded-2xl object-cover ring-4 ring-slate-50 shadow-sm" alt="" />
                 <div>
@@ -722,7 +657,7 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
               </div>
               <div className="space-y-4">
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 group hover:bg-slate-100 transition-all">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{t.comm}</p>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{t('intern_dashboard.mentor_communication')}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-[#00B900] rounded-lg flex items-center justify-center text-white">
@@ -736,14 +671,14 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
                         if (id) void navigator.clipboard.writeText(id);
                       }}
                       className="p-2 text-slate-300 hover:text-blue-600 transition-colors"
-                      title="Copy LINE ID"
+                      title={t('intern_dashboard.copy_line_id')}
                     >
                       <Copy size={16} />
                     </button>
                   </div>
                 </div>
                 <button className="w-full py-4 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] font-black uppercase tracking-widest text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2">
-                  <ShieldCheck size={16} /> {t.policy}
+                  <ShieldCheck size={16} /> {t('intern_dashboard.request_policy_sync')}
                 </button>
               </div>
             </div>

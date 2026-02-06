@@ -29,6 +29,7 @@ import {
 } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
+import { useTranslation } from 'react-i18next';
 
 type WorkMode = 'WFH' | 'WFO';
 
@@ -46,8 +47,10 @@ interface AttendancePageProps {
   lang: Language;
 }
 
-const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
+const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [isClockedIn, setIsClockedIn] = useState(false);
@@ -158,72 +161,13 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
         }
       },
       (err) => {
-        setActionError((err as { message?: string })?.message ?? 'Failed to load attendance.');
+        setActionError((err as { message?: string })?.message ?? tr('intern_attendance.errors.load_failed'));
         setHistory([]);
       },
     );
 
     return () => unsub();
   }, [user]);
-
-  const t = {
-    EN: {
-      title: "Time Attendance",
-      subtitle: "Track your working hours and view history.",
-      clockInBtn: "Clock In Now",
-      clockOutBtn: "Clock Out Now",
-      filter: "Time Report Filter",
-      dateRange: "Date Range",
-      statusFilter: "Status Filter",
-      modeFilter: "Work Mode",
-      allStatus: "All Status",
-      presentStatus: "PRESENT",
-      lateStatus: "LATE",
-      allMode: "All Mode",
-      apply: "Apply Filter",
-      session: "Active Session",
-      office: "At Office",
-      home: "Working Home",
-      startedAt: "Started at",
-      history: "Attendance History",
-      last30: "Last 30 Days",
-      dateCol: "Date",
-      inCol: "Clock In",
-      outCol: "Clock Out",
-      modeCol: "Mode",
-      statusCol: "Status",
-      present: "PRESENT",
-      late: "LATE"
-    },
-    TH: {
-      title: "ลงเวลาเข้าออก",
-      subtitle: "ติดตามเวลาทำงานและดูประวัติย้อนหลัง",
-      clockInBtn: "ลงเวลาเข้างาน",
-      clockOutBtn: "ลงเวลาออกงาน",
-      filter: "ตัวกรองรายงานเวลา",
-      dateRange: "ช่วงวันที่",
-      statusFilter: "กรองตามสถานะ",
-      modeFilter: "รูปแบบการทำงาน",
-      allStatus: "สถานะทั้งหมด",
-      presentStatus: "ปกติ",
-      lateStatus: "สาย",
-      allMode: "ทุกโหมด",
-      apply: "ใช้ตัวกรอง",
-      session: "ช่วงเวลาทำงานปัจจุบัน",
-      office: "ทำงานที่ออฟฟิศ",
-      home: "ทำงานจากบ้าน",
-      startedAt: "เริ่มเมื่อเวลา",
-      history: "ประวัติการลงเวลา",
-      last30: "30 วันที่ผ่านมา",
-      dateCol: "วันที่",
-      inCol: "เวลาเข้า",
-      outCol: "เวลาออก",
-      modeCol: "รูปแบบ",
-      statusCol: "สถานะ",
-      present: "ปกติ",
-      late: "สาย"
-    }
-  }[lang];
 
   const handleClockToggle = async () => {
     if (!user) return;
@@ -237,7 +181,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
         const existing = await getDoc(ref);
         const data = existing.exists() ? (existing.data() as any) : null;
         if (data?.clockInAt && !data?.clockOutAt) {
-          setActionError(lang === 'TH' ? 'คุณได้ลงเวลาเข้างานแล้ว' : 'You are already clocked in.');
+          setActionError(tr('intern_attendance.errors.already_clocked_in'));
           return;
         }
 
@@ -258,22 +202,22 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
       } else {
         const existing = await getDoc(ref);
         if (!existing.exists()) {
-          setActionError(lang === 'TH' ? 'ไม่พบรายการลงเวลาในวันนี้' : 'No attendance record found for today.');
+          setActionError(tr('intern_attendance.errors.no_record_today'));
           return;
         }
         const data = existing.data() as any;
         if (!data?.clockInAt) {
-          setActionError(lang === 'TH' ? 'ไม่พบเวลาเข้างาน' : 'No clock-in time found.');
+          setActionError(tr('intern_attendance.errors.no_clock_in_time'));
           return;
         }
         if (data?.clockOutAt) {
-          setActionError(lang === 'TH' ? 'คุณได้ลงเวลาออกงานแล้ว' : 'You are already clocked out.');
+          setActionError(tr('intern_attendance.errors.already_clocked_out'));
           return;
         }
         await updateDoc(ref, { clockOutAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
     } catch (e) {
-      setActionError((e as { message?: string })?.message ?? (lang === 'TH' ? 'เกิดข้อผิดพลาด' : 'Something went wrong.'));
+      setActionError((e as { message?: string })?.message ?? tr('intern_attendance.errors.generic'));
     }
   };
 
@@ -297,8 +241,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
       <div className="max-w-7xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 md:mb-12">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-            <p className="text-slate-500 text-xs md:text-sm mt-1">{t.subtitle}</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_attendance.title')}</h1>
+            <p className="text-slate-500 text-xs md:text-sm mt-1">{tr('intern_attendance.subtitle')}</p>
           </div>
           
           <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -309,7 +253,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
               </div>
             )}
             <button onClick={handleClockToggle} className={`flex items-center gap-3 px-8 py-3 rounded-2xl font-bold text-sm transition-all shadow-xl ${isClockedIn ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>
-              {isClockedIn ? <><Square size={18} fill="currentColor" /> {t.clockOutBtn}</> : <><Play size={18} fill="currentColor" /> {t.clockInBtn}</>}
+              {isClockedIn ? <><Square size={18} fill="currentColor" /> {tr('intern_attendance.actions.clock_out')}</> : <><Play size={18} fill="currentColor" /> {tr('intern_attendance.actions.clock_in')}</>}
             </button>
           </div>
         </div>
@@ -323,10 +267,10 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
           <div className="lg:col-span-4 xl:col-span-3 space-y-6">
             <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-              <h3 className="text-lg font-bold text-slate-900 mb-8">{t.filter}</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-8">{tr('intern_attendance.filters.title')}</h3>
               <div className="space-y-6">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t.dateRange}</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('intern_attendance.filters.date_range')}</label>
                   <div className="flex flex-col gap-3">
                     <input
                       type="date"
@@ -337,30 +281,30 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t.statusFilter}</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('intern_attendance.filters.status_filter')}</label>
                   <div className="relative">
                     <select
                       value={pendingFilterStatus}
                       onChange={(e) => setPendingFilterStatus(e.target.value as 'ALL' | 'PRESENT' | 'LATE')}
                       className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 appearance-none outline-none cursor-pointer"
                     >
-                      <option value="ALL">{t.allStatus}</option>
-                      <option value="PRESENT">{t.presentStatus}</option>
-                      <option value="LATE">{t.lateStatus}</option>
+                      <option value="ALL">{tr('intern_attendance.filters.all_status')}</option>
+                      <option value="PRESENT">{tr('intern_attendance.status.present')}</option>
+                      <option value="LATE">{tr('intern_attendance.status.late')}</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{t.modeFilter}</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">{tr('intern_attendance.filters.work_mode')}</label>
                   <div className="relative">
                     <select
                       value={pendingFilterWorkMode}
                       onChange={(e) => setPendingFilterWorkMode(e.target.value as 'ALL' | WorkMode)}
                       className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 appearance-none outline-none cursor-pointer"
                     >
-                      <option value="ALL">{t.allMode}</option>
+                      <option value="ALL">{tr('intern_attendance.filters.all_modes')}</option>
                       <option value="WFO">WFO</option>
                       <option value="WFH">WFH</option>
                     </select>
@@ -376,7 +320,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                   }}
                   className="w-full flex items-center justify-center gap-2 bg-blue-50 text-blue-600 py-3.5 rounded-2xl text-xs font-bold border border-blue-100/50"
                 >
-                  <Filter size={16} /> {t.apply}
+                  <Filter size={16} /> {tr('intern_attendance.filters.apply')}
                 </button>
               </div>
             </div>
@@ -387,14 +331,14 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center"><Clock size={20} /></div>
                     <div>
-                      <h4 className="text-xs font-bold uppercase opacity-70">{t.session}</h4>
-                      <p className="text-sm font-black">{activeWorkMode === 'WFO' ? t.office : t.home}</p>
+                      <h4 className="text-xs font-bold uppercase opacity-70">{tr('intern_attendance.session.title')}</h4>
+                      <p className="text-sm font-black">{activeWorkMode === 'WFO' ? tr('intern_attendance.session.at_office') : tr('intern_attendance.session.working_home')}</p>
                     </div>
                   </div>
                 </div>
                 <div className="text-4xl font-black mb-4">{currentTime.toLocaleTimeString()}</div>
                 <div className="bg-white/10 p-4 rounded-2xl flex justify-between">
-                  <div><p className="text-[9px] uppercase font-bold opacity-60">{t.startedAt}</p><p className="text-sm font-bold">{clockInTime}</p></div>
+                  <div><p className="text-[9px] uppercase font-bold opacity-60">{tr('intern_attendance.session.started_at')}</p><p className="text-sm font-bold">{clockInTime}</p></div>
                 </div>
               </div>
             )}
@@ -402,18 +346,18 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
 
           <div className="lg:col-span-8 xl:col-span-9 bg-white rounded-[2.5rem] p-6 md:p-10 shadow-sm border border-slate-100 flex flex-col">
             <div className="flex items-center justify-between mb-10">
-              <h3 className="text-xl font-bold text-slate-900">{t.history}</h3>
-              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.last30}</div>
+              <h3 className="text-xl font-bold text-slate-900">{tr('intern_attendance.history.title')}</h3>
+              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">{tr('intern_attendance.history.last_30_days')}</div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="text-left">
-                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase pl-4">{t.dateCol}</th>
-                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{t.inCol}</th>
-                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{t.outCol}</th>
-                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{t.modeCol}</th>
-                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{t.statusCol}</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase pl-4">{tr('intern_attendance.table.date')}</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{tr('intern_attendance.table.clock_in')}</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{tr('intern_attendance.table.clock_out')}</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{tr('intern_attendance.table.mode')}</th>
+                    <th className="pb-6 text-[10px] font-bold text-slate-400 uppercase">{tr('intern_attendance.table.status')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -427,7 +371,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                       </td>
                       <td className="py-6">
                         <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${record.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                          {record.status === 'PRESENT' ? t.present : t.late}
+                          {record.status === 'PRESENT' ? tr('intern_attendance.status.present') : tr('intern_attendance.status.late')}
                         </span>
                       </td>
                     </tr>
@@ -443,7 +387,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage <= 1}
                   className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                  aria-label="Previous page"
+                  aria-label={tr('intern_attendance.pagination.previous_page')}
                 >
                   {'<'}
                 </button>
@@ -472,7 +416,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang }) => {
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages}
                   className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
-                  aria-label="Next page"
+                  aria-label={tr('intern_attendance.pagination.next_page')}
                 >
                   {'>'}
                 </button>

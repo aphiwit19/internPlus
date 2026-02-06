@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import LoginPage from '@/pages/shared/LoginPage';
+import { useTranslation } from 'react-i18next';
 
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -14,6 +15,7 @@ export default function LoginRoute() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { from?: string } };
   const { user, isAuthLoading, activeRole } = useAppContext();
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -39,18 +41,18 @@ export default function LoginRoute() {
       if (err instanceof FirebaseError) {
         if (err.code === 'auth/invalid-credential') {
           setErrorMessage(
-            'Invalid email or password. If you were invited, please use the password reset email to set your password first.',
+            t('auth.invalid_email_or_password'),
           );
         } else if (err.code === 'auth/user-disabled') {
-          setErrorMessage('This account has been disabled.');
+          setErrorMessage(t('auth.account_disabled'));
         } else if (err.code === 'auth/too-many-requests') {
-          setErrorMessage('Too many attempts. Please try again later.');
+          setErrorMessage(t('auth.too_many_attempts'));
         } else {
-          setErrorMessage(err.message || 'Failed to sign in.');
+          setErrorMessage(err.message || t('auth.failed_to_sign_in'));
         }
         return;
       }
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to sign in.');
+      setErrorMessage(err instanceof Error ? err.message : t('auth.failed_to_sign_in'));
     } finally {
       setIsLoading(false);
     }

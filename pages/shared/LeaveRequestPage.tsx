@@ -7,8 +7,8 @@ interface LeaveRequestPageProps {
   role: UserRole;
 }
 
-const LeaveRequestPage: React.FC<LeaveRequestPageProps> = ({ lang, role }) => {
-  return <LeaveRequestCore lang={lang} role={role} />;
+const LeaveRequestPage: React.FC<LeaveRequestPageProps> = ({ lang: _lang, role }) => {
+  return <LeaveRequestCore lang={_lang} role={role} />;
 };
 
 export default LeaveRequestPage;

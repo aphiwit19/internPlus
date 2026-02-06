@@ -1,38 +1,28 @@
 import React from 'react';
 import { Mail, Briefcase, Phone, MessageSquareMore, Copy } from 'lucide-react';
 import { Supervisor, Language } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 interface SupervisorCardProps {
   supervisor: Supervisor;
   lang: Language;
 }
 
-const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang }) => {
+const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang: _lang }) => {
+  const { t } = useTranslation();
+
   const handleCopyLine = () => {
     if (supervisor.lineId) {
       navigator.clipboard.writeText(supervisor.lineId);
-      alert(lang === 'EN' ? 'Line ID copied to clipboard!' : 'คัดลอก Line ID ลงในคลิปบอร์ดแล้ว!');
+      alert(t('supervisor_card.line_id_copied'));
     }
   };
-
-  const t = {
-    EN: {
-      title: 'Supervisor',
-      support: 'ASSIGNED SUPPORT',
-      btn: 'Send Message'
-    },
-    TH: {
-      title: 'ที่ปรึกษา',
-      support: 'ผู้ดูแลที่ได้รับมอบหมาย',
-      btn: 'ส่งข้อความ'
-    }
-  }[lang];
 
   return (
     <div className="bg-white rounded-[1.5rem] p-6 shadow-sm border border-slate-100 h-fit flex flex-col">
       <div className="mb-6">
-        <h3 className="text-sm font-black text-[#0F172A] leading-none uppercase tracking-tight">{t.title}</h3>
-        <p className="text-[9px] text-slate-400 mt-1.5 uppercase tracking-widest font-black">{t.support}</p>
+        <h3 className="text-sm font-black text-[#0F172A] leading-none uppercase tracking-tight">{t('supervisor_card.title')}</h3>
+        <p className="text-[9px] text-slate-400 mt-1.5 uppercase tracking-widest font-black">{t('supervisor_card.support')}</p>
       </div>
 
       <div className="flex items-center gap-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100 mb-6 transition-all hover:bg-white hover:shadow-md">
@@ -77,18 +67,18 @@ const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang }) => 
               <div className="w-8 h-8 bg-[#00B900] text-white rounded-lg flex items-center justify-center shadow-md">
                 <MessageSquareMore size={18} fill="currentColor" strokeWidth={0} />
               </div>
-              <span className="text-[9px] font-black text-[#00B900] uppercase tracking-widest">LINE ID</span>
+              <span className="text-[9px] font-black text-[#00B900] uppercase tracking-widest">{t('supervisor_card.line_id')}</span>
            </div>
            <button 
              onClick={handleCopyLine}
              className="p-1.5 text-slate-400 hover:text-[#00B900] transition-colors"
-             title="Copy ID"
+             title={t('supervisor_card.copy_id')}
            >
              <Copy size={14} />
            </button>
         </div>
         <div className="pl-10">
-           <p className="text-sm font-black text-slate-900 tracking-tight">{supervisor.lineId || 'No ID Assigned'}</p>
+           <p className="text-sm font-black text-slate-900 tracking-tight">{supervisor.lineId || t('common.no_id_assigned')}</p>
         </div>
       </div>
       
@@ -96,7 +86,7 @@ const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang }) => 
         onClick={() => supervisor.lineId && window.open(`https://line.me/ti/p/~${supervisor.lineId}`, '_blank')}
         className="w-full mt-4 bg-white text-blue-600 py-3 rounded-2xl flex items-center justify-center gap-2 font-black text-[10px] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase tracking-widest shadow-sm"
       >
-        {t.btn}
+        {t('supervisor_card.send_message')}
       </button>
     </div>
   );

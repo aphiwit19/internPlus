@@ -16,6 +16,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Language, UserRole, LeaveRequest, LeaveType } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 import { useAppContext } from '@/app/AppContext';
 import { createLeaveRepository } from '@/app/leaveRepository';
@@ -37,7 +38,7 @@ interface LeaveRequestCoreProps {
 }
 
 const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
-  lang,
+  lang: _lang,
   role,
   headerTitle,
   headerSubtitle,
@@ -46,6 +47,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   protocolSubtitle,
   sidePanel,
 }) => {
+  const { t } = useTranslation();
   const isIntern = role === 'INTERN';
   const { user } = useAppContext();
   const leaveRepo = useMemo(() => createLeaveRepository(), []);
@@ -53,75 +55,6 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     const stored = localStorage.getItem('lastLeavePageVisit');
     return stored ? parseInt(stored, 10) : 0;
   });
-
-  const t = {
-    EN: {
-      title: "Leave Management",
-      subtitle: "Request time off and track your remaining leave balance.",
-      requestTitle: "Request Leave",
-      requestSub: "Fill in details for your absence request.",
-      quotaTitle: "Leave Quota",
-      quotaSub: "Your remaining leave balance for this cohort.",
-      historyTitle: "Incoming Requests",
-      historySub: "REVIEW AND ACTION PENDING LEAVES.",
-      all: "All",
-      leaveType: "Leave Type",
-      startDate: "Start Date",
-      endDate: "End Date",
-      reason: "Reason for Absence",
-      submit: "Submit Request",
-      pending: "PENDING",
-      approved: "APPROVED",
-      rejected: "REJECTED",
-      sick: "Sick Leave",
-      personal: "Personal Leave",
-      business: "Business Leave",
-      vacation: "Vacation",
-      total: "Total",
-      used: "Used",
-      left: "Left",
-      days: "Days",
-      overallLeave: "Overall Leave",
-      approve: "APPROVE",
-      reject: "REJECT",
-      impactTitle: "Allowance Impact",
-      impactDesc: "Approved leave will be deducted from your stipend (-100 THB/Day).",
-      totalDeduction: "Potential Deduction"
-    },
-    TH: {
-      title: "การจัดการการลางาน",
-      subtitle: "ส่งคำขอลาและติดตามยอดคงเหลือวันลาของคุณ",
-      requestTitle: "ขอลา",
-      requestSub: "ระบุรายละเอียดสำหรับการแจ้งลาของคุณ",
-      quotaTitle: "โควตาการลา",
-      quotaSub: "ยอดคงเหลือวันลาสำหรับโปรแกรมปัจจุบัน",
-      historyTitle: "คำขอที่รอดำเนินการ",
-      historySub: "ตรวจสอบและจัดการรายการลาที่ค้างอยู่",
-      all: "ทั้งหมด",
-      leaveType: "ประเภทการลา",
-      startDate: "วันที่เริ่ม",
-      endDate: "วันที่สิ้นสุด",
-      reason: "เหตุผลการลา",
-      submit: "ส่งคำขอ",
-      pending: "รออนุมัติ",
-      approved: "อนุมัติแล้ว",
-      rejected: "ไม่อนุมัติ",
-      sick: "ลาป่วย",
-      personal: "ลากิจ",
-      business: "ลาเพื่อธุรกิจ",
-      vacation: "ลาพักร้อน",
-      total: "ทั้งหมด",
-      used: "ใช้ไป",
-      left: "คงเหลือ",
-      days: "วัน",
-      overallLeave: "การลา (รวม)",
-      approve: "อนุมัติ",
-      reject: "ปฏิเสธ",
-      impactTitle: "ผลกระทบต่อเบี้ยเลี้ยง",
-      impactDesc: "การลาที่ได้รับอนุมัติจะถูกหักออกจากเบี้ยเลี้ยง (-100 บาท/วัน)",
-      totalDeduction: "ยอดรวมที่ถูกหัก"
-    }
-  }[lang];
 
   const [totalLeaveQuotaDays, setTotalLeaveQuotaDays] = useState<number>(39);
 
@@ -152,7 +85,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setErrorMessage(err instanceof Error ? err.message : 'Failed to load leave requests.');
+        setErrorMessage(err instanceof Error ? err.message : t('leave.errors.load_failed'));
       })
       .finally(() => {
         if (cancelled) return;
@@ -187,17 +120,17 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     setErrorMessage(null);
 
     if (!user) {
-      setFormError(lang === 'TH' ? 'กรุณาเข้าสู่ระบบก่อนส่งคำขอ' : 'Please login before submitting a request.');
+      setFormError(t('leave.form.login_required'));
       return;
     }
 
     if (!newRequest.type || !newRequest.startDate || !newRequest.endDate || !newRequest.reason) {
-      setFormError(lang === 'TH' ? 'กรุณากรอกข้อมูลให้ครบทุกช่อง' : 'Please fill all fields.');
+      setFormError(t('leave.form.fill_all_fields'));
       return;
     }
 
     if (newRequest.startDate > newRequest.endDate) {
-      setFormError(lang === 'TH' ? 'วันที่เริ่มต้องไม่มากกว่าวันที่สิ้นสุด' : 'Start date must be before or equal to end date.');
+      setFormError(t('leave.form.start_before_end'));
       return;
     }
 
@@ -212,7 +145,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       setRequests((prev) => [created, ...prev]);
       setNewRequest({ type: 'SICK', startDate: '', endDate: '', reason: '' });
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to submit leave request.');
+      setErrorMessage(err instanceof Error ? err.message : t('leave.errors.submit_failed'));
     } finally {
       setIsLoading(false);
     }
@@ -221,11 +154,11 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const handleUpdateStatus = async (id: string, status: 'APPROVED' | 'REJECTED') => {
     setErrorMessage(null);
     try {
-      const approver = user?.name ?? 'System';
+      const approver = user?.name ?? t('common.system');
       const updated = await leaveRepo.updateStatus(id, status, approver);
       setRequests((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to update request status.');
+      setErrorMessage(err instanceof Error ? err.message : t('leave.errors.update_failed'));
     }
   };
 
@@ -235,7 +168,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
     leaveRepo
       .list({ role, user })
       .then((list) => setRequests(list))
-      .catch((err: unknown) => setErrorMessage(err instanceof Error ? err.message : 'Failed to load leave requests.'))
+      .catch((err: unknown) => setErrorMessage(err instanceof Error ? err.message : t('leave.errors.load_failed')))
       .finally(() => setIsLoading(false));
   };
 
@@ -309,23 +242,22 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   }, [REQUESTS_PER_PAGE, filteredRequests, requestsPage]);
 
   const leaveTypeLabel = (type: LeaveType) => {
-    const key = type.toLowerCase() as keyof typeof t;
-    const value = t[key];
-    return typeof value === 'string' ? value : String(type);
+    if (type === 'SICK') return t('leave.type_sick');
+    if (type === 'PERSONAL') return t('leave.type_personal');
+    if (type === 'BUSINESS') return t('leave.type_business');
+    return t('leave.type_vacation');
   };
 
   const statusLabel = (status: LeaveRequest['status']) => {
-    if (status === 'APPROVED') return t.approved;
-    if (status === 'REJECTED') return t.rejected;
-    return t.pending;
+    if (status === 'APPROVED') return t('leave.status_approved');
+    if (status === 'REJECTED') return t('leave.status_rejected');
+    return t('leave.status_pending');
   };
 
-  const resolvedHeaderTitle = headerTitle ?? (isIntern ? t.title : 'Approval Center');
-  const resolvedHeaderSubtitle = headerSubtitle ?? (isIntern ? t.subtitle : 'Monitor and manage intern absences across your assigned group.');
-  const resolvedProtocolTitle = protocolTitle ?? 'Supervisor Protocol';
-  const resolvedProtocolSubtitle = protocolSubtitle ?? (
-    "All leave requests should be evaluated based on the intern's remaining quota and project deadlines. \n\nApproved leave is strictly \"Without Pay\" per company policy."
-  );
+  const resolvedHeaderTitle = headerTitle ?? (isIntern ? t('leave.title') : t('leave.approval_center_title'));
+  const resolvedHeaderSubtitle = headerSubtitle ?? (isIntern ? t('leave.subtitle') : t('leave.approval_center_subtitle'));
+  const resolvedProtocolTitle = protocolTitle ?? t('leave.protocol_title');
+  const resolvedProtocolSubtitle = protocolSubtitle ?? t('leave.protocol_subtitle');
 
   const showSidePanel = isIntern || sidePanel !== null;
   const resolvedSidePanel = sidePanel === undefined ? undefined : sidePanel;
@@ -352,30 +284,30 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                   <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100 transition-all cursor-default relative overflow-hidden md:col-span-3">
                     <div className="flex justify-between items-start mb-6 relative z-10">
                       <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg border bg-indigo-50 text-indigo-600 border-indigo-100">
-                        {t.overallLeave}
+                        {t('leave.overall_leave')}
                       </span>
                       <Clock size={18} className="text-slate-200" />
                     </div>
                     <div className="space-y-1 relative z-10">
                       <h3 className="text-4xl font-black text-slate-900 tracking-tighter leading-none">
                         {overallLeaveLeft}
-                        <span className="text-sm font-bold text-slate-300 ml-1 uppercase">{t.days} {t.left}</span>
+                        <span className="text-sm font-bold text-slate-300 ml-1 uppercase">{t('leave.days')} {t('leave.left')}</span>
                       </h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t.used} {overallLeaveUsed} OF {totalLeaveQuotaDays} {t.days}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('leave.used')} {overallLeaveUsed} OF {totalLeaveQuotaDays} {t('leave.days')}</p>
                     </div>
 
                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
                       <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.total}</div>
-                        <div className="text-lg font-black text-slate-900 mt-1">{totalLeaveQuotaDays} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('leave.total')}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{totalLeaveQuotaDays} <span className="text-xs font-bold text-slate-400">{t('leave.days')}</span></div>
                       </div>
                       <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.used}</div>
-                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveUsed} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('leave.used')}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveUsed} <span className="text-xs font-bold text-slate-400">{t('leave.days')}</span></div>
                       </div>
                       <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.left}</div>
-                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveLeft} <span className="text-xs font-bold text-slate-400">{t.days}</span></div>
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t('leave.left')}</div>
+                        <div className="text-lg font-black text-slate-900 mt-1">{overallLeaveLeft} <span className="text-xs font-bold text-slate-400">{t('leave.days')}</span></div>
                       </div>
                     </div>
 
@@ -393,8 +325,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
               <section className="bg-white rounded-[3.5rem] p-10 md:p-14 border border-slate-100 shadow-sm">
                 <div className="flex items-center justify-between mb-12">
                   <div>
-                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t.historyTitle}</h3>
-                    <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.15em] mt-1">{t.historySub}</p>
+                    <h3 className="text-3xl font-black text-slate-900 tracking-tight">{t('leave.history_title')}</h3>
+                    <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.15em] mt-1">{t('leave.history_subtitle')}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 flex items-center justify-center bg-slate-50 text-slate-400 rounded-2xl border border-slate-100 shadow-sm">
@@ -405,11 +337,11 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       onChange={(e) => setLeaveTypeFilter(e.target.value as LeaveType | 'ALL')}
                       className="h-12 bg-slate-50 border border-slate-100 rounded-2xl px-4 text-[12px] font-black text-slate-700 uppercase tracking-widest outline-none"
                     >
-                      <option value="ALL">{t.all}</option>
-                      <option value="SICK">{t.sick}</option>
-                      <option value="PERSONAL">{t.personal}</option>
-                      <option value="BUSINESS">{t.business}</option>
-                      <option value="VACATION">{t.vacation}</option>
+                      <option value="ALL">{t('leave.filter_all')}</option>
+                      <option value="SICK">{t('leave.type_sick')}</option>
+                      <option value="PERSONAL">{t('leave.type_personal')}</option>
+                      <option value="BUSINESS">{t('leave.type_business')}</option>
+                      <option value="VACATION">{t('leave.type_vacation')}</option>
                     </select>
                   </div>
                 </div>
@@ -429,13 +361,13 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                     <div className="p-10 bg-rose-50 border border-rose-100 rounded-[3rem] flex items-center justify-between gap-6">
                       <div>
                         <p className="text-sm font-black text-rose-600">{errorMessage}</p>
-                        <p className="text-xs font-bold text-rose-500/80 mt-2">Please try again.</p>
+                        <p className="text-xs font-bold text-rose-500/80 mt-2">{t('leave.please_try_again')}</p>
                       </div>
                       <button
                         onClick={handleRetry}
                         className="px-6 py-3 bg-rose-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-rose-700 transition-all"
                       >
-                        Retry
+                        {t('leave.retry')}
                       </button>
                     </div>
                   )}
@@ -452,7 +384,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                             <div className="absolute -top-3 -right-3 z-10">
                               <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">
                                 <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
-                                NEW
+                                {t('leave.new_badge')}
                               </span>
                             </div>
                           )}
@@ -487,7 +419,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                                     <p className="text-[13px] font-black tracking-tight">{req.startDate} — {req.endDate}</p>
                                  </div>
                                  {req.status === 'APPROVED' && (
-                                   <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest px-3 py-1 bg-rose-50 rounded-lg border border-rose-100">LEAVE WITHOUT PAY</span>
+                                   <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest px-3 py-1 bg-rose-50 rounded-lg border border-rose-100">{t('leave.without_pay_badge')}</span>
                                  )}
                               </div>
                               <p className="text-sm text-slate-400 font-bold italic opacity-60 leading-none ml-1">"{req.reason}"</p>
@@ -501,13 +433,13 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                                   onClick={() => handleUpdateStatus(req.id, 'APPROVED')} 
                                   className="px-8 py-4 bg-[#10B981] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#059669] shadow-2xl shadow-emerald-500/30 flex items-center gap-3 transition-all active:scale-95"
                                 >
-                                  <Check size={18} strokeWidth={3}/> {t.approve}
+                                  <Check size={18} strokeWidth={3}/> {t('leave.approve')}
                                 </button>
                                 <button 
                                   onClick={() => handleUpdateStatus(req.id, 'REJECTED')} 
                                   className="px-8 py-4 bg-[#F43F5E] text-white rounded-[1.5rem] text-[13px] font-black uppercase tracking-widest hover:bg-[#E11D48] shadow-2xl shadow-rose-500/30 flex items-center gap-3 transition-all active:scale-95"
                                 >
-                                  <X size={18} strokeWidth={3}/> {t.reject}
+                                  <X size={18} strokeWidth={3}/> {t('leave.reject')}
                                 </button>
                               </div>
                             ) : (
@@ -532,7 +464,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                               onClick={() => setRequestsPage((p) => Math.max(1, p - 1))}
                               disabled={requestsPage <= 1}
                               className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-                              aria-label="Previous page"
+                              aria-label={t('leave.prev_page_aria')}
                             >
                               <ChevronLeft size={18} />
                             </button>
@@ -561,7 +493,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                               onClick={() => setRequestsPage((p) => Math.min(requestsPageCount, p + 1))}
                               disabled={requestsPage >= requestsPageCount}
                               className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-                              aria-label="Next page"
+                              aria-label={t('leave.next_page_aria')}
                             >
                               <ChevronRight size={18} />
                             </button>
@@ -572,7 +504,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       {filteredRequests.length === 0 && (
                         <div className="py-24 text-center flex flex-col items-center">
                            <History size={48} className="text-slate-100 mb-6" />
-                           <p className="text-slate-300 font-black uppercase tracking-[0.3em]">Clear Inbox. No requests found.</p>
+                           <p className="text-slate-300 font-black uppercase tracking-[0.3em]">{t('leave.empty_inbox')}</p>
                         </div>
                       )}
                     </>
@@ -587,8 +519,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                   <section className="bg-[#0B0F19] rounded-[3.5rem] p-10 md:p-12 text-white shadow-2xl relative overflow-hidden h-fit sticky top-10">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
                   <div className="relative z-10">
-                    <h3 className="text-3xl font-black mb-2 tracking-tight">{t.requestTitle}</h3>
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t.requestSub}</p>
+                    <h3 className="text-3xl font-black mb-2 tracking-tight">{t('leave.request_title')}</h3>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t('leave.request_subtitle')}</p>
 
                     {!!formError && (
                       <div className="mb-8 p-5 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-200 text-xs font-bold">
@@ -598,7 +530,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                     <div className="space-y-10">
                       <div>
-                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t.leaveType}</label>
+                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.leave_type')}</label>
                         <div className="grid grid-cols-2 gap-3">
                            {['SICK', 'PERSONAL', 'BUSINESS', 'VACATION'].map(type => (
                              <button 
@@ -614,7 +546,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                       <div className="grid grid-cols-2 gap-6">
                         <div>
-                          <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t.startDate}</label>
+                          <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.start_date')}</label>
                           <input 
                             type="date" 
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black text-white outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
@@ -623,7 +555,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                           />
                         </div>
                         <div>
-                          <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t.endDate}</label>
+                          <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.end_date')}</label>
                           <input 
                             type="date" 
                             className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black text-white outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
@@ -634,10 +566,10 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t.reason}</label>
+                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.reason_for_absence')}</label>
                         <textarea 
                           className="w-full bg-white/5 border border-white/10 rounded-[2rem] p-8 text-sm font-bold text-white leading-relaxed outline-none focus:ring-8 focus:ring-blue-500/10 transition-all h-36 resize-none"
-                          placeholder="e.g. Seeking rest due to mild flu..."
+                          placeholder={t('leave.reason_placeholder')}
                           value={newRequest.reason}
                           onChange={e => setNewRequest({...newRequest, reason: e.target.value})}
                         />
@@ -648,7 +580,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                         disabled={isLoading}
                         className="w-full py-6 bg-[#2563EB] text-white rounded-full font-black text-[15px] uppercase tracking-[0.15em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-4"
                       >
-                        {t.submit} <ArrowRight size={20} strokeWidth={3}/>
+                        {t('leave.submit_request')} <ArrowRight size={20} strokeWidth={3}/>
                       </button>
                     </div>
                   </div>
@@ -665,8 +597,8 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                     <div className="w-full p-6 bg-slate-50 border border-slate-100 rounded-3xl flex items-center gap-5 group hover:bg-blue-600 transition-all duration-500">
                        <Clock className="text-blue-500 group-hover:text-white" size={24} />
                        <div className="text-left">
-                          <p className="text-[10px] font-black text-slate-400 group-hover:text-blue-200 uppercase tracking-widest">Global Attendance</p>
-                          <p className="text-xl font-black text-slate-900 group-hover:text-white">96.8% AVG</p>
+                          <p className="text-[10px] font-black text-slate-400 group-hover:text-blue-200 uppercase tracking-widest">{t('leave.side_panel.global_attendance')}</p>
+                          <p className="text-xl font-black text-slate-900 group-hover:text-white">{t('leave.side_panel.global_attendance_avg')}</p>
                        </div>
                     </div>
                   </div>

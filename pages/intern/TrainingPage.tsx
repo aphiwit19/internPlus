@@ -19,6 +19,7 @@ import { firebaseStorage } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
 import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { useTranslation } from 'react-i18next';
 
 interface TrainingItem {
   id: string;
@@ -59,42 +60,10 @@ interface TrainingPageProps {
   lang: Language;
 }
 
-const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
+const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang: _lang }) => {
   const { user } = useAppContext();
-  const t = {
-    EN: {
-      title: "Policy & Training",
-      subtitle: "Essential resources for your internship growth.",
-      download: "Download All",
-      signRequired: "Sign Required",
-      signed: "Signed",
-      docLabel: "Document",
-      digitalSign: "Signed Digitally",
-      signHint: "Electronic signature required.",
-      signBtn: "Sign Now",
-      ackLabel: "I acknowledge that I have read and understood the policy.",
-      openVideo: "Open Video",
-      back: "Back",
-      confirm: "Confirm & Sign",
-      close: "Close"
-    },
-    TH: {
-      title: "นโยบายและการฝึกอบรม",
-      subtitle: "แหล่งข้อมูลสำคัญเพื่อการเติบโตในช่วงการฝึกงานของคุณ",
-      download: "ดาวน์โหลดทั้งหมด",
-      signRequired: "จำเป็นต้องลงนาม",
-      signed: "ลงนามแล้ว",
-      docLabel: "เอกสาร",
-      digitalSign: "ลงนามแบบดิจิทัลแล้ว",
-      signHint: "จำเป็นต้องลงลายมือชื่ออิเล็กทรอนิกส์",
-      signBtn: "ลงนามตอนนี้",
-      ackLabel: "ข้าพเจ้ายอมรับว่าได้รับทราบและทำความเข้าใจนโยบายนี้แล้ว",
-      openVideo: "เปิดวิดีโอ",
-      back: "ย้อนกลับ",
-      confirm: "ยืนยันและลงนาม",
-      close: "ปิดหน้าต่าง"
-    }
-  }[lang];
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
 
   const [trainingItems, setTrainingItems] = useState<TrainingItem[]>([]);
 
@@ -106,13 +75,10 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
           const data = d.data() as PolicyTrainingContent;
           const videoMode = (data.videoMode ?? 'NONE') as VideoMode;
           const type: TrainingItem['type'] = videoMode === 'NONE' ? 'pdf' : 'video';
-          const meta =
-            type === 'video'
-              ? (lang === 'EN' ? 'VIDEO' : 'วิดีโอ')
-              : (lang === 'EN' ? 'DOCUMENT' : 'เอกสาร');
+          const meta = type === 'video' ? tr('intern_training.meta.video') : tr('intern_training.meta.document');
           return {
             id: d.id,
-            title: data.title ?? 'Untitled',
+            title: data.title ?? tr('intern_training.untitled'),
             meta,
             type,
             content: data.body ?? '',
@@ -129,7 +95,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
 
       setTrainingItems(next);
     });
-  }, [lang]);
+  }, [i18n.language]);
 
   const [selectedItem, setSelectedItem] = useState<TrainingItem | null>(null);
   const [signedDocs, setSignedDocs] = useState<Set<string>>(new Set());
@@ -245,7 +211,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
       }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? (lang === 'TH' ? 'ดาวน์โหลดไม่สำเร็จ' : 'Download failed')}`);
+      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_training.errors.download_failed')}`);
     } finally {
       setIsDownloadingAll(false);
     }
@@ -287,7 +253,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
       }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? (lang === 'TH' ? 'ดาวน์โหลดไม่สำเร็จ' : 'Download failed')}`);
+      setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_training.errors.download_failed')}`);
     } finally {
       setIsDownloadingAll(false);
     }
@@ -382,17 +348,17 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
     if (!user || !selectedItem) return;
     setSignError(null);
     if (!isAckChecked) {
-      setSignError(lang === 'TH' ? 'กรุณาติ๊กยืนยันก่อน' : 'Please confirm acknowledgement');
+      setSignError(tr('intern_training.errors.ack_required'));
       return;
     }
     if (!hasSigned || !canvasRef.current) {
-      setSignError(lang === 'TH' ? 'กรุณาวาดลายเซ็น' : 'Please draw your signature');
+      setSignError(tr('intern_training.errors.signature_required'));
       return;
     }
     const canvas = canvasRef.current;
     const blob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
     if (!blob) {
-      setSignError(lang === 'TH' ? 'ไม่สามารถสร้างไฟล์ลายเซ็นได้' : 'Failed to create signature image');
+      setSignError(tr('intern_training.errors.signature_create_failed'));
       return;
     }
     const path = `policyTrainingContents/${selectedItem.id}/signatures/${user.id}_${Date.now()}.png`;
@@ -415,7 +381,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
           fileName: `signature_${selectedItem.id}.png`,
           storagePath: path,
           policyTitle: selectedItem.title,
-          acknowledgementText: t.ackLabel,
+          acknowledgementText: tr('intern_training.acknowledgement.label'),
           signedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
@@ -426,7 +392,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
       setSigningStep('completed');
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setSignError(`${e?.code ?? 'unknown'}: ${e?.message ?? (lang === 'TH' ? 'บันทึกไม่สำเร็จ' : 'Failed to save')}`);
+      setSignError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_training.errors.save_failed')}`);
     }
   };
 
@@ -437,8 +403,8 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
       <div className="max-w-6xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8 md:mb-10">
           <div>
-            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">{t.title}</h1>
-            <p className="text-slate-500 text-sm md:text-base font-medium mt-2">{t.subtitle}</p>
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">{tr('intern_training.title')}</h1>
+            <p className="text-slate-500 text-sm md:text-base font-medium mt-2">{tr('intern_training.subtitle')}</p>
           </div>
           <button
             onClick={() => void handleDownloadAll()}
@@ -446,7 +412,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 text-[11px] font-bold hover:bg-slate-50 transition-all shadow-sm w-fit disabled:opacity-60"
           >
             <Download size={14} />
-            {isDownloadingAll ? (lang === 'EN' ? 'Downloading...' : 'กำลังดาวน์โหลด...') : t.download}
+            {isDownloadingAll ? tr('intern_training.downloading') : tr('intern_training.actions.download_all')}
           </button>
         </div>
 
@@ -478,10 +444,10 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                     }}
                     disabled={isDownloadingAll || isLoadingAssetCounts}
                     className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur border border-slate-200 text-slate-700 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-white hover:border-slate-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                    title={lang === 'TH' ? 'ดาวน์โหลดไฟล์ในหัวข้อนี้' : 'Download this topic'}
+                    title={tr('intern_training.actions.download_topic')}
                   >
                     <Download size={14} />
-                    {lang === 'TH' ? 'ดาวน์โหลด' : 'Download'}
+                    {tr('intern_training.actions.download')}
                   </button>
                 );
               })()}
@@ -510,7 +476,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                       {item.meta}
                     </p>
                     {item.isSignable && !signedDocs.has(item.id) && (
-                      <span className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded uppercase tracking-tighter">{t.signRequired}</span>
+                      <span className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded uppercase tracking-tighter">{tr('intern_training.badges.sign_required')}</span>
                     )}
                   </div>
                 </div>
@@ -534,10 +500,10 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                 <div className="overflow-hidden">
                   <h3 className="text-base md:text-xl font-bold text-slate-900 leading-tight truncate">{selectedItem.title}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                     <span className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest font-bold">{t.docLabel}</span>
+                     <span className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest font-bold">{tr('intern_training.labels.document')}</span>
                      {signedDocs.has(selectedItem.id) && (
                        <span className="flex items-center gap-1 text-[8px] md:text-[9px] text-emerald-600 font-black uppercase bg-emerald-50 px-2 py-0.5 rounded-full">
-                         <CheckCircle2 size={10} /> {t.signed}
+                         <CheckCircle2 size={10} /> {tr('intern_training.badges.signed')}
                        </span>
                      )}
                   </div>
@@ -558,11 +524,11 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                 ))}
 
                 <div className="pt-2">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{lang === 'EN' ? 'ATTACHMENTS' : 'ไฟล์แนบ'}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{tr('intern_training.sections.attachments')}</div>
                   {isLoadingSelectedAssets ? (
-                    <div className="text-xs text-slate-400">{lang === 'EN' ? 'Loading...' : 'กำลังโหลด...'}</div>
+                    <div className="text-xs text-slate-400">{tr('intern_training.loading')}</div>
                   ) : selectedAssets.length === 0 ? (
-                    <div className="text-xs text-slate-400">{lang === 'EN' ? 'No attachments' : 'ไม่มีไฟล์แนบ'}</div>
+                    <div className="text-xs text-slate-400">{tr('intern_training.empty_attachments')}</div>
                   ) : (
                     <div className="space-y-2">
                       {selectedAssets.map((a) => (
@@ -585,7 +551,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                 {selectedItem.videoMode && selectedItem.videoMode !== 'NONE' && (
                   <div className="p-5 rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'EN' ? 'VIDEO' : 'วิดีโอ'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_training.meta.video')}</p>
                       <p className="text-xs text-slate-500 mt-1 truncate">
                         {selectedItem.videoMode === 'LINK' ? (selectedItem.videoUrl ?? '') : (selectedItem.videoFileName ?? '')}
                       </p>
@@ -594,34 +560,36 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                       onClick={() => void openVideo(selectedItem)}
                       className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[12px] font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
                     >
-                      <ExternalLink size={16} /> {t.openVideo}
+                      <ExternalLink size={16} /> {tr('intern_training.actions.open_video')}
                     </button>
                   </div>
                 )}
 
                 {selectedItem.isSignable && (
-                  <div className={`mt-10 md:mt-16 p-6 md:p-8 rounded-2xl border-2 border-dashed transition-all duration-500 ${
-                    signedDocs.has(selectedItem.id) 
-                    ? 'bg-emerald-50/50 border-emerald-200' 
-                    : 'bg-slate-50 border-slate-200'
-                  }`}>
+                  <div
+                    className={`mt-10 md:mt-16 p-6 md:p-8 rounded-2xl border-2 border-dashed transition-all duration-500 ${
+                      signedDocs.has(selectedItem.id)
+                        ? 'bg-emerald-50/50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
                     {signedDocs.has(selectedItem.id) ? (
                       <div className="flex flex-col items-center text-center">
                         <div className="w-12 h-12 md:w-16 md:h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-4 shadow-lg shadow-emerald-100">
                           <CheckCircle2 size={24} />
                         </div>
-                        <h5 className="italic text-2xl md:text-3xl text-slate-900 mb-1">{user?.name ?? 'Signed'}</h5>
-                        <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.digitalSign}</p>
+                        <h5 className="italic text-2xl md:text-3xl text-slate-900 mb-1">{user?.name ?? tr('intern_training.signed_fallback')}</h5>
+                        <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest">{tr('intern_training.labels.signed_digitally')}</p>
                       </div>
                     ) : signingStep === 'signing' ? null : (
                       <div className="flex flex-col items-center text-center">
                         <PenTool size={32} className="text-slate-300 mb-4" />
-                        <p className="text-[13px] font-bold text-slate-400 mb-6">{t.signHint}</p>
-                        <button 
+                        <p className="text-[13px] font-bold text-slate-400 mb-6">{tr('intern_training.labels.signature_required')}</p>
+                        <button
                           onClick={() => setSigningStep('signing')}
                           className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
                         >
-                          {t.signBtn} <ArrowRight size={16} />
+                          {tr('intern_training.actions.sign_now')} <ArrowRight size={16} />
                         </button>
                       </div>
                     )}
@@ -633,21 +601,34 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
             {signingStep === 'signing' && !signedDocs.has(selectedItem.id) && (
               <div className="p-6 md:p-8 bg-white border-t border-slate-100 flex flex-col gap-6 flex-shrink-0">
                 <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="confirm-sign"
-                    checked={isAckChecked}
-                    onChange={(e) => setIsAckChecked(e.target.checked)}
-                    className="w-5 h-5 mt-0.5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <label htmlFor="confirm-sign" className="text-[13px] md:text-sm text-slate-600 font-medium cursor-pointer">{t.ackLabel}</label>
-                </div>
-
-                {signError && (
-                  <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
-                    {signError}
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck size={18} strokeWidth={2.5} />
                   </div>
-                )}
+
+                  <div className="flex-1">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="confirm-sign"
+                        type="checkbox"
+                        checked={isAckChecked}
+                        onChange={(e) => setIsAckChecked(e.target.checked)}
+                        className="w-5 h-5 mt-0.5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <label
+                        htmlFor="confirm-sign"
+                        className="text-[13px] md:text-sm text-slate-600 font-medium cursor-pointer"
+                      >
+                        {tr('intern_training.acknowledgement.label')}
+                      </label>
+                    </div>
+
+                    {signError && (
+                      <div className="mt-3 text-[12px] font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
+                        {signError}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
@@ -667,7 +648,7 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                     {!hasSigned && (
                       <div className="-mt-[180px] h-[180px] flex flex-col items-center justify-center pointer-events-none opacity-20">
                         <PenTool size={48} className="text-slate-400 mb-4" />
-                        <span className="text-sm font-black text-slate-400 uppercase">{t.signHint}</span>
+                        <span className="text-sm font-black text-slate-400 uppercase">{tr('intern_training.labels.signature_required')}</span>
                       </div>
                     )}
                   </div>
@@ -675,19 +656,20 @@ const TrainingPage: React.FC<TrainingPageProps> = ({ onNavigate, lang }) => {
                     onClick={clearSignature}
                     className="px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-[12px] font-bold hover:bg-white transition-all flex items-center gap-2 w-fit"
                   >
-                    <Eraser size={16} /> {lang === 'EN' ? 'Clear' : 'ล้าง'}
+                    <Eraser size={16} /> {tr('intern_training.actions.clear')}
                   </button>
                 </div>
+
                 <div className="flex items-center justify-end gap-3">
-                  <button onClick={() => setSigningStep('reading')} className="px-5 py-3 rounded-2xl text-[13px] font-bold text-slate-500 hover:bg-slate-50">{t.back}</button>
-                  <button onClick={handleSign} className="flex-1 sm:flex-none px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold text-[13px] shadow-xl hover:bg-blue-700 active:scale-95">{t.confirm}</button>
+                  <button onClick={() => setSigningStep('reading')} className="px-5 py-3 rounded-2xl text-[13px] font-bold text-slate-500 hover:bg-slate-50">{tr('intern_training.actions.back')}</button>
+                  <button onClick={handleSign} className="flex-1 sm:flex-none px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold text-[13px] shadow-xl hover:bg-blue-700 active:scale-95">{tr('intern_training.actions.confirm_sign')}</button>
                 </div>
               </div>
             )}
             
             {(signingStep === 'completed' || isCurrentDocSigned) && (
                <div className="p-6 md:p-8 bg-white border-t border-slate-100 flex-shrink-0">
-                 <button onClick={() => setSelectedItem(null)} className="w-full sm:w-auto mx-auto block px-12 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition-all shadow-xl">{t.close}</button>
+                 <button onClick={() => setSelectedItem(null)} className="w-full sm:w-auto mx-auto block px-12 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition-all shadow-xl">{tr('intern_training.actions.close')}</button>
                </div>
             )}
           </div>

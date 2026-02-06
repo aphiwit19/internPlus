@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { Language, UserProfile, UserRole } from '@/types';
+import i18n, { APP_LANG_TO_I18N_LANG } from '@/i18n';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
@@ -63,6 +64,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const saved = window.localStorage.getItem(STORAGE_KEYS.lang);
     return isLanguage(saved) ? saved : 'EN';
   });
+
+  useEffect(() => {
+    const next = APP_LANG_TO_I18N_LANG[lang];
+    if (i18n.language !== next) {
+      void i18n.changeLanguage(next);
+    }
+  }, [lang]);
 
   const setUser = useCallback((nextUser: UserProfile | null) => {
     setUserState(nextUser);

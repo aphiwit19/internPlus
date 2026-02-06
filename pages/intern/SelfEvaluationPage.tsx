@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Save, StickyNote } from 'lucide-react';
 import { doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 
 import { PerformanceMetrics, Language } from '@/types';
 import { firestoreDb } from '@/firebase';
@@ -28,35 +29,11 @@ interface SelfEvaluationPageProps {
   lang: Language;
 }
 
-const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
+const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
-
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'Self Evaluation',
-          subtitle: 'Score yourself and submit a summary for admin review.',
-          analysis: 'Self Performance Analysis',
-          summary: 'Executive Summary',
-          save: 'Save Self Evaluation',
-          saving: 'Saving...',
-          reset: 'Reset',
-          placeholder: 'Write a self-summary for admin review...',
-        },
-        TH: {
-          title: 'ประเมินตนเอง',
-          subtitle: 'ให้คะแนนตัวเองและส่งบทสรุปให้แอดมินตรวจสอบ',
-          analysis: 'การประเมินตนเอง',
-          summary: 'บทสรุปสำหรับผู้บริหาร',
-          save: 'บันทึกการประเมินตนเอง',
-          saving: 'กำลังบันทึก...',
-          reset: 'รีเซ็ต',
-          placeholder: 'เขียนสรุปการประเมินตนเองเพื่อส่งให้แอดมิน...',
-        },
-      }[lang]),
-    [lang],
-  );
+  const { t, i18n } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, options));
+  const uiLang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
 
   const [savedPerformance, setSavedPerformance] = useState<PerformanceMetrics>(DEFAULT_PERFORMANCE);
   const [savedSummary, setSavedSummary] = useState('');
@@ -73,10 +50,10 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
     punctuality: string;
     initiative: string;
   }>(() => ({
-    technical: lang === 'TH' ? 'ทักษะด้านเทคนิค' : 'TECHNICAL PROFICIENCY',
-    communication: lang === 'TH' ? 'การสื่อสารและการทำงานร่วมกัน' : 'TEAM COMMUNICATION',
-    punctuality: lang === 'TH' ? 'ความตรงต่อเวลาและความรับผิดชอบ' : 'PUNCTUALITY & RELIABILITY',
-    initiative: lang === 'TH' ? 'ความริเริ่มและการแก้ปัญหา' : 'SELF-INITIATIVE',
+    technical: tr('intern_self_evaluation.labels.technical'),
+    communication: tr('intern_self_evaluation.labels.communication'),
+    punctuality: tr('intern_self_evaluation.labels.punctuality'),
+    initiative: tr('intern_self_evaluation.labels.initiative'),
   }));
 
   useEffect(() => {
@@ -84,7 +61,7 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
     return onSnapshot(ref, (snap) => {
       if (!snap.exists()) return;
       const raw = snap.data() as any;
-      const next = raw?.evaluationLabels?.[lang];
+      const next = raw?.evaluationLabels?.[uiLang];
       if (!next) return;
       setEvaluationLabels((prev) => ({
         technical: typeof next?.technical === 'string' ? next.technical : prev.technical,
@@ -93,7 +70,7 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
         initiative: typeof next?.initiative === 'string' ? next.initiative : prev.initiative,
       }));
     });
-  }, [lang]);
+  }, [uiLang]);
 
   useEffect(() => {
     if (!user) return;
@@ -159,7 +136,7 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
       setSavedSummary(editSummary);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setSaveError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to save self evaluation'}`);
+      setSaveError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_self_evaluation.errors.save_failed')}`);
     } finally {
       setIsSaving(false);
     }
@@ -172,8 +149,8 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
       <div className="max-w-6xl mx-auto w-full flex flex-col h-full">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8 md:mb-10">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{t.title}</h1>
-            <p className="text-slate-500 text-xs md:text-sm mt-1">{t.subtitle}</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_self_evaluation.title')}</h1>
+            <p className="text-slate-500 text-xs md:text-sm mt-1">{tr('intern_self_evaluation.subtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -185,14 +162,15 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
               className="px-5 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
               disabled={isSaving}
             >
-              {t.reset}
+              {tr('intern_self_evaluation.actions.reset')}
             </button>
             <button
               onClick={() => void handleSave()}
               className="px-6 py-3 rounded-2xl bg-[#111827] text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl flex items-center gap-2"
               disabled={isSaving}
             >
-              <Save size={14} /> {isSaving ? t.saving : t.save}
+              <Save size={14} />
+              {isSaving ? tr('intern_self_evaluation.actions.saving') : tr('intern_self_evaluation.actions.save')}
             </button>
           </div>
         </div>
@@ -212,8 +190,8 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
                     <BarChart3 size={24} />
                   </div>
                   <div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.analysis}</div>
-                    <div className="text-2xl font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'แบบประเมินคะแนน' : 'Score Sheet'}</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{tr('intern_self_evaluation.sections.analysis')}</div>
+                    <div className="text-2xl font-black text-slate-900 tracking-tight">{tr('intern_self_evaluation.sections.score_sheet')}</div>
                   </div>
                 </div>
               </div>
@@ -246,8 +224,8 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
                       <StickyNote size={18} />
                     </div>
                     <div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t.summary}</div>
-                      <div className="text-sm font-black text-slate-900">{lang === 'TH' ? 'ข้อความสรุปที่ส่งให้แอดมิน' : 'Summary sent to Admin'}</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{tr('intern_self_evaluation.sections.summary')}</div>
+                      <div className="text-sm font-black text-slate-900">{tr('intern_self_evaluation.sections.summary_sent_to_admin')}</div>
                     </div>
                   </div>
                   <textarea
@@ -255,7 +233,7 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
                     onChange={(e) => setEditSummary(e.target.value)}
                     rows={6}
                     className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                    placeholder={t.placeholder}
+                    placeholder={tr('intern_self_evaluation.placeholders.summary')}
                   />
                 </div>
               </div>
@@ -263,18 +241,18 @@ const SelfEvaluationPage: React.FC<SelfEvaluationPageProps> = ({ lang }) => {
 
             <div className="lg:col-span-5 bg-[#3B49DF] rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col">
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-              <h3 className="text-xl font-black mb-10 tracking-tight relative z-10">{t.summary}</h3>
+              <h3 className="text-xl font-black mb-10 tracking-tight relative z-10">{tr('intern_self_evaluation.sections.summary')}</h3>
               <div className="flex flex-col items-center gap-10 flex-1 relative z-10">
                 <div className="w-40 h-40 bg-white/10 backdrop-blur-xl rounded-[2.5rem] border border-white/20 flex flex-col items-center justify-center shadow-2xl">
                   <span className="text-6xl font-black tracking-tighter leading-none">{displayPerformance.overallRating}</span>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mt-3 text-indigo-100">
-                    {lang === 'TH' ? 'คะแนนเฉลี่ย' : 'AVG SCORE'}
+                    {tr('intern_self_evaluation.labels.avg_score')}
                   </span>
                 </div>
                 <p className="text-lg leading-relaxed text-indigo-50 italic font-medium text-center">
                   {editSummary
                     ? `\"${editSummary}\"`
-                    : `\"${lang === 'TH' ? 'เขียนสรุปการประเมินตนเองเพื่อให้แอดมินตรวจสอบ' : 'Write a self-summary for admin review'}\"`}
+                    : `\"${tr('intern_self_evaluation.placeholders.summary_quote')}\"`}
                 </p>
               </div>
             </div>
