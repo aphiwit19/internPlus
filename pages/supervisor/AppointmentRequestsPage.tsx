@@ -82,7 +82,9 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
   const [drafts, setDrafts] = useState<Record<string, EditDraft>>({});
   const [historyPages, setHistoryPages] = useState<Record<string, number>>({});
   const [searchText, setSearchText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<AppointmentStatus | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<Set<AppointmentStatus>>(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [listPage, setListPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -92,6 +94,16 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
   const toastInitRef = useRef(false);
   const prevToastMapRef = useRef<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   useEffect(() => {
     setLoadError(null);
@@ -286,7 +298,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
     return items.filter((it) => {
       const ar = it.appointmentRequest ?? {};
       const s = (ar.status ?? 'REQUESTED') as AppointmentStatus;
-      if (statusFilter !== 'ALL' && s !== statusFilter) return false;
+      if (statusFilter.size > 0 && !statusFilter.has(s)) return false;
       if (!q) return true;
       return String(it.internName ?? '').toLowerCase().includes(q);
     });
@@ -336,17 +348,64 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
                   />
                 </div>
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as AppointmentStatus | 'ALL')}
-                  className="w-full sm:w-[200px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                >
-                  <option value="ALL">{tr('supervisor_appointment_requests.filter_all')}</option>
-                  <option value="REQUESTED">{tr('supervisor_appointment_requests.status.requested')}</option>
-                  <option value="CONFIRMED">{tr('supervisor_appointment_requests.status.confirmed')}</option>
-                  <option value="RESCHEDULED">{tr('supervisor_appointment_requests.status.rescheduled')}</option>
-                  <option value="CANCELLED">{tr('supervisor_appointment_requests.status.cancelled')}</option>
-                </select>
+                <div ref={filterRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen((v) => !v)}
+                    className="w-full sm:w-[220px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      {statusFilter.size === 0
+                        ? tr('supervisor_appointment_requests.filter_all')
+                        : Array.from(statusFilter).map((s) => statusLabel(s)).join(', ')}
+                    </span>
+                    <ChevronDown size={14} className={`shrink-0 transition-transform ${filterOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {filterOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-full sm:w-[220px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-1 duration-150">
+                      {(['REQUESTED', 'CONFIRMED', 'RESCHEDULED', 'CANCELLED'] as AppointmentStatus[]).map((s) => {
+                        const checked = statusFilter.has(s);
+                        return (
+                          <label
+                            key={s}
+                            className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setStatusFilter((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(s)) next.delete(s);
+                                  else next.add(s);
+                                  return next;
+                                });
+                              }}
+                              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className={`flex items-center gap-2 text-xs font-bold ${checked ? 'text-slate-900' : 'text-slate-600'}`}>
+                              <span className={`inline-block w-2 h-2 rounded-full ${
+                                s === 'REQUESTED' ? 'bg-amber-400' : s === 'CONFIRMED' ? 'bg-emerald-400' : s === 'RESCHEDULED' ? 'bg-violet-400' : 'bg-rose-400'
+                              }`} />
+                              {statusLabel(s)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {statusFilter.size > 0 && (
+                        <div className="border-t border-slate-100 mt-1 pt-1 px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setStatusFilter(new Set())}
+                            className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
+                          >
+                            {tr('supervisor_appointment_requests.filter_all')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="hidden lg:flex items-center px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-black text-slate-700">
                   {filteredItems.length} {tr('supervisor_appointment_requests.results')}

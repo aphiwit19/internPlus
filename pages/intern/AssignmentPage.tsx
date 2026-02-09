@@ -48,7 +48,11 @@ import {
 
   ChevronLeft,
 
-  ChevronRight
+  ChevronRight,
+
+  Video,
+
+  Film
 
 } from 'lucide-react';
 
@@ -444,6 +448,21 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
 
 
+  const MAX_DOC_MB = 20;
+  const MAX_VIDEO_MB = 100;
+  const MAX_DOC_BYTES = MAX_DOC_MB * 1024 * 1024;
+  const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+
+  const handoffDocInputRef = useRef<HTMLInputElement>(null);
+  const handoffVideoInputRef = useRef<HTMLInputElement>(null);
+
   const resetHandoffState = () => {
 
     setHandoffLinks([]);
@@ -553,6 +572,17 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
     if (isSubmittingHandoff) return;
 
 
+
+    const oversizedDoc = handoffDocFiles.find((f) => f.size > MAX_DOC_BYTES);
+    if (oversizedDoc) {
+      window.alert(_lang === 'TH' ? `ไฟล์ "${oversizedDoc.name}" มีขนาดเกิน ${MAX_DOC_MB} MB` : `File "${oversizedDoc.name}" exceeds ${MAX_DOC_MB} MB limit`);
+      return;
+    }
+    const oversizedVideo = handoffVideoFiles.find((f) => f.size > MAX_VIDEO_BYTES);
+    if (oversizedVideo) {
+      window.alert(_lang === 'TH' ? `ไฟล์ "${oversizedVideo.name}" มีขนาดเกิน ${MAX_VIDEO_MB} MB` : `File "${oversizedVideo.name}" exceeds ${MAX_VIDEO_MB} MB limit`);
+      return;
+    }
 
     setIsSubmittingHandoff(true);
 
@@ -2192,39 +2222,28 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                   <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
 
                     {handoffExistingFiles.map((f, idx) => (
-
                       <div key={`${f.storagePath}-${idx}`} className="flex items-center justify-between gap-4">
-
                         <button
-
                           type="button"
-
                           onClick={() => void openStoragePath(f.storagePath)}
-
-                          className="min-w-0 text-left hover:underline"
-
+                          className="flex items-center gap-3 min-w-0 text-left group"
                         >
-
-                          <div className="text-[12px] font-black text-slate-900 truncate">{f.fileName}</div>
-
+                          <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-blue-500 shrink-0 group-hover:border-blue-200 transition-all">
+                            <FileText size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-black text-slate-900 truncate group-hover:text-blue-600 transition-colors">{f.fileName}</div>
+                            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{_lang === 'TH' ? 'อัปโหลดแล้ว' : 'Uploaded'}</div>
+                          </div>
                         </button>
-
                         <button
-
                           type="button"
-
                           onClick={() => setHandoffExistingFiles((prev) => prev.filter((_, i) => i !== idx))}
-
                           className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
-
                         >
-
                           <Trash2 size={16} />
-
                         </button>
-
                       </div>
-
                     ))}
 
                   </div>
@@ -2232,39 +2251,68 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                 )}
 
                 <input
-
+                  ref={handoffDocInputRef}
                   type="file"
-
                   multiple
-
+                  className="hidden"
                   onChange={(e) => {
-
                     const files = e.target.files ? Array.from(e.target.files) : [];
-
-                    setHandoffDocFiles(files);
-
+                    const tooLarge = files.find((f) => f.size > MAX_DOC_BYTES);
+                    if (tooLarge) {
+                      window.alert(_lang === 'TH' ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน ${MAX_DOC_MB} MB` : `File "${tooLarge.name}" exceeds ${MAX_DOC_MB} MB limit`);
+                      if (handoffDocInputRef.current) handoffDocInputRef.current.value = '';
+                      return;
+                    }
+                    setHandoffDocFiles((prev) => [...prev, ...files]);
+                    if (handoffDocInputRef.current) handoffDocInputRef.current.value = '';
                   }}
-
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700"
-
                 />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handoffDocInputRef.current?.click()}
+                    className="inline-flex items-center gap-3 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 hover:border-blue-200 transition-all cursor-pointer"
+                  >
+                    <Upload size={16} /> {_lang === 'TH' ? 'เลือกไฟล์' : 'Choose Files'}
+                  </button>
+                  {handoffDocFiles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setHandoffDocFiles([])}
+                      className="inline-flex items-center gap-2 px-5 py-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                    >
+                      <Trash2 size={14} /> {_lang === 'TH' ? 'ล้าง' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+                <div className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {_lang === 'TH' ? `ขนาดไฟล์สูงสุด ${MAX_DOC_MB} MB ต่อไฟล์` : `Max ${MAX_DOC_MB} MB per file`}
+                </div>
 
                 {handoffDocFiles.length > 0 && (
-
                   <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
-
-                    {handoffDocFiles.map((f) => (
-
-                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="text-[12px] font-black text-slate-900 truncate">
-
-                        {f.name}
-
+                    {handoffDocFiles.map((f, idx) => (
+                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-blue-500 shrink-0">
+                            <FileText size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-black text-slate-900 truncate">{f.name}</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{formatFileSize(f.size)}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHandoffDocFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
-
                     ))}
-
                   </div>
-
                 )}
 
               </div>
@@ -2280,39 +2328,28 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                   <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
 
                     {handoffExistingVideos.map((v, idx) => (
-
                       <div key={`${v.storagePath}-${idx}`} className="flex items-center justify-between gap-4">
-
                         <button
-
                           type="button"
-
                           onClick={() => void openStoragePath(v.storagePath)}
-
-                          className="min-w-0 text-left hover:underline"
-
+                          className="flex items-center gap-3 min-w-0 text-left group"
                         >
-
-                          <div className="text-[12px] font-black text-slate-900 truncate">{v.fileName}</div>
-
+                          <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-purple-500 shrink-0 group-hover:border-purple-200 transition-all">
+                            <Video size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-black text-slate-900 truncate group-hover:text-purple-600 transition-colors">{v.fileName}</div>
+                            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{_lang === 'TH' ? 'อัปโหลดแล้ว' : 'Uploaded'}</div>
+                          </div>
                         </button>
-
                         <button
-
                           type="button"
-
                           onClick={() => setHandoffExistingVideos((prev) => prev.filter((_, i) => i !== idx))}
-
                           className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
-
                         >
-
                           <Trash2 size={16} />
-
                         </button>
-
                       </div>
-
                     ))}
 
                   </div>
@@ -2320,41 +2357,69 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                 )}
 
                 <input
-
+                  ref={handoffVideoInputRef}
                   type="file"
-
                   multiple
-
                   accept="video/*"
-
+                  className="hidden"
                   onChange={(e) => {
-
                     const files = e.target.files ? Array.from(e.target.files) : [];
-
-                    setHandoffVideoFiles(files);
-
+                    const tooLarge = files.find((f) => f.size > MAX_VIDEO_BYTES);
+                    if (tooLarge) {
+                      window.alert(_lang === 'TH' ? `ไฟล์ "${tooLarge.name}" มีขนาดเกิน ${MAX_VIDEO_MB} MB` : `File "${tooLarge.name}" exceeds ${MAX_VIDEO_MB} MB limit`);
+                      if (handoffVideoInputRef.current) handoffVideoInputRef.current.value = '';
+                      return;
+                    }
+                    setHandoffVideoFiles((prev) => [...prev, ...files]);
+                    if (handoffVideoInputRef.current) handoffVideoInputRef.current.value = '';
                   }}
-
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700"
-
                 />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handoffVideoInputRef.current?.click()}
+                    className="inline-flex items-center gap-3 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 hover:border-purple-200 transition-all cursor-pointer"
+                  >
+                    <Film size={16} /> {_lang === 'TH' ? 'เลือกวิดีโอ' : 'Choose Videos'}
+                  </button>
+                  {handoffVideoFiles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setHandoffVideoFiles([])}
+                      className="inline-flex items-center gap-2 px-5 py-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all"
+                    >
+                      <Trash2 size={14} /> {_lang === 'TH' ? 'ล้าง' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+                <div className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {_lang === 'TH' ? `ขนาดไฟล์สูงสุด ${MAX_VIDEO_MB} MB ต่อไฟล์` : `Max ${MAX_VIDEO_MB} MB per file`}
+                </div>
 
                 {handoffVideoFiles.length > 0 && (
-
                   <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-5 space-y-3">
-
-                    {handoffVideoFiles.map((f) => (
-
-                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="text-[12px] font-black text-slate-900 truncate">
-
-                        {f.name}
-
+                    {handoffVideoFiles.map((f, idx) => (
+                      <div key={`${f.name}-${f.size}-${f.lastModified}`} className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-purple-500 shrink-0">
+                            <Video size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-black text-slate-900 truncate">{f.name}</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{formatFileSize(f.size)}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHandoffVideoFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="w-10 h-10 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
-
                     ))}
-
                   </div>
-
                 )}
 
               </div>
