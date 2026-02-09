@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Award, ChevronLeft, ChevronRight, Clock, CreditCard, Download, FileText, Settings2, Upload, Users, UserX } from 'lucide-react';
@@ -22,11 +23,28 @@ type CertificateRequestDoc = {
   internAvatar: string;
   internPosition?: string;
   internDepartment?: string;
+  overrideInternName?: string | null;
+  overrideInternPosition?: string | null;
+  overrideInternDepartment?: string | null;
+  overrideInternPeriod?: string | null;
+  overrideSystemId?: string | null;
+  overrideIssueDate?: string | null;
+  overrideIssueDateTs?: unknown;
+  snapshotInternName?: string | null;
+  snapshotInternPosition?: string | null;
+  snapshotInternDepartment?: string | null;
+  snapshotInternPeriod?: string | null;
+  snapshotSystemId?: string | null;
+  snapshotIssueDateTs?: unknown;
   supervisorId: string | null;
   type: CertificateRequestType;
   status: CertificateRequestStatus;
   requestedAt?: unknown;
   issuedAt?: unknown;
+  unlockedAt?: unknown;
+  unlockedById?: string | null;
+  unlockedByName?: string | null;
+  unlockedByRole?: 'SUPERVISOR' | 'HR_ADMIN' | null;
   issuedById?: string;
   issuedByName?: string;
   issuedByRole?: 'SUPERVISOR' | 'HR_ADMIN';
@@ -45,6 +63,17 @@ type CertificateTemplateDoc = {
   backgroundUrl?: string;
   active?: boolean;
   isActive?: boolean;
+  layout?: {
+    blocks?: Array<{
+      kind?: 'text' | string;
+      source?:
+        | { type: 'static'; text: string }
+        | {
+            type: 'field';
+            key: 'internName' | 'position' | 'department' | 'internPeriod' | 'systemId' | 'issueDate';
+          };
+    }>;
+  };
 };
 
 interface AdminCertificatesPageProps {
@@ -100,9 +129,31 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     RECOMMENDATION: '',
   });
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [editingRequest, setEditingRequest] = useState<(CertificateRequestDoc & { id: string }) | null>(null);
+  const [editTemplateId, setEditTemplateId] = useState('');
+  const [editInternName, setEditInternName] = useState('');
+  const [editInternPosition, setEditInternPosition] = useState('');
+  const [editInternDepartment, setEditInternDepartment] = useState('');
+  const [editInternPeriod, setEditInternPeriod] = useState('');
+  const [editSystemId, setEditSystemId] = useState('');
+  const [editIssueDate, setEditIssueDate] = useState('');
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [pendingCancelRequest, setPendingCancelRequest] = useState<(CertificateRequestDoc & { id: string }) | null>(null);
   const [mode, setMode] = useState<'requests' | 'templates'>('requests');
   const [internsPage, setInternsPage] = useState(1);
   const INTERNS_PAGE_SIZE = 5;
+
+  const toDateInputValue = (value: unknown): string => {
+    const anyVal = value as { toDate?: () => Date };
+    const d = anyVal && typeof anyVal.toDate === 'function' ? anyVal.toDate() : value instanceof Date ? value : null;
+    if (!d) return '';
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     setLoadError(null);
@@ -262,6 +313,108 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     }
   };
 
+  const handleCancelIssued = async (req: CertificateRequestDoc & { id: string }) => {
+    if (cancelingId) return;
+    if (req.type !== 'COMPLETION') return;
+    if (req.status !== 'ISSUED') return;
+    setPendingCancelRequest(req);
+  };
+
+  const confirmCancelIssued = async () => {
+    const req = pendingCancelRequest;
+    if (!req) return;
+    if (cancelingId) return;
+
+    setCancelingId(req.id);
+    setUploadError(null);
+    try {
+      await updateDoc(doc(firestoreDb, 'certificateRequests', req.id), {
+        status: 'REQUESTED',
+        unlockedAt: serverTimestamp(),
+        unlockedById: user?.id ?? null,
+        unlockedByName: user?.name ?? 'Admin',
+        unlockedByRole: 'HR_ADMIN',
+      } as any);
+      setPendingCancelRequest(null);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Cancel failed'}`);
+    } finally {
+      setCancelingId(null);
+    }
+  };
+
+  const openEdit = (req: CertificateRequestDoc & { id: string }) => {
+    setUploadError(null);
+    setEditError(null);
+    setEditingRequest(req);
+    const currentTemplateId = (selectedTemplateByType[req.type] ?? '').trim() || String(req.templateId ?? '').trim();
+    setEditTemplateId(currentTemplateId);
+    setEditInternName(String(req.overrideInternName ?? req.snapshotInternName ?? req.internName ?? ''));
+    setEditInternPosition(String(req.overrideInternPosition ?? req.snapshotInternPosition ?? req.internPosition ?? ''));
+    setEditInternDepartment(String(req.overrideInternDepartment ?? req.snapshotInternDepartment ?? req.internDepartment ?? ''));
+    setEditInternPeriod(String(req.overrideInternPeriod ?? req.snapshotInternPeriod ?? ''));
+    setEditSystemId(String(req.overrideSystemId ?? req.snapshotSystemId ?? ''));
+
+    const dateValue =
+      toDateInputValue(req.overrideIssueDateTs) ||
+      toDateInputValue(req.snapshotIssueDateTs) ||
+      toDateInputValue(req.issuedAt) ||
+      '';
+    setEditIssueDate(dateValue);
+  };
+
+  const closeEdit = () => {
+    setEditingRequest(null);
+    setEditTemplateId('');
+    setEditInternName('');
+    setEditInternPosition('');
+    setEditInternDepartment('');
+    setEditInternPeriod('');
+    setEditSystemId('');
+    setEditIssueDate('');
+    setIsEditSaving(false);
+    setEditError(null);
+  };
+
+  const handleEditRegenerate = async () => {
+    if (!editingRequest) return;
+    if (isEditSaving) return;
+    const templateId = editTemplateId.trim();
+    if (!templateId) {
+      setEditError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      return;
+    }
+
+    setIsEditSaving(true);
+    setEditError(null);
+    try {
+      const fn = httpsCallable(firebaseFunctions, 'generateCertificate');
+
+      const overrides: Record<string, string> = {};
+      if (shouldShowEditField('internName')) overrides.internName = editInternName.trim();
+      if (shouldShowEditField('position')) overrides.internPosition = editInternPosition.trim();
+      if (shouldShowEditField('department')) overrides.internDepartment = editInternDepartment.trim();
+      if (shouldShowEditField('internPeriod')) overrides.internPeriod = editInternPeriod.trim();
+      if (shouldShowEditField('systemId')) overrides.systemId = editSystemId.trim();
+      if (shouldShowEditField('issueDate')) overrides.issueDate = editIssueDate.trim();
+
+      await fn({
+        requestId: editingRequest.id,
+        templateId,
+        overrides,
+      });
+
+      setSelectedTemplateByType((prev) => ({ ...prev, [editingRequest.type]: templateId }));
+      closeEdit();
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setEditError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
+
   const interns = useMemo(() => {
     const byIntern: Record<
       string,
@@ -317,8 +470,36 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
   const requestByType = useMemo(() => {
     if (!activeIntern) return new Map<CertificateRequestType, (CertificateRequestDoc & { id: string })>();
     const map = new Map<CertificateRequestType, (CertificateRequestDoc & { id: string })>();
+
+    const toMillis = (value: unknown): number => {
+      const anyVal = value as { toMillis?: () => number; toDate?: () => Date };
+      if (anyVal && typeof anyVal.toMillis === 'function') {
+        const ms = anyVal.toMillis();
+        return Number.isFinite(ms) ? ms : 0;
+      }
+      if (anyVal && typeof anyVal.toDate === 'function') {
+        const d = anyVal.toDate();
+        const ms = d?.getTime?.() ?? 0;
+        return Number.isFinite(ms) ? ms : 0;
+      }
+      const d = new Date(String(value ?? ''));
+      const ms = d.getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    };
+
+    const score = (r: CertificateRequestDoc & { id: string }): number => {
+      const statusWeight = r.status === 'ISSUED' ? 1_000_000_000_000_000 : 0;
+      const issued = toMillis(r.issuedAt);
+      const requested = toMillis(r.requestedAt);
+      const ts = r.status === 'ISSUED' ? (issued || requested) : requested;
+      return statusWeight + ts;
+    };
+
     for (const r of activeIntern.requests) {
-      if (!map.has(r.type)) map.set(r.type, r);
+      const prev = map.get(r.type);
+      if (!prev || score(r) > score(prev)) {
+        map.set(r.type, r);
+      }
     }
     return map;
   }, [activeIntern]);
@@ -354,6 +535,35 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     }
     return byType;
   }, [templates]);
+
+  const editTemplate = useMemo(() => {
+    const id = editTemplateId.trim();
+    if (!id) return null;
+    return templates.find((t) => t.id === id) ?? null;
+  }, [editTemplateId, templates]);
+
+  const editTemplateFieldKeys = useMemo(() => {
+    const keys = new Set<string>();
+    const blocks = editTemplate?.layout?.blocks;
+    if (!Array.isArray(blocks)) return keys;
+    for (const b of blocks) {
+      if (!b || b.kind !== 'text') continue;
+      const src = b.source as any;
+      if (src && src.type === 'field' && typeof src.key === 'string') {
+        keys.add(src.key);
+      }
+    }
+    return keys;
+  }, [editTemplate]);
+
+  const editHasLayout = Boolean(editTemplate?.layout && Array.isArray(editTemplate?.layout?.blocks));
+
+  const shouldShowEditField = (key: 'internName' | 'position' | 'department' | 'internPeriod' | 'systemId' | 'issueDate') => {
+    // If the template has a layout, only show fields that exist in it.
+    // If no layout (fixedSvg), show all fields.
+    if (!editHasLayout) return true;
+    return editTemplateFieldKeys.has(key);
+  };
 
   const TabBtn = ({
     active,
@@ -534,33 +744,47 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
                           <div className="flex items-center gap-3">
-                            <select
-                              value={selectedTemplateByType[meta.type]}
-                              onChange={(e) =>
-                                setSelectedTemplateByType((prev) => ({
-                                  ...prev,
-                                  [meta.type]: e.target.value,
-                                }))
-                              }
-                              className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
-                            >
-                              <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
-                              {templatesByType[meta.type].map((tpl) => (
-                                <option key={tpl.id} value={tpl.id}>
-                                  {tpl.name || tpl.id}
-                                </option>
-                              ))}
-                            </select>
+                            {meta.type === 'COMPLETION' ? (
+                              <>
+                                <select
+                                  value={selectedTemplateByType[meta.type]}
+                                  onChange={(e) =>
+                                    setSelectedTemplateByType((prev) => ({
+                                      ...prev,
+                                      [meta.type]: e.target.value,
+                                    }))
+                                  }
+                                  className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                                >
+                                  <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                                  {templatesByType[meta.type].map((tpl) => (
+                                    <option key={tpl.id} value={tpl.id}>
+                                      {tpl.name || tpl.id}
+                                    </option>
+                                  ))}
+                                </select>
 
-                            <button
-                              type="button"
-                              onClick={() => void handleGenerate(req)}
-                              disabled={generatingId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Generate' : 'Generate')}
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGenerate(req)}
+                                  disabled={generatingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Generate' : 'Generate')}
+                                </button>
+
+                                {req.unlockedAt ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEdit(req)}
+                                    className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50"
+                                  >
+                                    {lang === 'TH' ? 'แก้ไข' : 'Edit'}
+                                  </button>
+                                ) : null}
+                              </>
+                            ) : null}
 
                             <button
                               type="button"
@@ -584,19 +808,33 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                             ) : null}
                           </div>
                         ) : status === 'ISSUED' && req ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleDownload(req)}
-                            disabled={!(req.issuedPdfPath ?? req.storagePath) && !(Array.isArray(req.attachmentLinks) && req.attachmentLinks.length > 0)}
-                            className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
-                            title={t.download}
-                          >
-                            <Download size={18} />
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => void handleDownload(req)}
+                              disabled={!(req.issuedPdfPath ?? req.storagePath) && !(Array.isArray(req.attachmentLinks) && req.attachmentLinks.length > 0)}
+                              className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
+                              title={t.download}
+                            >
+                              <Download size={18} />
+                            </button>
+
+                            {meta.type === 'COMPLETION' ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleCancelIssued(req)}
+                                disabled={cancelingId === req.id}
+                                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2"
+                              >
+                                {cancelingId === req.id ? <Clock size={16} className="animate-spin" /> : null}
+                                {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
 
-                      {pendingLink?.requestId === req?.id && meta.type === 'RECOMMENDATION' ? (
+                      {pendingLink?.requestId === req?.id && meta.type === 'RECOMMENDATION' && req ? (
                         <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                           <input
                             type="text"
@@ -717,6 +955,201 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
               )}
             </div>
           )}
+
+          {editingRequest ? (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+              <div className="bg-white w-full max-w-2xl rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {lang === 'TH' ? 'แก้ไขใบรับรอง' : 'Edit Certificate'}
+                    </div>
+                    <div className="text-xl font-black text-slate-900 truncate">{editingRequest.internName}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeEdit}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all"
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="p-8 space-y-5">
+                  {editError ? (
+                    <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-xs font-bold">
+                      {editError}
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="space-y-2">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'Template' : 'Template'}</div>
+                      <select
+                        value={editTemplateId}
+                        onChange={(e) => setEditTemplateId(e.target.value)}
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                      >
+                        <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                        {templatesByType.COMPLETION.map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {tpl.name || tpl.id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {shouldShowEditField('issueDate') ? (
+                      <label className="space-y-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'วันที่ออก' : 'Issue date'}</div>
+                        <input
+                          type="date"
+                          value={editIssueDate}
+                          onChange={(e) => setEditIssueDate(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+
+                    {shouldShowEditField('internName') ? (
+                      <label className="space-y-2 md:col-span-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ชื่อ' : 'Name'}</div>
+                        <input
+                          value={editInternName}
+                          onChange={(e) => setEditInternName(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+
+                    {shouldShowEditField('position') ? (
+                      <label className="space-y-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ตำแหน่ง' : 'Position'}</div>
+                        <input
+                          value={editInternPosition}
+                          onChange={(e) => setEditInternPosition(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+
+                    {shouldShowEditField('department') ? (
+                      <label className="space-y-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'แผนก' : 'Department'}</div>
+                        <input
+                          value={editInternDepartment}
+                          onChange={(e) => setEditInternDepartment(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+
+                    {shouldShowEditField('internPeriod') ? (
+                      <label className="space-y-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ช่วงฝึกงาน' : 'Intern period'}</div>
+                        <input
+                          value={editInternPeriod}
+                          onChange={(e) => setEditInternPeriod(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+
+                    {shouldShowEditField('systemId') ? (
+                      <label className="space-y-2">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'รหัสระบบ' : 'System ID'}</div>
+                        <input
+                          value={editSystemId}
+                          onChange={(e) => setEditSystemId(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeEdit}
+                      disabled={isEditSaving}
+                      className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleEditRegenerate()}
+                      disabled={isEditSaving}
+                      className="px-8 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isEditSaving ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                      {isEditSaving ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Re-generate' : 'Re-generate')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {pendingCancelRequest ? (
+            <div className="fixed inset-0 z-[210] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+              <div className="bg-white w-full max-w-xl rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {lang === 'TH' ? 'ยืนยันการปลดล็อค' : 'Confirm Unlock'}
+                    </div>
+                    <div className="text-xl font-black text-slate-900">
+                      {lang === 'TH' ? 'ยกเลิกสถานะออกเอกสาร (Issued)' : 'Cancel Issued Status'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPendingCancelRequest(null)}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all"
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="p-8 space-y-4">
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5">
+                    <div className="text-sm font-black text-slate-900">
+                      {lang === 'TH'
+                        ? 'คุณต้องการปลดล็อคใบรับรองนี้เพื่อแก้ไขและออกใหม่ใช่ไหม?'
+                        : 'Do you want to unlock this certificate for editing and re-issuance?'}
+                    </div>
+                    <div className="mt-2 text-xs font-bold text-slate-500 leading-relaxed">
+                      {lang === 'TH'
+                        ? 'ระบบจะเปลี่ยนสถานะกลับเป็น REQUESTED เพื่อให้แก้ไขได้ และผู้ใช้งานฝั่ง intern จะเห็นเป็นรอดำเนินการจนกว่าจะ Generate ใหม่'
+                        : 'This will switch the status back to REQUESTED. Interns will see it as pending until you generate again.'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setPendingCancelRequest(null)}
+                      disabled={cancelingId !== null}
+                      className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {lang === 'TH' ? 'คงไว้เหมือนเดิม' : 'Keep Issued'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void confirmCancelIssued()}
+                      disabled={cancelingId !== null}
+                      className="px-8 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {cancelingId ? <Clock size={16} className="animate-spin" /> : null}
+                      {lang === 'TH' ? 'ปลดล็อคเพื่อแก้ไข' : 'Unlock & Edit'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

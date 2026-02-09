@@ -3,6 +3,9 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2/options';
 import { PDFDocument } from 'pdf-lib';
 import sharp from 'sharp';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 setGlobalOptions({ region: 'asia-southeast1' });
 if (admin.apps.length === 0) {
     const projectId = process.env.GCLOUD_PROJECT;
@@ -10,6 +13,7 @@ if (admin.apps.length === 0) {
         storageBucket: projectId ? `${projectId}.firebasestorage.app` : undefined,
     });
 }
+const THIS_FILE_DIR = path.dirname(fileURLToPath(import.meta.url));
 function assertAdmin(context) {
     const auth = context.auth;
     if (!auth)
@@ -41,6 +45,96 @@ function escapeXml(value) {
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&apos;');
 }
+const EMBEDDED_FONTS = [
+    {
+        family: 'TH Sarabun New',
+        weight: 400,
+        style: 'normal',
+        relativePath: 'front/thai/THSarabunNew.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'TH Sarabun New',
+        weight: 700,
+        style: 'normal',
+        relativePath: 'front/thai/THSarabunNew Bold.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'TH Sarabun New',
+        weight: 400,
+        style: 'italic',
+        relativePath: 'front/thai/THSarabunNew Italic.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'TH Sarabun New',
+        weight: 700,
+        style: 'italic',
+        relativePath: 'front/thai/THSarabunNew BoldItalic.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'Cormorant Garamond',
+        weight: 400,
+        style: 'normal',
+        relativePath: 'front/eng/static/CormorantGaramond-Regular.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'Cormorant Garamond',
+        weight: 700,
+        style: 'normal',
+        relativePath: 'front/eng/static/CormorantGaramond-Bold.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'Cormorant Garamond',
+        weight: 400,
+        style: 'italic',
+        relativePath: 'front/eng/static/CormorantGaramond-Italic.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+    {
+        family: 'Cormorant Garamond',
+        weight: 700,
+        style: 'italic',
+        relativePath: 'front/eng/static/CormorantGaramond-BoldItalic.ttf',
+        mime: 'font/ttf',
+        format: 'truetype',
+    },
+];
+const embeddedFontBase64Cache = new Map();
+function readFontBase64(relativePath) {
+    const cached = embeddedFontBase64Cache.get(relativePath);
+    if (cached)
+        return cached;
+    // This file runs from lib/index.js in production. We copy src/front -> lib/front in the build script.
+    const abs = path.resolve(THIS_FILE_DIR, relativePath);
+    const buf = fs.readFileSync(abs);
+    const b64 = buf.toString('base64');
+    embeddedFontBase64Cache.set(relativePath, b64);
+    return b64;
+}
+function buildEmbeddedFontStyleTag(fontFamiliesInUse) {
+    const faces = EMBEDDED_FONTS.filter((f) => fontFamiliesInUse.has(f.family));
+    if (faces.length === 0)
+        return '';
+    const css = faces
+        .map((f) => {
+        const b64 = readFontBase64(f.relativePath);
+        return (`@font-face{font-family:'${f.family}';src:url('data:${f.mime};base64,${b64}') format('${f.format}');font-weight:${f.weight};font-style:${f.style};}`);
+    })
+        .join('');
+    return `<style>${css}</style>`;
+}
 function formatIssueDate(value) {
     if (!value)
         return '';
@@ -49,6 +143,14 @@ function formatIssueDate(value) {
         return '';
     // English date
     return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' });
+}
+function parseDateOnlyToDate(value) {
+    // Expected: YYYY-MM-DD (from <input type="date">)
+    const m = /^\d{4}-\d{2}-\d{2}$/.exec(value.trim());
+    if (!m)
+        return null;
+    const d = new Date(`${value}T00:00:00.000Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
 }
 function resolveFieldValue(key, ctx) {
     switch (key) {
@@ -74,6 +176,13 @@ function buildSvgFromLayout(layout, target, ctx) {
     const sx = srcW ? target.width / srcW : 1;
     const sy = srcH ? target.height / srcH : 1;
     const sf = (sx + sy) / 2;
+    const fontFamiliesInUse = new Set();
+    for (const b of layout.blocks) {
+        const ff = b?.fontFamily;
+        if (typeof ff === 'string' && ff.trim())
+            fontFamiliesInUse.add(ff.trim());
+    }
+    const embeddedFontsStyle = buildEmbeddedFontStyleTag(fontFamiliesInUse);
     const textNodes = layout.blocks
         .filter((b) => b && b.kind === 'text')
         .map((b) => {
@@ -94,6 +203,9 @@ function buildSvgFromLayout(layout, target, ctx) {
         const fill = b.color ?? '#111827';
         const opacity = b.opacity ?? 1;
         const align = b.align ?? 'left';
+        const fontFamily = typeof b.fontFamily === 'string' && String(b.fontFamily).trim()
+            ? String(b.fontFamily).trim()
+            : 'Arial';
         // Konva uses y as the top of the text box, while SVG uses y as baseline.
         // sharp's SVG renderer may ignore dominant-baseline, so we convert explicitly.
         const y = yTop + fontSize;
@@ -106,10 +218,10 @@ function buildSvgFromLayout(layout, target, ctx) {
             return `<tspan x="${x}" dy="${dy}">${escapeXml(line)}</tspan>`;
         })
             .join('');
-        return `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escapeXml(fill)}" opacity="${opacity}" font-size="${fontSize}" font-family="Arial, sans-serif" font-weight="${fontWeight}">${tspans}</text>`;
+        return `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escapeXml(fill)}" opacity="${opacity}" font-size="${fontSize}" font-family="${escapeXml(fontFamily)}, sans-serif" font-weight="${fontWeight}">${tspans}</text>`;
     })
         .join('\n');
-    return `<svg width="${target.width}" height="${target.height}" xmlns="http://www.w3.org/2000/svg">\n${textNodes}\n</svg>`;
+    return `<svg width="${target.width}" height="${target.height}" xmlns="http://www.w3.org/2000/svg">\n${embeddedFontsStyle}${textNodes}\n</svg>`;
 }
 function resolveStoragePathFromTemplate(tpl) {
     if (tpl.backgroundPath && typeof tpl.backgroundPath === 'string') {
@@ -233,6 +345,7 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         const caller = await assertHrAdminOrSupervisor(request);
         const requestId = String(request.data?.requestId ?? '');
         const templateId = String(request.data?.templateId ?? '');
+        const overridesRaw = (request.data?.overrides ?? null);
         if (!requestId)
             throw new HttpsError('invalid-argument', 'Missing requestId');
         if (!templateId)
@@ -251,6 +364,16 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         const req = reqSnap.data();
         if (!req.internId)
             throw new HttpsError('failed-precondition', 'Request has no internId');
+        const overrides = overridesRaw
+            ? {
+                internName: typeof overridesRaw.internName === 'string' ? overridesRaw.internName : undefined,
+                internPosition: typeof overridesRaw.internPosition === 'string' ? overridesRaw.internPosition : undefined,
+                internDepartment: typeof overridesRaw.internDepartment === 'string' ? overridesRaw.internDepartment : undefined,
+                internPeriod: typeof overridesRaw.internPeriod === 'string' ? overridesRaw.internPeriod : undefined,
+                systemId: typeof overridesRaw.systemId === 'string' ? overridesRaw.systemId : undefined,
+                issueDate: typeof overridesRaw.issueDate === 'string' ? overridesRaw.issueDate : undefined,
+            }
+            : null;
         if (caller.roles.includes('SUPERVISOR') && !caller.roles.includes('HR_ADMIN')) {
             if (req.supervisorId !== caller.uid) {
                 throw new HttpsError('permission-denied', 'Supervisor can only generate certificates for assigned requests.');
@@ -271,11 +394,18 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         // Fetch intern profile (authoritative source)
         const userSnap = await db.collection('users').doc(req.internId).get();
         const user = (userSnap.exists ? userSnap.data() : {});
-        const internName = user.name ?? req.internName ?? 'Intern';
-        const internPosition = user.position ?? req.internPosition ?? '';
-        const internDepartment = user.department ?? req.internDepartment ?? '';
-        const internPeriod = user.internPeriod ?? '';
-        const systemId = user.systemId ?? '';
+        const internName = (overrides?.internName ?? '').trim() || (req.overrideInternName ?? '').trim() || (req.snapshotInternName ?? '').trim() || user.name || req.internName || 'Intern';
+        const internPosition = (overrides?.internPosition ?? '').trim() || (req.overrideInternPosition ?? '').trim() || (req.snapshotInternPosition ?? '').trim() || user.position || req.internPosition || '';
+        const internDepartment = (overrides?.internDepartment ?? '').trim() || (req.overrideInternDepartment ?? '').trim() || (req.snapshotInternDepartment ?? '').trim() || user.department || req.internDepartment || '';
+        const internPeriod = (overrides?.internPeriod ?? '').trim() || (req.overrideInternPeriod ?? '').trim() || (req.snapshotInternPeriod ?? '').trim() || user.internPeriod || '';
+        const systemId = (overrides?.systemId ?? '').trim() || (req.overrideSystemId ?? '').trim() || (req.snapshotSystemId ?? '').trim() || user.systemId || '';
+        const overrideIssueDateTs = overrides?.issueDate ? parseDateOnlyToDate(overrides.issueDate) : null;
+        const issueDateTs = (overrideIssueDateTs ? admin.firestore.Timestamp.fromDate(overrideIssueDateTs) : null) ??
+            req.overrideIssueDateTs ??
+            req.snapshotIssueDateTs ??
+            null;
+        const legacyIssueDate = (req.overrideIssueDate ?? '').trim();
+        const issueDateForRender = issueDateTs ?? (legacyIssueDate ? legacyIssueDate : null);
         // Download background image
         let bgBuffer;
         try {
@@ -325,7 +455,7 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
                 internDepartment,
                 internPeriod,
                 systemId,
-                issuedAt: req.issuedAt ?? new Date(),
+                issuedAt: issueDateForRender ?? req.issuedAt ?? new Date(),
             })
             : fixedSvg;
         const issuedPng = await bgSharp
@@ -348,12 +478,39 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         const issuedPngPath = `certificates/${req.internId}/${requestId}/certificate.png`;
         const issuedPdfPath = `certificates/${req.internId}/${requestId}/certificate.pdf`;
         await Promise.all([
-            bucket.file(issuedPngPath).save(issuedPng, { contentType: 'image/png' }),
-            bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), { contentType: 'application/pdf' }),
+            bucket.file(issuedPngPath).save(issuedPng, {
+                contentType: 'image/png',
+                resumable: false,
+                metadata: { cacheControl: 'no-store, max-age=0' },
+            }),
+            bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), {
+                contentType: 'application/pdf',
+                resumable: false,
+                metadata: { cacheControl: 'no-store, max-age=0' },
+            }),
         ]);
         await reqRef.update({
             status: 'ISSUED',
             templateId,
+            ...(overrides
+                ? {
+                    overrideInternName: overrides.internName ?? null,
+                    overrideInternPosition: overrides.internPosition ?? null,
+                    overrideInternDepartment: overrides.internDepartment ?? null,
+                    overrideInternPeriod: overrides.internPeriod ?? null,
+                    overrideSystemId: overrides.systemId ?? null,
+                    overrideIssueDate: overrides.issueDate ?? null,
+                    ...(overrideIssueDateTs ? { overrideIssueDateTs: admin.firestore.Timestamp.fromDate(overrideIssueDateTs) } : { overrideIssueDateTs: null }),
+                    editedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    editedById: caller.uid,
+                }
+                : {}),
+            snapshotInternName: internName,
+            snapshotInternPosition: internPosition,
+            snapshotInternDepartment: internDepartment,
+            snapshotInternPeriod: internPeriod,
+            snapshotSystemId: systemId,
+            snapshotIssueDateTs: issueDateTs,
             issuedAt: admin.firestore.FieldValue.serverTimestamp(),
             issuedById: caller.uid,
             issuedByName: request.auth.token?.name ?? (caller.roles.includes('HR_ADMIN') ? 'Admin' : 'Supervisor'),

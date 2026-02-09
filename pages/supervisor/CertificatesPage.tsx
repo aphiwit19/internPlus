@@ -504,7 +504,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                         ) : null}
                       </div>
 
-                      {pendingLink?.requestId === req?.id ? (
+                      {pendingLink?.requestId === req?.id && req ? (
                         <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                           <input
                             type="text"
