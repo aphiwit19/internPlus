@@ -954,9 +954,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                         {[...(Array.isArray(active.attachmentLinks) ? active.attachmentLinks : []), ...pendingAttachmentLinks]
                           .map((u) => (typeof u === 'string' ? u.trim() : ''))
                           .filter((u) => u.length > 0)
-                          .map((u) => (
+                          .map((u, idx) => (
                             <button
-                              key={u}
+                              key={`${u}-${idx}`}
                               type="button"
                               onClick={() => openUrl(u)}
                               className="w-full p-4 bg-white border border-slate-100 rounded-[1.5rem] flex items-center justify-between gap-4 hover:border-blue-200 hover:shadow-sm transition-all"

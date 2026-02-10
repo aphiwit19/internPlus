@@ -48,6 +48,8 @@ interface SupervisorCertificatesPageProps {
   user: UserProfile;
 }
 
+type Mode = 'requests' | 'templates';
+
 const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({ lang: _lang, user }) => {
   const { t } = useTranslation();
   const lng = _lang === 'TH' ? 'th' : 'en';
@@ -70,6 +72,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   const [pendingLink, setPendingLink] = useState<{ requestId: string } | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [savingLinkId, setSavingLinkId] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>('requests');
 
   useEffect(() => {
     setLoadError(null);
@@ -237,6 +240,12 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     return byType;
   }, [templates]);
 
+  const requestStats = useMemo(() => {
+    const requested = requests.filter((r) => r.status === 'REQUESTED').length;
+    const issued = requests.filter((r) => r.status === 'ISSUED').length;
+    return { requested, issued, total: requests.length };
+  }, [requests]);
+
   const handleGenerate = async (req: CertificateRequestDoc & { id: string }) => {
     if (generatingId) return;
     const templateId = selectedTemplateByType[req.type];
@@ -355,10 +364,72 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('supervisor_certificates.title')}</h1>
           <p className="text-slate-500 text-sm mt-1">{tr('supervisor_certificates.subtitle')}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="px-4 py-2 rounded-2xl bg-white border border-slate-100 text-[11px] font-black uppercase tracking-widest text-slate-600">
+              {lng === 'th' ? 'ทั้งหมด' : 'Total'}: {requestStats.total}
+            </div>
+            <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-100 text-[11px] font-black uppercase tracking-widest text-amber-700">
+              {lng === 'th' ? 'รอดำเนินการ' : 'Requested'}: {requestStats.requested}
+            </div>
+            <div className="px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-[11px] font-black uppercase tracking-widest text-emerald-700">
+              {lng === 'th' ? 'ออกแล้ว' : 'Issued'}: {requestStats.issued}
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-1 flex items-center gap-1 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => setMode('requests')}
+                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  mode === 'requests' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {lng === 'th' ? 'คำขอ' : 'Requests'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('templates')}
+                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  mode === 'templates' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {lng === 'th' ? 'เทมเพลต' : 'Templates'}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
-          {interns.length === 0 ? (
+          {mode === 'templates' ? (
+            <div className="space-y-4">
+              {templates.length === 0 ? (
+                <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
+                    {lng === 'th' ? 'ยังไม่มีเทมเพลต' : 'No templates'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {templates
+                    .filter((tpl) => (tpl.active ?? tpl.isActive ?? true) === true)
+                    .map((tpl) => (
+                      <div key={tpl.id} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-900 truncate">{tpl.name || tpl.id}</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                              {String(tpl.type ?? 'ALL')}
+                            </p>
+                            <p className="text-[11px] font-bold text-slate-500 mt-3 truncate">{tpl.backgroundPath ?? '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          ) : interns.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
               <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_certificates.empty')}</p>
             </div>
@@ -438,7 +509,30 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
                           <div className="flex items-center gap-3">
-                            {meta.type !== 'RECOMMENDATION' ? (
+                            {meta.type === 'RECOMMENDATION' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openUpload(req.id)}
+                                  disabled={uploadingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {uploadingId === req.id
+                                    ? tr('supervisor_certificates.actions.uploading')
+                                    : tr('supervisor_certificates.actions.upload_signed_pdf')}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachLink(req.id)}
+                                  disabled={savingLinkId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {tr('supervisor_certificates.actions.attach_link')}
+                                </button>
+                              </>
+                            ) : (
                               <>
                                 <select
                                   value={selectedTemplateByType[meta.type]}
@@ -467,29 +561,29 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                                   {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
                                   {generatingId === req.id ? tr('supervisor_certificates.actions.generating') : tr('supervisor_certificates.actions.generate')}
                                 </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openUpload(req.id)}
+                                  disabled={uploadingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {uploadingId === req.id
+                                    ? tr('supervisor_certificates.actions.uploading')
+                                    : tr('supervisor_certificates.actions.upload_signed_pdf')}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachLink(req.id)}
+                                  disabled={savingLinkId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {tr('supervisor_certificates.actions.attach_link')}
+                                </button>
                               </>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              onClick={() => openUpload(req.id)}
-                              disabled={uploadingId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {uploadingId === req.id
-                                ? tr('supervisor_certificates.actions.uploading')
-                                : tr('supervisor_certificates.actions.upload_signed_pdf')}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openAttachLink(req.id)}
-                              disabled={savingLinkId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              {tr('supervisor_certificates.actions.attach_link')}
-                            </button>
+                            )}
                           </div>
                         ) : status === 'ISSUED' && req ? (
                           <button

@@ -201,15 +201,19 @@ const SupervisorUniversityEvaluationPage: React.FC<SupervisorUniversityEvaluatio
     setDownloadAllError(null);
     try {
       const urls = await Promise.all(activeFiles.map((f) => getDownloadURL(storageRef(firebaseStorage, f.storagePath))));
-      urls.forEach((url) => {
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
         const a = document.createElement('a');
         a.href = url;
-        a.target = '_blank';
+        a.download = activeFiles[i]?.fileName ?? `file-${i}`;
         a.rel = 'noopener noreferrer';
         document.body.appendChild(a);
         a.click();
         a.remove();
-      });
+        if (i < urls.length - 1) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       setDownloadAllError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Download failed'}`);
