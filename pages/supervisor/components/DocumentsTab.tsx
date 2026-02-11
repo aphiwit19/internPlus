@@ -40,15 +40,6 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     a.remove();
   };
 
-  const openInNewTab = (url: string) => {
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
-    if (popup && !popup.closed) {
-      popup.location.href = url;
-      return true;
-    }
-    return false;
-  };
-
   const formatDateTime = (value: unknown): string | null => {
     if (!value) return null;
     const maybe = value as { toDate?: () => Date };
@@ -71,59 +62,29 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
 
   const handleDownloadDocument = async (docId: string) => {
     setDownloadError(null);
-    setDownloadNotice(`${isEn ? 'Preparing download...' : 'กำลังเตรียมดาวน์โหลด...'} (${docId})`);
-    console.log('[DocumentsTab] download click', { internId, docId });
+    setDownloadNotice(isEn ? 'Preparing download...' : 'กำลังเตรียมดาวน์โหลด...');
     const item = documents.find((d) => d.id === docId);
     if (!item) {
-      console.log('[DocumentsTab] document not found in state', { docId, count: documents.length });
       setDownloadNotice(null);
       return;
     }
     if (item.url) {
-      console.log('[DocumentsTab] using direct url', { docId, url: item.url });
-      if (!openInNewTab(item.url)) {
-        try {
-          triggerDownload(item.url, item.fileName);
-        } catch {
-          window.location.assign(item.url);
-        }
-      }
+      triggerDownload(item.url, item.fileName);
       setDownloadNotice(null);
       return;
     }
     if (!item.storagePath) {
-      console.log('[DocumentsTab] missing storagePath and url', { docId, item });
       setDownloadError(isEn ? 'Missing document link/path.' : 'ไม่พบลิงก์/ที่อยู่ไฟล์เอกสาร');
       setDownloadNotice(null);
       return;
     }
-
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
     try {
       const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-      console.log('[DocumentsTab] resolved download url', { docId, storagePath: item.storagePath, url });
-
-      if (!popup) {
-        window.location.assign(url);
-        return;
-      }
-      if (popup && !popup.closed) {
-        popup.location.href = url;
-        return;
-      }
-
-      if (!openInNewTab(url)) {
-        try {
-          triggerDownload(url, item.fileName);
-        } catch {
-          window.location.assign(url);
-        }
-      }
+      triggerDownload(url, item.fileName);
       setDownloadNotice(null);
     } catch (err: unknown) {
-      if (popup && !popup.closed) popup.close();
       const e = err as { code?: string; message?: string };
-      console.log('[DocumentsTab] getDownloadURL failed', { docId, storagePath: item.storagePath, err: e });
+      console.error('[DocumentsTab] getDownloadURL failed', { docId, storagePath: item.storagePath, err: e });
       setDownloadError(`${e?.code ?? 'unknown'}: ${e?.message ?? (isEn ? 'Download failed.' : 'ดาวน์โหลดไม่สำเร็จ')}`);
       setDownloadNotice(null);
     }
@@ -236,7 +197,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
       const entries = await Promise.all(
         toFetch.map(async (d) => {
           try {
-            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath));
+            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath!));
             return [d.id, url] as const;
           } catch {
             return [d.id, ''] as const;
@@ -261,8 +222,8 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     };
   }, [policyAcknowledgements, withdrawalEvidence, policyPreviewUrls]);
 
-  const DocumentRow: React.FC<{ d: UserDocument & { id: string }; previewUrl?: string }> = ({ d, previewUrl }) => (
-    <div className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
+  const renderDocRow = (d: UserDocument & { id: string }, previewUrl?: string) => (
+    <div key={d.id} className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
       <div className="flex items-center gap-4 overflow-hidden min-w-0">
         {previewUrl ? (
           <button
@@ -405,9 +366,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {policyAcknowledgements.map((d) => (
-                    <DocumentRow key={d.id} d={d} previewUrl={policyPreviewUrls[d.id]} />
-                  ))}
+                  {policyAcknowledgements.map((d) => renderDocRow(d, policyPreviewUrls[d.id]))}
                 </div>
               )}
             </div>
@@ -427,9 +386,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {withdrawalEvidence.map((d) => (
-                    <DocumentRow key={d.id} d={d} previewUrl={policyPreviewUrls[d.id]} />
-                  ))}
+                  {withdrawalEvidence.map((d) => renderDocRow(d, policyPreviewUrls[d.id]))}
                 </div>
               )}
             </div>
@@ -449,9 +406,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {otherDocuments.map((d) => (
-                    <DocumentRow key={d.id} d={d} />
-                  ))}
+                  {otherDocuments.map((d) => renderDocRow(d))}
                 </div>
               )}
             </div>
