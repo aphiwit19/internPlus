@@ -116,7 +116,15 @@ service cloud.firestore {
     match /universityEvaluations/{docId} {
       allow read: if isHrAdmin() || isSelf(docId) || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
       allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
-      allow update, delete: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow update, delete: if isHrAdmin() || (
+        signedIn() && (
+          resource.data.internId == request.auth.uid ||
+          (
+            resource.data.supervisorId == request.auth.uid &&
+            !(resource.data.appointmentRequest is map && resource.data.appointmentRequest.status == 'CANCELLED')
+          )
+        )
+      );
     }
 
     match /leaveRequests/{id} {

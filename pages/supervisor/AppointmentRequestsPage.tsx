@@ -94,6 +94,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
   const toastInitRef = useRef(false);
   const prevToastMapRef = useRef<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -260,7 +261,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
     return true;
   };
 
-  const handleSave = async (id: string) => {
+  const performSave = async (id: string) => {
     const d = drafts[id];
     if (!d) return;
     setSavingId(id);
@@ -293,6 +294,16 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
     }
   };
 
+  const handleSave = async (id: string) => {
+    const d = drafts[id];
+    if (!d) return;
+    if (d.status === 'CANCELLED') {
+      setCancelConfirmId(id);
+      return;
+    }
+    await performSave(id);
+  };
+
   const filteredItems = useMemo(() => {
     const q = searchText.trim().toLowerCase();
     return items.filter((it) => {
@@ -303,6 +314,15 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
       return String(it.internName ?? '').toLowerCase().includes(q);
     });
   }, [items, searchText, statusFilter]);
+
+  useEffect(() => {
+    if (!editingId) return;
+    const it = items.find((x) => x.id === editingId);
+    const s = (it?.appointmentRequest?.status ?? 'REQUESTED') as AppointmentStatus;
+    if (s === 'CANCELLED') {
+      setEditingId(null);
+    }
+  }, [editingId, items]);
 
   useEffect(() => {
     setListPage(1);
@@ -318,6 +338,55 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-6 md:p-10">
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
+        {cancelConfirmId ? (
+          <div className="absolute inset-0 z-[60] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+              onClick={() => setCancelConfirmId(null)}
+            />
+            <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em] mb-2">Cancel appointment</div>
+                  <h3 className="text-lg font-black text-slate-900">Confirm cancellation</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCancelConfirmId(null)}
+                  className="h-10 w-10 rounded-2xl bg-slate-50 text-slate-700 border border-slate-200 flex items-center justify-center hover:bg-white hover:border-slate-300 transition-all"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="mt-4 text-sm font-bold text-slate-600 leading-relaxed">
+                After saving as <span className="font-black text-rose-600">CANCELLED</span>, you will not be able to edit this appointment request again until the intern submits a new request.
+              </p>
+
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCancelConfirmId(null)}
+                  className="h-11 px-5 rounded-2xl bg-white text-slate-700 border border-slate-200 text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = cancelConfirmId;
+                    setCancelConfirmId(null);
+                    void performSave(id);
+                  }}
+                  className="h-11 px-5 rounded-2xl bg-rose-600 text-white border border-rose-600 text-xs font-black uppercase tracking-widest shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all"
+                >
+                  Confirm cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {loadError ? (
           <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
             {loadError}
@@ -434,6 +503,7 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
                 const contact = internContacts[it.internId] ?? internContacts[it.id] ?? null;
                 const isEditing = editingId === it.id;
                 const isExpanded = expandedId === it.id || isEditing;
+                const isEditLocked = currentStatus === 'CANCELLED';
 
                 const displayEmail = contact?.email ?? undefined;
                 const displayPhone = contact?.phone ?? undefined;
@@ -477,7 +547,8 @@ const AppointmentRequestsPage: React.FC<AppointmentRequestsPageProps> = ({ lang:
                               setEditingId(it.id);
                               setExpandedId(it.id);
                             }}
-                            className="h-10 px-5 rounded-2xl bg-blue-600 text-white border border-blue-600 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
+                            disabled={isEditLocked}
+                            className="h-10 px-5 rounded-2xl bg-blue-600 text-white border border-blue-600 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             title={tr('supervisor_appointment_requests.actions.edit')}
                           >
                             <Edit2 size={16} />
