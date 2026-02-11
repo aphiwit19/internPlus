@@ -9,16 +9,22 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
+    function myUserDocData() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? myUserDoc().data
+        : {};
+    }
+
     function myRoles() {
       return signedIn()
         ? (
-            myUserDoc().data.roles != null
-              ? myUserDoc().data.roles
+            myUserDocData().roles != null
+              ? myUserDocData().roles
               : (
-                  myUserDoc().data.role != null
-                    ? [myUserDoc().data.role]
+                  myUserDocData().role != null
+                    ? [myUserDocData().role]
                     : (
-                        myUserDoc().data.isDualRole == true
+                        myUserDocData().isDualRole == true
                           ? ['SUPERVISOR', 'HR_ADMIN']
                           : []
                       )
@@ -44,20 +50,26 @@ service cloud.firestore {
     }
 
     function isAssignedSupervisorOf(uid) {
-      return isSupervisor() && get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid;
+      return isSupervisor() &&
+        exists(/databases/$(database)/documents/users/$(uid)) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid;
     }
 
     function isMySupervisor(uid) {
-      return signedIn() && myUserDoc().data.supervisorId == uid;
+      return signedIn() && myUserDocData().supervisorId == uid;
     }
 
     match /users/{uid} {
-      allow read: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid) || isMySupervisor(uid);
+      allow read: if signedIn();
       allow write: if isSelf(uid) || isHrAdmin();
     }
 
-    match /users/{uid}/{document=**} {
+    match /users/{uid}/{subcollection}/{docId} {
       allow read, write: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid);
+
+      match /{rest=**} {
+        allow read, write: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid);
+      }
     }
 
     match /config/{docId} {
@@ -102,13 +114,19 @@ service cloud.firestore {
     }
 
     match /universityEvaluations/{docId} {
-      allow read: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow read: if isHrAdmin() || isSelf(docId) || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
       allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
       allow update, delete: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
     }
 
     match /leaveRequests/{id} {
-      allow read: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow read: if isHrAdmin() || (
+        signedIn() && (
+          resource.data.internId == request.auth.uid ||
+          resource.data.supervisorId == request.auth.uid ||
+          (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
+        )
+      );
       allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
       allow update, delete: if isHrAdmin() || (signedIn() && resource.data.supervisorId == request.auth.uid);
     }

@@ -48,6 +48,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   sidePanel,
 }) => {
   const { t } = useTranslation();
+  const lang = _lang;
   const isIntern = role === 'INTERN';
   const { user } = useAppContext();
   const leaveRepo = useMemo(() => createLeaveRepository(), []);
@@ -62,6 +63,9 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
 
+  const [submitNotice, setSubmitNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const submitNoticeTimeoutRef = React.useRef<number | null>(null);
+
   const [newRequest, setNewRequest] = useState<Partial<LeaveRequest>>({
     type: 'SICK',
     startDate: '',
@@ -70,6 +74,15 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   });
 
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (submitNoticeTimeoutRef.current != null) {
+        window.clearTimeout(submitNoticeTimeoutRef.current);
+        submitNoticeTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +131,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
   const handleSubmit = async () => {
     setFormError(null);
     setErrorMessage(null);
+    setSubmitNotice(null);
 
     if (!user) {
       setFormError(t('leave.form.login_required'));
@@ -144,8 +158,23 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
       });
       setRequests((prev) => [created, ...prev]);
       setNewRequest({ type: 'SICK', startDate: '', endDate: '', reason: '' });
+
+      const successMessage =
+        lang === 'EN'
+          ? 'Submitted. Your supervisor will be notified.'
+          : 'ส่งคำขอเรียบร้อย (หัวหน้างานจะเห็นรายการนี้)';
+      setSubmitNotice({ type: 'success', message: successMessage });
+      if (submitNoticeTimeoutRef.current != null) window.clearTimeout(submitNoticeTimeoutRef.current);
+      submitNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSubmitNotice(null);
+        submitNoticeTimeoutRef.current = null;
+      }, 3500);
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : t('leave.errors.submit_failed'));
+      setSubmitNotice({
+        type: 'error',
+        message: lang === 'EN' ? 'Failed to submit. Please try again.' : 'ส่งคำขอไม่สำเร็จ กรุณาลองใหม่',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -528,6 +557,18 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                       </div>
                     )}
 
+                    {submitNotice && (
+                      <div
+                        className={`mb-8 p-5 border rounded-2xl text-xs font-bold ${
+                          submitNotice.type === 'success'
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'
+                            : 'bg-rose-500/10 border-rose-500/20 text-rose-200'
+                        }`}
+                      >
+                        {submitNotice.message}
+                      </div>
+                    )}
+
                     <div className="space-y-10">
                       <div>
                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.leave_type')}</label>
@@ -577,6 +618,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
 
                       <button 
                         onClick={handleSubmit}
+                        type="button"
                         disabled={isLoading}
                         className="w-full py-6 bg-[#2563EB] text-white rounded-full font-black text-[15px] uppercase tracking-[0.15em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-4"
                       >

@@ -380,6 +380,19 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang: _lang }) => {
       },
       (err) => {
         const e = err as { code?: string; message?: string };
+        try {
+          const projectId = (firestoreDb.app.options as any)?.projectId;
+          console.error('EvaluationPage universityEvaluations onSnapshot failed', {
+            projectId,
+            authUid: firebaseAuth.currentUser?.uid ?? null,
+            userId: user.id,
+            docPath: `universityEvaluations/${user.id}`,
+            code: e?.code ?? null,
+            message: e?.message ?? null,
+          });
+        } catch {
+          // ignore
+        }
         setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.failed_to_load')}`);
       },
     );
@@ -407,6 +420,20 @@ const EvaluationPage: React.FC<EvaluationPageProps> = ({ lang: _lang }) => {
       );
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
+      try {
+        const projectId = (firestoreDb.app.options as any)?.projectId;
+        console.error('EvaluationPage universityEvaluations setDoc failed', {
+          projectId,
+          authUid: firebaseAuth.currentUser?.uid ?? null,
+          userId: user.id,
+          docPath: `universityEvaluations/${user.id}`,
+          patchKeys: Object.keys(patch ?? {}),
+          code: e?.code ?? null,
+          message: e?.message ?? null,
+        });
+      } catch {
+        // ignore
+      }
       setSaveError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('intern_evaluation.errors.save_failed')}`);
     } finally {
       setIsSaving(false);

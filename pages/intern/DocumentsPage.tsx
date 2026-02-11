@@ -285,12 +285,48 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     const item = documents.find((d) => d.id === docId);
     if (!item) return;
     if (item.url) {
-      window.open(item.url, '_blank', 'noopener,noreferrer');
+      const popup = window.open('', '_blank', 'noopener,noreferrer');
+      if (popup && !popup.closed) {
+        popup.location.href = item.url;
+        return;
+      }
+      try {
+        const a = document.createElement('a');
+        a.href = item.url;
+        a.rel = 'noopener noreferrer';
+        a.target = '_blank';
+        if (item.fileName) a.download = item.fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch {
+        window.location.assign(item.url);
+      }
       return;
     }
     if (!item.storagePath) return;
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
     const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-    window.open(url, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.location.assign(url);
+      return;
+    }
+    if (popup && !popup.closed) {
+      popup.location.href = url;
+      return;
+    }
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      if (item.fileName) a.download = item.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      window.location.assign(url);
+    }
   };
 
   const handleUploadForSlot = (label: string) => {

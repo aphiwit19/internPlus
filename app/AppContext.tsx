@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { Language, UserProfile, UserRole } from '@/types';
 import i18n, { APP_LANG_TO_I18N_LANG } from '@/i18n';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onIdTokenChanged } from 'firebase/auth';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 import { firebaseAuth } from '@/firebase';
@@ -79,7 +79,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
 
-    const unsub = onAuthStateChanged(firebaseAuth, async (fbUser) => {
+    const unsub = onIdTokenChanged(firebaseAuth, async (fbUser) => {
       setIsAuthLoading(true);
       try {
         if (!fbUser) {
@@ -91,12 +91,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        try {
+          await fbUser.getIdToken(true);
+        } catch (err) {
+          console.error('Failed to get auth token before Firestore profile fetch', err);
+        }
+
         const uid = fbUser.uid;
         const email = fbUser.email ?? '';
         const name = fbUser.displayName ?? email.split('@')[0] ?? 'User';
 
-        let profile = await getUserProfileByUid(uid);
-        if (!profile) profile = await createUserProfileIfMissing({ uid, email, name });
+        let profile: UserProfile | null = null;
+        try {
+          profile = await getUserProfileByUid(uid);
+          if (!profile) profile = await createUserProfileIfMissing({ uid, email, name });
+        } catch (err) {
+          console.error('Failed to load or create user profile', { uid }, err);
+          setUserState(null);
+          return;
+        }
 
         if (profile.hasLoggedIn === false) {
           try {
@@ -125,19 +138,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           unsubscribeProfile = null;
         }
 
-        unsubscribeProfile = subscribeUserProfileByUid(uid, (nextProfile) => {
-          if (!nextProfile) return;
-          setUserState(nextProfile);
+        unsubscribeProfile = subscribeUserProfileByUid(
+          uid,
+          (nextProfile) => {
+            if (!nextProfile) return;
+            setUserState(nextProfile);
 
-          if (typeof window !== 'undefined') {
-            const saved = window.localStorage.getItem(STORAGE_KEYS.activeRole);
-            const nextActiveRole = chooseInitialActiveRole(nextProfile.roles, saved);
-            setActiveRoleState(nextActiveRole);
-            window.localStorage.setItem(STORAGE_KEYS.activeRole, nextActiveRole);
-          } else {
-            setActiveRoleState(nextProfile.roles[0] ?? 'INTERN');
-          }
-        });
+            if (typeof window !== 'undefined') {
+              const saved = window.localStorage.getItem(STORAGE_KEYS.activeRole);
+              const nextActiveRole = chooseInitialActiveRole(nextProfile.roles, saved);
+              setActiveRoleState(nextActiveRole);
+              window.localStorage.setItem(STORAGE_KEYS.activeRole, nextActiveRole);
+            } else {
+              setActiveRoleState(nextProfile.roles[0] ?? 'INTERN');
+            }
+          },
+          (err) => {
+            console.error(
+              'User profile subscription failed',
+              {
+                uid,
+                authUid: firebaseAuth.currentUser?.uid ?? null,
+              },
+              err,
+            );
+          },
+        );
       } finally {
         setIsAuthLoading(false);
       }

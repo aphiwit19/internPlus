@@ -336,10 +336,13 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('Leave notification listener failed', {
+          activeRole,
+          uid: user.id,
+          lastVisitKey,
+        }, err);
         setApprovedLeaveCount(0);
-
       }
 
     );
@@ -424,12 +427,10 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('AssignmentProjects listener failed', { uid: user.id }, err);
         assignedCount = 0;
-
         countNewItems();
-
       }
 
     );
@@ -480,12 +481,10 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('PersonalProjects listener failed', { uid: user.id }, err);
         personalCount = 0;
-
         countNewItems();
-
       }
 
     );
@@ -558,10 +557,9 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('FeedbackMilestones notification listener failed', { uid: user.id, activeRole }, err);
         setNewFeedbackCount(0);
-
       }
 
     );
@@ -998,10 +996,9 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('Certificates notification listener failed', { uid: user.id, activeRole }, err);
         setNewCertificatesCount(0);
-
       }
 
     );
@@ -1068,10 +1065,9 @@ export default function AppLayout() {
 
       },
 
-      () => {
-
+      (err) => {
+        console.error('Allowance notification listener failed', { uid: user.id, activeRole }, err);
         setNewAllowanceCount(0);
-
       }
 
     );

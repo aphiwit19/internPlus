@@ -2,8 +2,18 @@ import { LifecycleStatus, PostProgramAccessLevel, UserProfile, UserRole } from '
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
+import { firebaseAuth } from '@/firebase';
 
 import { getDefaultAvatarUrl, normalizeAvatarUrl } from './avatar';
+
+async function waitForAuthUid(targetUid: string, timeoutMs: number): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const currentUid = firebaseAuth.currentUser?.uid ?? null;
+    if (currentUid === targetUid) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 function buildSystemId(uid: string): string {
   const short = uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase();
@@ -32,8 +42,28 @@ function normalizeRoles(data: { roles?: UserRole[]; role?: UserRole; isDualRole?
 }
 
 export async function getUserProfileByUid(uid: string): Promise<UserProfile | null> {
+  await waitForAuthUid(uid, 1500);
   const ref = doc(firestoreDb, 'users', uid);
-  const snap = await getDoc(ref);
+  let snap;
+  try {
+    snap = await getDoc(ref);
+  } catch (err: unknown) {
+    const projectId = (firestoreDb.app.options as any)?.projectId;
+    console.error('getUserProfileByUid failed', { uid, projectId, authUid: firebaseAuth.currentUser?.uid ?? null }, err);
+    const code = (err as any)?.code;
+    if (code === 'permission-denied') {
+      try {
+        await new Promise((r) => setTimeout(r, 350));
+        await waitForAuthUid(uid, 1500);
+        snap = await getDoc(ref);
+      } catch (retryErr) {
+        console.error('getUserProfileByUid retry failed', { uid, projectId, authUid: firebaseAuth.currentUser?.uid ?? null }, retryErr);
+        throw retryErr;
+      }
+    } else {
+      throw err;
+    }
+  }
   if (!snap.exists()) return null;
   const data = snap.data() as UserProfileDoc;
   const roles = normalizeRoles(data);
@@ -116,6 +146,8 @@ export function subscribeUserProfileByUid(
       });
     },
     (err) => {
+      const projectId = (firestoreDb.app.options as any)?.projectId;
+      console.error('subscribeUserProfileByUid failed', { uid, projectId, authUid: firebaseAuth.currentUser?.uid ?? null }, err);
       onError?.(err);
     },
   );
