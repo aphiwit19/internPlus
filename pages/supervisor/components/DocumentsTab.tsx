@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
+import { Download, ExternalLink, FileText, Loader2, ShieldCheck } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 import { useTranslation } from 'react-i18next';
@@ -22,7 +22,8 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const { t } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
-  const [policyPreviewUrls, setPolicyPreviewUrls] = useState<Record<string, string>>({});
+  const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
+  const [resolving, setResolving] = useState(false);
 
   const formatDateTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -44,16 +45,46 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     });
   }, [internId]);
 
-  const handleDownloadDocument = async (docId: string) => {
-    const item = documents.find((d) => d.id === docId);
-    if (!item) return;
-    if (item.url) {
-      window.open(item.url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (!item.storagePath) return;
-    const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-    window.open(url, '_blank', 'noopener,noreferrer');
+  useEffect(() => {
+    if (documents.length === 0) return;
+    let cancelled = false;
+    setResolving(true);
+
+    void (async () => {
+      const toFetch = documents.filter((d) => d.storagePath && !downloadUrls[d.id]);
+      if (toFetch.length === 0) { setResolving(false); return; }
+
+      const entries = await Promise.all(
+        toFetch.map(async (d) => {
+          try {
+            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath!));
+            return [d.id, url] as const;
+          } catch (err) {
+            console.error('[DocumentsTab] Failed to resolve URL for', d.id, d.storagePath, err);
+            return [d.id, ''] as const;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      setDownloadUrls((prev) => {
+        const next = { ...prev };
+        for (const [id, url] of entries) {
+          if (!url) continue;
+          next[id] = url;
+        }
+        return next;
+      });
+      setResolving(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [documents]);
+
+  const getDocUrl = (d: UserDocument & { id: string }): string | null => {
+    if (d.url) return d.url;
+    return downloadUrls[d.id] ?? null;
   };
 
   const orderedDocuments = useMemo(() => {
@@ -92,80 +123,60 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     return orderedDocuments.filter((d) => !isPolicyAcknowledgement(d) && !isWithdrawalEvidence(d));
   }, [orderedDocuments]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const renderDocRow = (d: UserDocument & { id: string }, previewUrl?: string) => {
+    const href = getDocUrl(d);
+    const isExternal = Boolean(d.url);
+    const isReady = Boolean(href);
 
-    void (async () => {
-      const toFetch = [...policyAcknowledgements, ...withdrawalEvidence].filter((d) => d.storagePath && !policyPreviewUrls[d.id]);
-      if (toFetch.length === 0) return;
+    return (
+      <div key={d.id} className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
+        <div className="flex items-center gap-4 overflow-hidden min-w-0">
+          {previewUrl ? (
+            <a
+              href={href ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0"
+              title="Preview"
+            >
+              <img src={previewUrl} alt="Signature" className="w-full h-full object-contain" />
+            </a>
+          ) : (
+            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors flex-shrink-0">
+              <FileText size={18} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
+            <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
+            {(d.policyTitle || d.acknowledgementText) && (
+              <p className="text-[11px] font-bold text-slate-500 truncate mt-1">{d.policyTitle ? d.policyTitle : d.acknowledgementText}</p>
+            )}
+            {d.acknowledgementText && d.policyTitle && (
+              <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">{d.acknowledgementText}</p>
+            )}
+            {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">{tr('supervisor_dashboard.documents.signed_at')}: {formatDateTime(d.signedAt) ?? '-'}</p>}
+          </div>
+        </div>
 
-      const entries = await Promise.all(
-        toFetch.map(async (d) => {
-          try {
-            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath));
-            return [d.id, url] as const;
-          } catch {
-            return [d.id, ''] as const;
-          }
-        }),
-      );
-
-      if (cancelled) return;
-
-      setPolicyPreviewUrls((prev) => {
-        const next = { ...prev };
-        for (const [id, url] of entries) {
-          if (!url) continue;
-          next[id] = url;
-        }
-        return next;
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [policyAcknowledgements, withdrawalEvidence, policyPreviewUrls]);
-
-  const DocumentRow: React.FC<{ d: UserDocument & { id: string }; previewUrl?: string }> = ({ d, previewUrl }) => (
-    <div className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
-      <div className="flex items-center gap-4 overflow-hidden min-w-0">
-        {previewUrl ? (
-          <button
-            type="button"
-            onClick={() => void handleDownloadDocument(d.id)}
-            className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0"
-            title="Preview"
+        {isReady ? (
+          <a
+            href={href!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
+            title={isExternal ? tr('supervisor_dashboard.documents.open') : tr('supervisor_dashboard.documents.download')}
           >
-            <img src={previewUrl} alt="Signature" className="w-full h-full object-contain" />
-          </button>
+            {isExternal ? <ExternalLink size={16} /> : <Download size={16} />}
+          </a>
         ) : (
-          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors flex-shrink-0">
-            <FileText size={18} />
+          <div className="w-10 h-10 bg-slate-50 text-slate-300 rounded-xl flex items-center justify-center border border-slate-100 flex-shrink-0">
+            <Loader2 size={16} className="animate-spin" />
           </div>
         )}
-        <div className="min-w-0">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
-          <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
-          {(d.policyTitle || d.acknowledgementText) && (
-            <p className="text-[11px] font-bold text-slate-500 truncate mt-1">{d.policyTitle ? d.policyTitle : d.acknowledgementText}</p>
-          )}
-          {d.acknowledgementText && d.policyTitle && (
-            <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">{d.acknowledgementText}</p>
-          )}
-          {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">{tr('supervisor_dashboard.documents.signed_at')}: {formatDateTime(d.signedAt) ?? '-'}</p>}
-        </div>
       </div>
-
-      <button
-        onClick={() => void handleDownloadDocument(d.id)}
-        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
-        title={d.url ? tr('supervisor_dashboard.documents.open') : tr('supervisor_dashboard.documents.download')}
-      >
-        {d.url ? <ExternalLink size={16} /> : <Download size={16} />}
-      </button>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="animate-in slide-in-from-bottom-6 duration-500">
@@ -204,9 +215,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {policyAcknowledgements.map((d) => (
-                    <DocumentRow key={d.id} d={d} previewUrl={policyPreviewUrls[d.id]} />
-                  ))}
+                  {policyAcknowledgements.map((d) => renderDocRow(d, downloadUrls[d.id]))}
                 </div>
               )}
             </div>
@@ -226,9 +235,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {withdrawalEvidence.map((d) => (
-                    <DocumentRow key={d.id} d={d} previewUrl={policyPreviewUrls[d.id]} />
-                  ))}
+                  {withdrawalEvidence.map((d) => renderDocRow(d, downloadUrls[d.id]))}
                 </div>
               )}
             </div>
@@ -248,9 +255,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {otherDocuments.map((d) => (
-                    <DocumentRow key={d.id} d={d} />
-                  ))}
+                  {otherDocuments.map((d) => renderDocRow(d))}
                 </div>
               )}
             </div>
