@@ -877,9 +877,17 @@ const InternManagementPage: React.FC = () => {
 
   const handleOpenStoragePath = async (path: string) => {
 
-    const url = await getDownloadURL(storageRef(firebaseStorage, path));
-
-    window.open(url, '_blank');
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, path));
+      if (popup && !popup.closed) {
+        popup.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      if (popup && !popup.closed) popup.close();
+    }
 
   };
 

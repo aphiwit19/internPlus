@@ -48,8 +48,6 @@ interface SupervisorCertificatesPageProps {
   user: UserProfile;
 }
 
-type Mode = 'requests' | 'templates';
-
 const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({ lang: _lang, user }) => {
   const { t } = useTranslation();
   const lng = _lang === 'TH' ? 'th' : 'en';
@@ -72,7 +70,6 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
   const [pendingLink, setPendingLink] = useState<{ requestId: string } | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [savingLinkId, setSavingLinkId] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>('requests');
 
   useEffect(() => {
     setLoadError(null);
@@ -376,60 +373,10 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
             </div>
           </div>
 
-          <div className="mt-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-1 flex items-center gap-1 w-full lg:w-auto">
-              <button
-                type="button"
-                onClick={() => setMode('requests')}
-                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
-                  mode === 'requests' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {lng === 'th' ? 'คำขอ' : 'Requests'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('templates')}
-                className={`flex-1 lg:flex-none px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
-                  mode === 'templates' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {lng === 'th' ? 'เทมเพลต' : 'Templates'}
-              </button>
-            </div>
-          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
-          {mode === 'templates' ? (
-            <div className="space-y-4">
-              {templates.length === 0 ? (
-                <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                    {lng === 'th' ? 'ยังไม่มีเทมเพลต' : 'No templates'}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {templates
-                    .filter((tpl) => (tpl.active ?? tpl.isActive ?? true) === true)
-                    .map((tpl) => (
-                      <div key={tpl.id} className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <p className="text-sm font-black text-slate-900 truncate">{tpl.name || tpl.id}</p>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                              {String(tpl.type ?? 'ALL')}
-                            </p>
-                            <p className="text-[11px] font-bold text-slate-500 mt-3 truncate">{tpl.backgroundPath ?? '-'}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          ) : interns.length === 0 ? (
+          {interns.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
               <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_certificates.empty')}</p>
             </div>

@@ -152,6 +152,9 @@ interface SystemSettingsPageProps {
 const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('onboarding');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const saveNoticeTimeoutRef = useRef<number | null>(null);
+  const [didSaveRecently, setDidSaveRecently] = useState(false);
   const [isAddingStep, setIsAddingStep] = useState(false);
   const [newStepTitle, setNewStepTitle] = useState('');
   const [newStepType, setNewStepType] = useState<ProcessType>('MODULE_LINK');
@@ -354,12 +357,13 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [wfhRate, setWfhRate] = useState(50);
   const [applyTax, setApplyTax] = useState(true);
   const [taxPercent, setTaxPercent] = useState(3);
+  const [defaultPayoutDay, setDefaultPayoutDay] = useState<number | null>(null);
 
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const monthKeyFromDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
   const payPeriodMonthOptions = Array.from({ length: 12 }, (_, idx) => {
     const base = new Date();
-    const x = new Date(base.getFullYear(), base.getMonth() - idx, 1);
+    const x = new Date(base.getFullYear(), base.getMonth() + idx, 1);
     return monthKeyFromDate(x);
   });
 
@@ -368,6 +372,16 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [payPeriodEndDate, setPayPeriodEndDate] = useState('');
   const [payPeriodPlannedPayoutDate, setPayPeriodPlannedPayoutDate] = useState('');
   const [payPeriodError, setPayPeriodError] = useState<string | null>(null);
+
+  const clampToMonth = (monthKey: string, day: number): string => {
+    const [yRaw, mRaw] = monthKey.split('-');
+    const y = Number(yRaw);
+    const m = Number(mRaw);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return '';
+    const max = new Date(y, m, 0).getDate();
+    const safeDay = Math.min(Math.max(1, Math.floor(day)), max);
+    return `${yRaw}-${String(m).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+  };
 
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
@@ -410,6 +424,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             wfhRate?: number;
             applyTax?: boolean;
             taxPercent?: number;
+            defaultPayoutDay?: number;
           };
           access?: {
             accessLevel?: 'REVOCATION' | 'LIMITED' | 'EXTENDED';
@@ -432,6 +447,10 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           if (typeof data.allowance.wfhRate === 'number') setWfhRate(data.allowance.wfhRate);
           if (typeof data.allowance.applyTax === 'boolean') setApplyTax(data.allowance.applyTax);
           if (typeof data.allowance.taxPercent === 'number') setTaxPercent(data.allowance.taxPercent);
+          if (typeof data.allowance.defaultPayoutDay === 'number' && Number.isFinite(data.allowance.defaultPayoutDay)) {
+            const d = Math.floor(data.allowance.defaultPayoutDay);
+            setDefaultPayoutDay(d >= 1 && d <= 31 ? d : null);
+          }
         }
 
         if (data.access) {
@@ -462,7 +481,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         if (!snap.exists()) {
           setPayPeriodStartDate('');
           setPayPeriodEndDate('');
-          setPayPeriodPlannedPayoutDate('');
+          setPayPeriodPlannedPayoutDate(
+            defaultPayoutDay != null ? clampToMonth(selectedPayPeriodMonthKey, defaultPayoutDay) : '',
+          );
           setPayPeriodError(null);
           return;
         }
@@ -474,14 +495,20 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
         setPayPeriodStartDate(typeof data.periodStart === 'string' ? data.periodStart : '');
         setPayPeriodEndDate(typeof data.periodEnd === 'string' ? data.periodEnd : '');
-        setPayPeriodPlannedPayoutDate(typeof data.plannedPayoutDate === 'string' ? data.plannedPayoutDate : '');
+        setPayPeriodPlannedPayoutDate(
+          typeof data.plannedPayoutDate === 'string' && data.plannedPayoutDate
+            ? data.plannedPayoutDate
+            : defaultPayoutDay != null
+              ? clampToMonth(selectedPayPeriodMonthKey, defaultPayoutDay)
+              : '',
+        );
         setPayPeriodError(null);
       },
       () => {
         // ignore
       },
     );
-  }, [selectedPayPeriodMonthKey]);
+  }, [selectedPayPeriodMonthKey, defaultPayoutDay]);
   const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnUsers, setWithdrawnUsers] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnAccessOverrides, setWithdrawnAccessOverrides] = useState<Record<string, PostProgramAccessLevel>>({});
@@ -766,6 +793,15 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     if (r) r(result);
   };
 
+  useEffect(() => {
+    return () => {
+      if (saveNoticeTimeoutRef.current != null) {
+        window.clearTimeout(saveNoticeTimeoutRef.current);
+        saveNoticeTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleCancelWithdrawnEdit = async (userId: string) => {
     if (withdrawnDirty[userId] === true) {
       const ok = await openConfirm(
@@ -838,6 +874,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveNotice(null);
     try {
       const orderedSteps = [...onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
       const sanitizedSteps: RoadmapStep[] = orderedSteps.map((s) => {
@@ -874,6 +911,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             wfhRate,
             applyTax,
             taxPercent,
+            ...(defaultPayoutDay != null ? { defaultPayoutDay } : {}),
           },
           access: {
             accessLevel,
@@ -980,8 +1018,24 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
       await batch.commit();
       setPayPeriodError(null);
+
+      setDidSaveRecently(true);
+      setSaveNotice({
+        type: 'success',
+        message: lang === 'EN' ? 'Configuration deployed successfully.' : 'บันทึกและปรับใช้การตั้งค่าสำเร็จ',
+      });
+      if (saveNoticeTimeoutRef.current != null) window.clearTimeout(saveNoticeTimeoutRef.current);
+      saveNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSaveNotice(null);
+        setDidSaveRecently(false);
+        saveNoticeTimeoutRef.current = null;
+      }, 3500);
     } catch (err) {
       console.error(err);
+      setSaveNotice({
+        type: 'error',
+        message: lang === 'EN' ? 'Failed to save settings.' : 'ไม่สามารถบันทึกการตั้งค่าได้',
+      });
       openAlert(lang === 'EN' ? 'Failed to save settings.' : 'ไม่สามารถบันทึกการตั้งค่าได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
     } finally {
       setIsSaving(false);
@@ -1126,7 +1180,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight">{t.title}</h1>
             <p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p>
           </div>
           
@@ -1246,7 +1300,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                     <div className="space-y-2">
                                        {step.attachedDocuments.length > 0 ? (
                                          step.attachedDocuments.map((docName, dIdx) => (
-                                          <div key={dIdx} className="bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 flex items-center justify-between group/doc hover:bg-white hover:border-blue-200 transition-all">
+                                          <div key={dIdx} className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 flex items-center justify-between group/doc hover:bg-white hover:border-blue-200 transition-all">
                                              <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-blue-500 border border-slate-100 shadow-sm">
                                                   <FileText size={16} />
@@ -1279,7 +1333,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                           <button 
                                             key={item.id}
                                             onClick={() => handleUpdateStep(step.id, { targetPage: item.id })}
-                                            className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all text-left flex items-center gap-2 border ${step.targetPage === item.id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-blue-200'}`}
+                                            className={`px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all text-left flex items-center gap-2 border ${step.targetPage === item.id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-blue-200 hover:bg-white'}`}
                                           >
                                             {item.icon} {item.label}
                                           </button>
@@ -1428,7 +1482,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             <PolicyTrainingManager lang={lang} />
           )}
 
-          {/* TAB: ALLOWANCE (EXACT MATCH TO PREVIOUS GOOD STATE) */}
+          {/* TAB: ALLOWANCE */}
           {activeTab === 'allowance' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-500">
                <div className="lg:col-span-8">
@@ -1502,6 +1556,35 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                               onChange={(e) => setPayPeriodPlannedPayoutDate(e.target.value)}
                               className="w-full px-5 py-4 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
                             />
+                          </label>
+
+                          <label className="space-y-2 block">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                              {lang === 'EN' ? 'Default payout day (auto-fill)' : 'กำหนดวันจ่ายเริ่มต้น (เติมให้อัตโนมัติ)'}
+                            </div>
+                            <input
+                              type="number"
+                              min={1}
+                              max={31}
+                              value={defaultPayoutDay ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (!raw) {
+                                  setDefaultPayoutDay(null);
+                                  return;
+                                }
+                                const n = Number(raw);
+                                if (!Number.isFinite(n)) return;
+                                const d = Math.floor(n);
+                                setDefaultPayoutDay(d >= 1 && d <= 31 ? d : null);
+                              }}
+                              className="w-full px-5 py-4 bg-white border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <div className="text-[11px] font-bold text-slate-400">
+                              {lang === 'EN'
+                                ? 'If a month has no payout date set, it will default to this day-of-month. You can still override per month.'
+                                : 'ถ้าเดือนไหนยังไม่ได้กำหนดวันจ่าย ระบบจะเติมวันตามค่านี้ให้ (ยังแก้แยกเป็นรายเดือนได้)'}
+                            </div>
                           </label>
                         </div>
                       </div>
@@ -2153,10 +2236,36 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                   disabled={isSaving}
                   className="px-14 py-3.5 bg-[#111827] text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-2xl flex items-center gap-3"
                 >
-                  {isSaving ? <><Clock className="animate-spin" size={18}/> {t.saving}</> : <><Save size={18}/> {t.saveBtn}</>}
+                  {isSaving ? (
+                    <>
+                      <Clock className="animate-spin" size={18} /> {t.saving}
+                    </>
+                  ) : didSaveRecently ? (
+                    <>
+                      <CheckCircle2 size={18} /> {lang === 'EN' ? 'Saved' : 'บันทึกแล้ว'}
+                    </>
+                  ) : (
+                    <>
+                      <Save size={18} /> {t.saveBtn}
+                    </>
+                  )}
                 </button>
               </div>
            </div>
+
+           {saveNotice && (
+             <div className="absolute -top-4 left-0 right-0 flex justify-center px-6">
+               <div
+                 className={`max-w-[1700px] w-full px-5 py-3 rounded-2xl border text-sm font-bold shadow-lg ${
+                   saveNotice.type === 'success'
+                     ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                     : 'bg-rose-50 border-rose-100 text-rose-700'
+                 }`}
+               >
+                 {saveNotice.message}
+               </div>
+             </div>
+           )}
         </div>
       </div>
 

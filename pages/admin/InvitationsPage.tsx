@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, updateProfile } from 'firebase/auth';
-import { collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { firestoreDb, secondaryAuth } from '@/firebase';
 
@@ -41,11 +41,19 @@ const InvitationsPage: React.FC = () => {
   const [isAddingDepartment, setIsAddingDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
 
-  const [hrLeads, setHrLeads] = useState<string[]>(['Vanness Plus', 'Alicia Keys', 'Tom Hardy']);
+  const [hrLeads, setHrLeads] = useState<string[]>([]);
   const [isAddingHrLead, setIsAddingHrLead] = useState(false);
   const [newHrLeadName, setNewHrLeadName] = useState('');
+  const [isClearHrLeadsModalOpen, setIsClearHrLeadsModalOpen] = useState(false);
+  const [isClearingHrLeads, setIsClearingHrLeads] = useState(false);
 
-  const [supervisors, setSupervisors] = useState<Array<{ id: string; name: string; department: string; position: string }>>([]);
+  const [supervisors, setSupervisors] = useState<
+    Array<{ id: string; name: string; department: string; position: string; roles: UserRole[]; isDualRole?: boolean }>
+  >([]);
+  const [selectedSupervisorToManage, setSelectedSupervisorToManage] = useState('');
+  const [coAdminAction, setCoAdminAction] = useState<'grant' | 'revoke' | null>(null);
+  const [isCoAdminModalOpen, setIsCoAdminModalOpen] = useState(false);
+  const [isUpdatingCoAdmin, setIsUpdatingCoAdmin] = useState(false);
 
   const [isSendingInvite, setIsSendingInvite] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -96,12 +104,10 @@ const InvitationsPage: React.FC = () => {
         }
       }
 
-      if (Array.isArray(data.hrLeads) && data.hrLeads.length > 0) {
+      if (Array.isArray(data.hrLeads)) {
         const nextLeads = normalizeUniqueList(data.hrLeads);
-        if (nextLeads.length > 0) {
-          setHrLeads(nextLeads);
-          setSelectedHrLead((prev) => (nextLeads.includes(prev) ? prev : nextLeads[0]));
-        }
+        setHrLeads(nextLeads);
+        setSelectedHrLead((prev) => (nextLeads.includes(prev) ? prev : nextLeads[0] ?? ''));
       }
     });
   }, []);
@@ -110,17 +116,65 @@ const InvitationsPage: React.FC = () => {
     const q = query(collection(firestoreDb, 'users'), where('roles', 'array-contains', 'SUPERVISOR'));
     return onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => {
-        const data = d.data() as { name?: string; department?: string; position?: string };
+        const data = d.data() as { name?: string; department?: string; position?: string; roles?: UserRole[]; isDualRole?: boolean };
         return {
           id: d.id,
           name: data.name || 'Unknown',
           department: data.department || 'Unknown',
           position: data.position || 'Supervisor',
+          roles: Array.isArray(data.roles) ? data.roles : (['SUPERVISOR'] as UserRole[]),
+          isDualRole: data.isDualRole,
         };
       });
       setSupervisors(list);
+      setSelectedSupervisorToManage((prev) => (prev && list.some((x) => x.id === prev) ? prev : list[0]?.id ?? ''));
     });
   }, []);
+
+  const managedSupervisor = supervisors.find((s) => s.id === selectedSupervisorToManage) ?? null;
+  const managedIsCoAdmin = managedSupervisor ? managedSupervisor.roles.includes('HR_ADMIN') : false;
+
+  const openCoAdminModal = (action: 'grant' | 'revoke') => {
+    setInviteError(null);
+    setInviteSuccess(null);
+    setCoAdminAction(action);
+    setIsCoAdminModalOpen(true);
+  };
+
+  const handleConfirmCoAdminChange = async () => {
+    if (!managedSupervisor || !coAdminAction) return;
+
+    if (coAdminAction === 'revoke' && user?.id && managedSupervisor.id === user.id) {
+      setInviteError('You cannot revoke admin access from the account you are currently using.');
+      setIsCoAdminModalOpen(false);
+      return;
+    }
+
+    setIsUpdatingCoAdmin(true);
+    try {
+      const ref = doc(firestoreDb, 'users', managedSupervisor.id);
+      if (coAdminAction === 'grant') {
+        await updateDoc(ref, {
+          roles: arrayUnion('HR_ADMIN'),
+          isDualRole: true,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(ref, {
+          roles: arrayRemove('HR_ADMIN'),
+          isDualRole: false,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      setInviteSuccess(coAdminAction === 'grant' ? 'Granted co-admin access.' : 'Revoked co-admin access.');
+      setIsCoAdminModalOpen(false);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to update supervisor roles.'}`);
+    } finally {
+      setIsUpdatingCoAdmin(false);
+    }
+  };
 
   const handleAddDepartment = () => {
     const name = newDepartmentName.trim();
@@ -180,6 +234,33 @@ const InvitationsPage: React.FC = () => {
     setSelectedHrLead(name);
     setNewHrLeadName('');
     setIsAddingHrLead(false);
+  };
+
+  const handleClearHrLeads = async () => {
+    setInviteError(null);
+    setInviteSuccess(null);
+    setIsClearingHrLeads(true);
+    try {
+      await setDoc(
+        doc(firestoreDb, 'config', 'systemSettings'),
+        {
+          hrLeads: [],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      setHrLeads([]);
+      setSelectedHrLead('');
+      setIsAddingHrLead(false);
+      setNewHrLeadName('');
+      setIsClearHrLeadsModalOpen(false);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setInviteError(`Failed to clear HR Leads (${e?.code ?? 'unknown'}): ${e?.message ?? ''}`.trim());
+    } finally {
+      setIsClearingHrLeads(false);
+    }
   };
 
   const handleSendInviteEmail = async () => {
@@ -323,6 +404,108 @@ const InvitationsPage: React.FC = () => {
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
+      {isClearHrLeadsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <button
+            type="button"
+            onClick={() => (isClearingHrLeads ? null : setIsClearHrLeadsModalOpen(false))}
+            className="absolute inset-0 bg-slate-900/40"
+            aria-label="Close"
+          />
+          <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em]">Danger zone</div>
+                <h3 className="mt-2 text-xl font-black text-slate-900">Clear HR Leads</h3>
+                <p className="mt-2 text-sm font-bold text-slate-500">This will remove all HR Leads from the dropdown. You can add them again later.</p>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center text-2xl font-black">×</div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsClearHrLeadsModalOpen(false)}
+                disabled={isClearingHrLeads}
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleClearHrLeads()}
+                disabled={isClearingHrLeads}
+                className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-50"
+              >
+                {isClearingHrLeads ? 'Clearing…' : 'Clear'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCoAdminModalOpen && coAdminAction && managedSupervisor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <button
+            type="button"
+            onClick={() => (isUpdatingCoAdmin ? null : setIsCoAdminModalOpen(false))}
+            className="absolute inset-0 bg-slate-900/40"
+            aria-label="Close"
+          />
+          <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Confirm</div>
+                <h3 className="mt-2 text-xl font-black text-slate-900">
+                  {coAdminAction === 'grant' ? 'Grant Co-admin' : 'Revoke Co-admin'}
+                </h3>
+                <p className="mt-2 text-sm font-bold text-slate-500">
+                  {coAdminAction === 'grant'
+                    ? 'This supervisor will gain HR admin permissions.'
+                    : 'This supervisor will lose HR admin permissions.'}
+                </p>
+                <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                  <div className="text-xs font-black text-slate-900">{managedSupervisor.name}</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                    {managedSupervisor.position} • {managedSupervisor.department}
+                  </div>
+                </div>
+              </div>
+              <div
+                className={`w-12 h-12 rounded-2xl border flex items-center justify-center text-2xl font-black ${
+                  coAdminAction === 'grant'
+                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                }`}
+              >
+                {coAdminAction === 'grant' ? '+' : '−'}
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCoAdminModalOpen(false)}
+                disabled={isUpdatingCoAdmin}
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmCoAdminChange()}
+                disabled={isUpdatingCoAdmin}
+                className={`flex-1 py-3 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 ${
+                  coAdminAction === 'grant' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                {isUpdatingCoAdmin ? 'Updating…' : coAdminAction === 'grant' ? 'Grant' : 'Revoke'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
         
         <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -424,6 +607,15 @@ const InvitationsPage: React.FC = () => {
                               title={tr('admin_invitations.add_hr_lead')}
                             >
                               <Plus size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsClearHrLeadsModalOpen(true)}
+                              className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-all"
+                              aria-label="Clear HR Leads"
+                              title="Clear HR Leads"
+                            >
+                              ×
                             </button>
                           </div>
 
@@ -599,6 +791,75 @@ const InvitationsPage: React.FC = () => {
                     )}
                   </div>
                 )}
+              </section>
+
+              <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-14 h-14 bg-emerald-600 text-white rounded-[1.5rem] flex items-center justify-center shadow-xl shadow-emerald-100">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Supervisor Co-admin</h2>
+                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1">Grant or revoke HR admin access</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Select Supervisor</label>
+                    <div className="relative">
+                      <ShieldCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                      <select
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all appearance-none cursor-pointer"
+                        value={selectedSupervisorToManage}
+                        onChange={(e) => setSelectedSupervisorToManage(e.target.value)}
+                      >
+                        <option value="">Select a supervisor…</option>
+                        {supervisors.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.department})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 flex flex-col justify-between">
+                    <div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Current status</div>
+                      <div className="mt-3">
+                        <div className="text-sm font-black text-slate-900">
+                          {managedSupervisor ? managedSupervisor.name : '—'}
+                        </div>
+                        <div className="text-[10px] font-black uppercase tracking-widest mt-2">
+                          {managedSupervisor ? (managedIsCoAdmin ? 'CO-ADMIN ENABLED' : 'CO-ADMIN DISABLED') : 'SELECT A SUPERVISOR'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openCoAdminModal('grant')}
+                        disabled={!managedSupervisor || managedIsCoAdmin}
+                        className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-emerald-700 transition-all disabled:opacity-50"
+                      >
+                        Grant
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openCoAdminModal('revoke')}
+                        disabled={!managedSupervisor || !managedIsCoAdmin || (user?.id ? managedSupervisor?.id === user.id : false)}
+                        className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-50"
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                    {managedSupervisor && user?.id && managedSupervisor.id === user.id ? (
+                      <div className="mt-3 text-[11px] font-bold text-slate-500">You cannot revoke co-admin from the account you are using.</div>
+                    ) : null}
+                  </div>
+                </div>
               </section>
             </div>
           </div>
