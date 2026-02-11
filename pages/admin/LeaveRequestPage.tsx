@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
-import { Award, Clock, CreditCard, UserX, Users } from 'lucide-react';
+import { Award, CheckCircle2, Clock, CreditCard, UserX, Users } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -24,6 +24,8 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
   const [quotaDays, setQuotaDays] = useState<number>(39);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const saveNoticeTimeoutRef = useRef<number | null>(null);
 
   const TabBtn = ({
     active,
@@ -96,9 +98,22 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
     void load();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (saveNoticeTimeoutRef.current != null) {
+        window.clearTimeout(saveNoticeTimeoutRef.current);
+        saveNoticeTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSaveQuota = async () => {
+    setSaveNotice(null);
     if (!Number.isFinite(quotaDays) || quotaDays <= 0) {
-      alert(lang === 'EN' ? 'Please enter a valid number of days.' : 'กรุณาระบุจำนวนวันที่ถูกต้อง');
+      setSaveNotice({
+        type: 'error',
+        message: lang === 'EN' ? 'Please enter a valid number of days.' : 'กรุณาระบุจำนวนวันที่ถูกต้อง',
+      });
       return;
     }
     setIsSavingConfig(true);
@@ -112,9 +127,14 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
         },
         { merge: true },
       );
-      alert(lang === 'EN' ? 'Saved.' : 'บันทึกแล้ว');
+      setSaveNotice({ type: 'success', message: lang === 'EN' ? 'Saved.' : 'บันทึกแล้ว' });
+      if (saveNoticeTimeoutRef.current != null) window.clearTimeout(saveNoticeTimeoutRef.current);
+      saveNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSaveNotice(null);
+        saveNoticeTimeoutRef.current = null;
+      }, 3000);
     } catch {
-      alert(lang === 'EN' ? 'Failed to save.' : 'บันทึกไม่สำเร็จ');
+      setSaveNotice({ type: 'error', message: lang === 'EN' ? 'Failed to save.' : 'บันทึกไม่สำเร็จ' });
     } finally {
       setIsSavingConfig(false);
     }
@@ -146,6 +166,19 @@ const LeaveRequestPage: React.FC<AdminLeaveRequestPageProps> = ({ lang, role }) 
               <h4 className="text-2xl font-black text-slate-900 tracking-tight">{t.title}</h4>
               <p className="text-sm text-slate-500 font-medium mt-2">{t.subtitle}</p>
             </div>
+
+            {saveNotice && (
+              <div
+                className={`p-4 rounded-2xl border text-sm font-bold flex items-center gap-3 ${
+                  saveNotice.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                    : 'bg-rose-50 border-rose-100 text-rose-700'
+                }`}
+              >
+                {saveNotice.type === 'success' ? <CheckCircle2 size={18} /> : null}
+                <span className="whitespace-pre-line">{saveNotice.message}</span>
+              </div>
+            )}
 
             <div>
               <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{t.label}</label>

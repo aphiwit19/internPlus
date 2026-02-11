@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+<<<<<<< HEAD
 import { Download, ExternalLink, FileText, Loader2, ShieldCheck } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
+=======
+import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
+import { collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+>>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 import { useTranslation } from 'react-i18next';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -19,11 +25,40 @@ type UserDocument = {
 };
 
 const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+  const isEn = (i18n.language ?? '').toLowerCase().startsWith('en');
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
+<<<<<<< HEAD
   const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
   const [resolving, setResolving] = useState(false);
+=======
+  const [policyPreviewUrls, setPolicyPreviewUrls] = useState<Record<string, string>>({});
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [linkDraftById, setLinkDraftById] = useState<Record<string, string>>({});
+  const [isAttachingById, setIsAttachingById] = useState<Record<string, boolean>>({});
+
+  const triggerDownload = (url: string, fileName?: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener noreferrer';
+    a.target = '_blank';
+    if (fileName) a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const openInNewTab = (url: string) => {
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    if (popup && !popup.closed) {
+      popup.location.href = url;
+      return true;
+    }
+    return false;
+  };
+>>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 
   const formatDateTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -45,6 +80,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     });
   }, [internId]);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (documents.length === 0) return;
     let cancelled = false;
@@ -85,6 +121,127 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const getDocUrl = (d: UserDocument & { id: string }): string | null => {
     if (d.url) return d.url;
     return downloadUrls[d.id] ?? null;
+=======
+  const handleDownloadDocument = async (docId: string) => {
+    setDownloadError(null);
+    setDownloadNotice(`${isEn ? 'Preparing download...' : 'กำลังเตรียมดาวน์โหลด...'} (${docId})`);
+    console.log('[DocumentsTab] download click', { internId, docId });
+    const item = documents.find((d) => d.id === docId);
+    if (!item) {
+      console.log('[DocumentsTab] document not found in state', { docId, count: documents.length });
+      setDownloadNotice(null);
+      return;
+    }
+    if (item.url) {
+      console.log('[DocumentsTab] using direct url', { docId, url: item.url });
+      if (!openInNewTab(item.url)) {
+        try {
+          triggerDownload(item.url, item.fileName);
+        } catch {
+          window.location.assign(item.url);
+        }
+      }
+      setDownloadNotice(null);
+      return;
+    }
+    if (!item.storagePath) {
+      console.log('[DocumentsTab] missing storagePath and url', { docId, item });
+      setDownloadError(isEn ? 'Missing document link/path.' : 'ไม่พบลิงก์/ที่อยู่ไฟล์เอกสาร');
+      setDownloadNotice(null);
+      return;
+    }
+
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
+      console.log('[DocumentsTab] resolved download url', { docId, storagePath: item.storagePath, url });
+
+      if (!popup) {
+        window.location.assign(url);
+        return;
+      }
+      if (popup && !popup.closed) {
+        popup.location.href = url;
+        return;
+      }
+
+      if (!openInNewTab(url)) {
+        try {
+          triggerDownload(url, item.fileName);
+        } catch {
+          window.location.assign(url);
+        }
+      }
+      setDownloadNotice(null);
+    } catch (err: unknown) {
+      if (popup && !popup.closed) popup.close();
+      const e = err as { code?: string; message?: string };
+      console.log('[DocumentsTab] getDownloadURL failed', { docId, storagePath: item.storagePath, err: e });
+      setDownloadError(`${e?.code ?? 'unknown'}: ${e?.message ?? (isEn ? 'Download failed.' : 'ดาวน์โหลดไม่สำเร็จ')}`);
+      setDownloadNotice(null);
+    }
+  };
+
+  const setAttaching = (docId: string, value: boolean) => {
+    setIsAttachingById((prev) => {
+      if (prev[docId] === value) return prev;
+      return { ...prev, [docId]: value };
+    });
+  };
+
+  const handleAttachUrl = async (docId: string) => {
+    setDownloadError(null);
+    const raw = (linkDraftById[docId] ?? '').trim();
+    if (!raw) {
+      setDownloadError(isEn ? 'Please enter a URL.' : 'กรุณาใส่ลิงก์');
+      return;
+    }
+    if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+      setDownloadError(isEn ? 'URL must start with http(s)://' : 'ลิงก์ต้องขึ้นต้นด้วย http(s)://');
+      return;
+    }
+    setAttaching(docId, true);
+    try {
+      await updateDoc(doc(firestoreDb, 'users', internId, 'documents', docId), {
+        url: raw,
+        storagePath: null,
+        fileName: raw,
+        updatedAt: serverTimestamp(),
+      });
+      setLinkDraftById((prev) => {
+        if (!prev[docId]) return prev;
+        const next = { ...prev };
+        delete next[docId];
+        return next;
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setDownloadError(`${e?.code ?? 'unknown'}: ${e?.message ?? (isEn ? 'Failed to save link.' : 'บันทึกลิงก์ไม่สำเร็จ')}`);
+    } finally {
+      setAttaching(docId, false);
+    }
+  };
+
+  const handleUploadFile = async (docId: string, file: File) => {
+    setDownloadError(null);
+    setAttaching(docId, true);
+    try {
+      const safeName = file.name;
+      const path = `users/${internId}/documents/${Date.now()}_${safeName}`;
+      await uploadBytes(storageRef(firebaseStorage, path), file);
+      await updateDoc(doc(firestoreDb, 'users', internId, 'documents', docId), {
+        fileName: safeName,
+        storagePath: path,
+        url: null,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setDownloadError(`${e?.code ?? 'unknown'}: ${e?.message ?? (isEn ? 'Upload failed.' : 'อัปโหลดไม่สำเร็จ')}`);
+    } finally {
+      setAttaching(docId, false);
+    }
+>>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
   };
 
   const orderedDocuments = useMemo(() => {
@@ -174,9 +331,89 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
             <Loader2 size={16} className="animate-spin" />
           </div>
         )}
+<<<<<<< HEAD
       </div>
     );
   };
+=======
+        <div className="min-w-0">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
+          <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
+          {!d.url && !d.storagePath && (
+            <div className="mt-3 space-y-2">
+              <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest">
+                {isEn ? 'Missing file link/path' : 'ยังไม่มีลิงก์/พาธไฟล์'}
+              </div>
+              <div className="flex flex-col md:flex-row gap-2">
+                <input
+                  value={linkDraftById[d.id] ?? ''}
+                  onChange={(e) => setLinkDraftById((p) => ({ ...p, [d.id]: e.target.value }))}
+                  placeholder={isEn ? 'Paste URL (https://...)' : 'วางลิงก์ (https://...)'}
+                  className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[12px] font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleAttachUrl(d.id)}
+                  disabled={Boolean(isAttachingById[d.id])}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isAttachingById[d.id] ? (isEn ? 'Saving...' : 'กำลังบันทึก...') : (isEn ? 'Save Link' : 'บันทึกลิงก์')}
+                </button>
+              </div>
+              <div>
+                <label className="inline-flex items-center">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.currentTarget.value = '';
+                      if (!f) return;
+                      void handleUploadFile(d.id, f);
+                    }}
+                  />
+                  <span
+                    className={`inline-flex items-center px-4 py-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${
+                      isAttachingById[d.id]
+                        ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 cursor-pointer'
+                    }`}
+                  >
+                    {isEn ? 'Upload File' : 'อัปโหลดไฟล์'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+          {(d.policyTitle || d.acknowledgementText) && (
+            <p className="text-[11px] font-bold text-slate-500 truncate mt-1">{d.policyTitle ? d.policyTitle : d.acknowledgementText}</p>
+          )}
+          {d.acknowledgementText && d.policyTitle && (
+            <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">{d.acknowledgementText}</p>
+          )}
+          {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">{tr('supervisor_dashboard.documents.signed_at')}: {formatDateTime(d.signedAt) ?? '-'}</p>}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void handleDownloadDocument(d.id);
+        }}
+        className={`relative z-10 pointer-events-auto h-10 px-4 rounded-xl border transition-all flex-shrink-0 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${
+          !d.url && !d.storagePath
+            ? 'bg-slate-50 text-slate-300 border-slate-100'
+            : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+        }`}
+        title={tr('supervisor_dashboard.documents.download')}
+      >
+        <Download size={16} /> {isEn ? 'Download' : 'ดาวน์โหลด'}
+      </button>
+    </div>
+  );
+>>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 
   return (
     <div className="animate-in slide-in-from-bottom-6 duration-500">
@@ -193,6 +430,18 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
             </div>
           </div>
         </div>
+
+        {downloadNotice && (
+          <div className="mb-6 bg-blue-50 border border-blue-100 text-blue-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
+            {downloadNotice}
+          </div>
+        )}
+
+        {downloadError && (
+          <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
+            {downloadError}
+          </div>
+        )}
 
         {orderedDocuments.length === 0 ? (
           <div className="pt-10 text-center">

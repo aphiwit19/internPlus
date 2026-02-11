@@ -26,6 +26,7 @@ export type TemplateTextBlock = {
   width?: number;
   align?: 'left' | 'center' | 'right';
   fontSize: number;
+  fontFamily?: string;
   fontWeight?: 400 | 600 | 700 | 800;
   color: string;
   opacity?: number;
@@ -79,6 +80,16 @@ const FIELD_LABELS: Record<TemplateFieldKey, string> = {
   systemId: 'System ID',
   issueDate: 'Issue Date',
 };
+
+const FONT_FAMILIES = [
+  'Arial',
+  'Times New Roman',
+  'Georgia',
+  'Tahoma',
+  'Verdana',
+  'TH Sarabun New',
+  'Cormorant Garamond',
+] as const;
 
 type Props = {
   lang: Language;
@@ -207,6 +218,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       x: baseX,
       y: nextY,
       fontSize: 16,
+      fontFamily: 'Arial',
       color: '#111827',
       align: 'left',
       source: { type: 'static', text: 'New text\n(second line)' },
@@ -226,6 +238,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       x: baseX,
       y: nextY,
       fontSize: 16,
+      fontFamily: 'Arial',
       color: '#111827',
       align: 'left',
       source: { type: 'field', key: 'internName' },
@@ -363,6 +376,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                       width={b.width}
                       text={displayText(b)}
                       fontSize={b.fontSize}
+                      fontFamily={b.fontFamily ?? 'Arial'}
                       fontStyle="normal"
                       fill={b.color}
                       opacity={b.opacity ?? 1}
@@ -433,6 +447,21 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                     onChange={(e) => updateBlock(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 0) })}
                     className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
                   />
+                </div>
+
+                <div>
+                  <div className="text-xs font-black text-slate-600 mb-2">{lang === 'TH' ? 'ฟอนต์' : 'Font'}</div>
+                  <select
+                    value={selected.fontFamily ?? 'Arial'}
+                    onChange={(e) => updateBlock(selected.id, { fontFamily: e.target.value })}
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                  >
+                    {FONT_FAMILIES.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

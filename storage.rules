@@ -10,7 +10,21 @@ service firebase.storage {
     }
 
     function myRoles() {
-      return signedIn() ? (myUserDoc().data.roles != null ? myUserDoc().data.roles : []) : [];
+      return signedIn()
+        ? (
+            myUserDoc().data.roles != null
+              ? myUserDoc().data.roles
+              : (
+                  myUserDoc().data.role != null
+                    ? [myUserDoc().data.role]
+                    : (
+                        myUserDoc().data.isDualRole == true
+                          ? ['SUPERVISOR', 'HR_ADMIN']
+                          : []
+                      )
+                )
+          )
+        : [];
     }
 
     function hasRole(role) {
@@ -61,6 +75,15 @@ service firebase.storage {
     match /universityEvaluations/{internId}/{allPaths=**} {
       allow read: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
       allow write: if signedIn() && (request.auth.uid == internId || isHrAdmin() || isSupervisorOf(internId));
+    }
+
+    match /policyTrainingContents/{contentId}/signatures/{allPaths=**} {
+      allow read: if false;
+      allow write: if
+        signedIn() &&
+        request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
     }
 
     match /policyTrainingContents/{contentId}/{allPaths=**} {

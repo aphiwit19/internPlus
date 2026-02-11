@@ -118,6 +118,8 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const saveNoticeTimeoutRef = useRef<number | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const [assets, setAssets] = useState<PolicyAsset[]>([]);
@@ -145,6 +147,15 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
       if (!selectedId && next.length > 0) setSelectedId(next[0].id);
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    return () => {
+      if (saveNoticeTimeoutRef.current != null) {
+        window.clearTimeout(saveNoticeTimeoutRef.current);
+        saveNoticeTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedId) {
@@ -217,6 +228,7 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
   const save = async () => {
     const vTitle = title.trim();
     setSaveError(null);
+    setSaveNotice(null);
 
     if (!vTitle) {
       setSaveError(lang === 'TH' ? 'กรุณากรอกชื่อหัวข้อ' : 'Please enter Topic Title');
@@ -325,7 +337,12 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
 
       setIsEditing(false);
       resetForm();
-      alert(t.saved);
+      setSaveNotice(t.saved);
+      if (saveNoticeTimeoutRef.current != null) window.clearTimeout(saveNoticeTimeoutRef.current);
+      saveNoticeTimeoutRef.current = window.setTimeout(() => {
+        setSaveNotice(null);
+        saveNoticeTimeoutRef.current = null;
+      }, 3000);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
       console.error('PolicyTrainingManager save failed', e);
@@ -422,6 +439,12 @@ const PolicyTrainingManager: React.FC<{ lang: Language }> = ({ lang }) => {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-500">
       <div className="lg:col-span-8">
         <section className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-slate-100 shadow-sm relative overflow-hidden">
+          {saveNotice && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 text-sm font-bold flex items-center gap-3">
+              <CheckCircle2 size={18} />
+              <span className="whitespace-pre-line">{saveNotice}</span>
+            </div>
+          )}
           <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
               <h2 className="text-3xl font-black text-slate-900 tracking-tight">{t.title}</h2>

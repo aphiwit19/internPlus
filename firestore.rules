@@ -47,40 +47,74 @@ service cloud.firestore {
       return isSupervisor() && get(/databases/$(database)/documents/users/$(uid)).data.supervisorId == request.auth.uid;
     }
 
-    match /users/{uid} {
-      allow read, write: if signedIn();
+    function isMySupervisor(uid) {
+      return signedIn() && myUserDoc().data.supervisorId == uid;
     }
 
-    match /users/{uid}/{subCol}/{docId} {
-      allow read, write: if signedIn();
+    match /users/{uid} {
+      allow read: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid) || isMySupervisor(uid);
+      allow write: if isSelf(uid) || isHrAdmin();
+    }
+
+    match /users/{uid}/{document=**} {
+      allow read, write: if isSelf(uid) || isHrAdmin() || isAssignedSupervisorOf(uid);
     }
 
     match /config/{docId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+      allow write: if isHrAdmin();
+    }
+
+    match /payPeriods/{monthKey} {
+      allow read, write: if isHrAdmin();
+    }
+
+    match /policyTrainingContents/{contentId} {
+      allow read: if signedIn();
+      allow write: if isHrAdmin();
+
+      match /assets/{assetId} {
+        allow read: if signedIn();
+        allow write: if isHrAdmin();
+      }
+
+      match /acknowledgements/{uid} {
+        allow read: if isHrAdmin() || isSelf(uid);
+        allow write: if isHrAdmin() || isSelf(uid);
+      }
     }
 
     match /allowanceClaims/{claimId} {
-      allow read, write: if signedIn();
+      allow read: if isHrAdmin() || (signedIn() && resource.data.internId == request.auth.uid) || (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId));
+      allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
+      allow update, delete: if isHrAdmin() || (signedIn() && resource.data.internId == request.auth.uid) || (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId));
     }
 
     match /certificateTemplates/{templateId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+      allow write: if isHrAdmin();
     }
 
     match /certificateRequests/{requestId} {
-      allow read, write: if signedIn();
+      allow read: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
+      allow update, delete: if isHrAdmin() || (signedIn() && resource.data.supervisorId == request.auth.uid);
     }
 
     match /universityEvaluations/{docId} {
-      allow read, write: if signedIn();
+      allow read: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
+      allow update, delete: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
     }
 
     match /leaveRequests/{id} {
-      allow read, write: if signedIn();
+      allow read: if isHrAdmin() || (signedIn() && (resource.data.internId == request.auth.uid || resource.data.supervisorId == request.auth.uid));
+      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
+      allow update, delete: if isHrAdmin() || (signedIn() && resource.data.supervisorId == request.auth.uid);
     }
 
     match /{document=**} {
-      allow read, write: if signedIn();
+      allow read, write: if false;
     }
   }
 }

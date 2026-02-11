@@ -237,6 +237,12 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
     return byType;
   }, [templates]);
 
+  const requestStats = useMemo(() => {
+    const requested = requests.filter((r) => r.status === 'REQUESTED').length;
+    const issued = requests.filter((r) => r.status === 'ISSUED').length;
+    return { requested, issued, total: requests.length };
+  }, [requests]);
+
   const handleGenerate = async (req: CertificateRequestDoc & { id: string }) => {
     if (generatingId) return;
     const templateId = selectedTemplateByType[req.type];
@@ -355,6 +361,18 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
         <div className="mb-10">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{tr('supervisor_certificates.title')}</h1>
           <p className="text-slate-500 text-sm mt-1">{tr('supervisor_certificates.subtitle')}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="px-4 py-2 rounded-2xl bg-white border border-slate-100 text-[11px] font-black uppercase tracking-widest text-slate-600">
+              {lng === 'th' ? 'ทั้งหมด' : 'Total'}: {requestStats.total}
+            </div>
+            <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-100 text-[11px] font-black uppercase tracking-widest text-amber-700">
+              {lng === 'th' ? 'รอดำเนินการ' : 'Requested'}: {requestStats.requested}
+            </div>
+            <div className="px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-[11px] font-black uppercase tracking-widest text-emerald-700">
+              {lng === 'th' ? 'ออกแล้ว' : 'Issued'}: {requestStats.issued}
+            </div>
+          </div>
+
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 scrollbar-hide">
@@ -438,7 +456,30 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                       <div className="mt-4 flex items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
                           <div className="flex items-center gap-3">
-                            {meta.type !== 'RECOMMENDATION' ? (
+                            {meta.type === 'RECOMMENDATION' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openUpload(req.id)}
+                                  disabled={uploadingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {uploadingId === req.id
+                                    ? tr('supervisor_certificates.actions.uploading')
+                                    : tr('supervisor_certificates.actions.upload_signed_pdf')}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachLink(req.id)}
+                                  disabled={savingLinkId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {tr('supervisor_certificates.actions.attach_link')}
+                                </button>
+                              </>
+                            ) : (
                               <>
                                 <select
                                   value={selectedTemplateByType[meta.type]}
@@ -467,29 +508,29 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                                   {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
                                   {generatingId === req.id ? tr('supervisor_certificates.actions.generating') : tr('supervisor_certificates.actions.generate')}
                                 </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openUpload(req.id)}
+                                  disabled={uploadingId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                  {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
+                                  {uploadingId === req.id
+                                    ? tr('supervisor_certificates.actions.uploading')
+                                    : tr('supervisor_certificates.actions.upload_signed_pdf')}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachLink(req.id)}
+                                  disabled={savingLinkId === req.id}
+                                  className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {tr('supervisor_certificates.actions.attach_link')}
+                                </button>
                               </>
-                            ) : null}
-
-                            <button
-                              type="button"
-                              onClick={() => openUpload(req.id)}
-                              disabled={uploadingId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
-                            >
-                              {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {uploadingId === req.id
-                                ? tr('supervisor_certificates.actions.uploading')
-                                : tr('supervisor_certificates.actions.upload_signed_pdf')}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openAttachLink(req.id)}
-                              disabled={savingLinkId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              {tr('supervisor_certificates.actions.attach_link')}
-                            </button>
+                            )}
                           </div>
                         ) : status === 'ISSUED' && req ? (
                           <button
@@ -504,7 +545,7 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                         ) : null}
                       </div>
 
-                      {pendingLink?.requestId === req?.id ? (
+                      {pendingLink?.requestId === req?.id && req ? (
                         <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                           <input
                             type="text"
