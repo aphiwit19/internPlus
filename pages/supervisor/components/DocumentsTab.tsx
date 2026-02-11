@@ -1,13 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-<<<<<<< HEAD
-import { Download, ExternalLink, FileText, Loader2, ShieldCheck } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { getDownloadURL, ref as storageRef } from 'firebase/storage';
-=======
 import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
 import { collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
->>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 import { useTranslation } from 'react-i18next';
 
 import { firestoreDb, firebaseStorage } from '@/firebase';
@@ -29,10 +23,6 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const tr = (key: string, options?: any) => String(t(key, options));
   const isEn = (i18n.language ?? '').toLowerCase().startsWith('en');
   const [documents, setDocuments] = useState<(UserDocument & { id: string })[]>([]);
-<<<<<<< HEAD
-  const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
-  const [resolving, setResolving] = useState(false);
-=======
   const [policyPreviewUrls, setPolicyPreviewUrls] = useState<Record<string, string>>({});
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
@@ -49,16 +39,6 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     a.click();
     a.remove();
   };
-
-  const openInNewTab = (url: string) => {
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
-    if (popup && !popup.closed) {
-      popup.location.href = url;
-      return true;
-    }
-    return false;
-  };
->>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 
   const formatDateTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -80,103 +60,31 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     });
   }, [internId]);
 
-<<<<<<< HEAD
-  useEffect(() => {
-    if (documents.length === 0) return;
-    let cancelled = false;
-    setResolving(true);
-
-    void (async () => {
-      const toFetch = documents.filter((d) => d.storagePath && !downloadUrls[d.id]);
-      if (toFetch.length === 0) { setResolving(false); return; }
-
-      const entries = await Promise.all(
-        toFetch.map(async (d) => {
-          try {
-            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath!));
-            return [d.id, url] as const;
-          } catch (err) {
-            console.error('[DocumentsTab] Failed to resolve URL for', d.id, d.storagePath, err);
-            return [d.id, ''] as const;
-          }
-        }),
-      );
-
-      if (cancelled) return;
-
-      setDownloadUrls((prev) => {
-        const next = { ...prev };
-        for (const [id, url] of entries) {
-          if (!url) continue;
-          next[id] = url;
-        }
-        return next;
-      });
-      setResolving(false);
-    })();
-
-    return () => { cancelled = true; };
-  }, [documents]);
-
-  const getDocUrl = (d: UserDocument & { id: string }): string | null => {
-    if (d.url) return d.url;
-    return downloadUrls[d.id] ?? null;
-=======
   const handleDownloadDocument = async (docId: string) => {
     setDownloadError(null);
-    setDownloadNotice(`${isEn ? 'Preparing download...' : 'กำลังเตรียมดาวน์โหลด...'} (${docId})`);
-    console.log('[DocumentsTab] download click', { internId, docId });
+    setDownloadNotice(isEn ? 'Preparing download...' : 'กำลังเตรียมดาวน์โหลด...');
     const item = documents.find((d) => d.id === docId);
     if (!item) {
-      console.log('[DocumentsTab] document not found in state', { docId, count: documents.length });
       setDownloadNotice(null);
       return;
     }
     if (item.url) {
-      console.log('[DocumentsTab] using direct url', { docId, url: item.url });
-      if (!openInNewTab(item.url)) {
-        try {
-          triggerDownload(item.url, item.fileName);
-        } catch {
-          window.location.assign(item.url);
-        }
-      }
+      triggerDownload(item.url, item.fileName);
       setDownloadNotice(null);
       return;
     }
     if (!item.storagePath) {
-      console.log('[DocumentsTab] missing storagePath and url', { docId, item });
       setDownloadError(isEn ? 'Missing document link/path.' : 'ไม่พบลิงก์/ที่อยู่ไฟล์เอกสาร');
       setDownloadNotice(null);
       return;
     }
-
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
     try {
       const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-      console.log('[DocumentsTab] resolved download url', { docId, storagePath: item.storagePath, url });
-
-      if (!popup) {
-        window.location.assign(url);
-        return;
-      }
-      if (popup && !popup.closed) {
-        popup.location.href = url;
-        return;
-      }
-
-      if (!openInNewTab(url)) {
-        try {
-          triggerDownload(url, item.fileName);
-        } catch {
-          window.location.assign(url);
-        }
-      }
+      triggerDownload(url, item.fileName);
       setDownloadNotice(null);
     } catch (err: unknown) {
-      if (popup && !popup.closed) popup.close();
       const e = err as { code?: string; message?: string };
-      console.log('[DocumentsTab] getDownloadURL failed', { docId, storagePath: item.storagePath, err: e });
+      console.error('[DocumentsTab] getDownloadURL failed', { docId, storagePath: item.storagePath, err: e });
       setDownloadError(`${e?.code ?? 'unknown'}: ${e?.message ?? (isEn ? 'Download failed.' : 'ดาวน์โหลดไม่สำเร็จ')}`);
       setDownloadNotice(null);
     }
@@ -241,7 +149,6 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     } finally {
       setAttaching(docId, false);
     }
->>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
   };
 
   const orderedDocuments = useMemo(() => {
@@ -280,62 +187,58 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     return orderedDocuments.filter((d) => !isPolicyAcknowledgement(d) && !isWithdrawalEvidence(d));
   }, [orderedDocuments]);
 
-  const renderDocRow = (d: UserDocument & { id: string }, previewUrl?: string) => {
-    const href = getDocUrl(d);
-    const isExternal = Boolean(d.url);
-    const isReady = Boolean(href);
+  useEffect(() => {
+    let cancelled = false;
 
-    return (
-      <div key={d.id} className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
-        <div className="flex items-center gap-4 overflow-hidden min-w-0">
-          {previewUrl ? (
-            <a
-              href={href ?? '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0"
-              title="Preview"
-            >
-              <img src={previewUrl} alt="Signature" className="w-full h-full object-contain" />
-            </a>
-          ) : (
-            <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors flex-shrink-0">
-              <FileText size={18} />
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
-            <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
-            {(d.policyTitle || d.acknowledgementText) && (
-              <p className="text-[11px] font-bold text-slate-500 truncate mt-1">{d.policyTitle ? d.policyTitle : d.acknowledgementText}</p>
-            )}
-            {d.acknowledgementText && d.policyTitle && (
-              <p className="text-[11px] font-medium text-slate-400 truncate mt-0.5">{d.acknowledgementText}</p>
-            )}
-            {d.signedAt && <p className="text-[10px] font-bold text-slate-400 truncate mt-1">{tr('supervisor_dashboard.documents.signed_at')}: {formatDateTime(d.signedAt) ?? '-'}</p>}
-          </div>
-        </div>
+    void (async () => {
+      const toFetch = [...policyAcknowledgements, ...withdrawalEvidence].filter((d) => d.storagePath && !policyPreviewUrls[d.id]);
+      if (toFetch.length === 0) return;
 
-        {isReady ? (
-          <a
-            href={href!}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex-shrink-0"
-            title={isExternal ? tr('supervisor_dashboard.documents.open') : tr('supervisor_dashboard.documents.download')}
+      const entries = await Promise.all(
+        toFetch.map(async (d) => {
+          try {
+            const url = await getDownloadURL(storageRef(firebaseStorage, d.storagePath!));
+            return [d.id, url] as const;
+          } catch {
+            return [d.id, ''] as const;
+          }
+        }),
+      );
+
+      if (cancelled) return;
+
+      setPolicyPreviewUrls((prev) => {
+        const next = { ...prev };
+        for (const [id, url] of entries) {
+          if (!url) continue;
+          next[id] = url;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [policyAcknowledgements, withdrawalEvidence, policyPreviewUrls]);
+
+  const renderDocRow = (d: UserDocument & { id: string }, previewUrl?: string) => (
+    <div key={d.id} className="p-6 bg-white border border-slate-100 rounded-[1.75rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all">
+      <div className="flex items-center gap-4 overflow-hidden min-w-0">
+        {previewUrl ? (
+          <button
+            type="button"
+            onClick={() => void handleDownloadDocument(d.id)}
+            className="w-12 h-12 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex-shrink-0"
+            title="Preview"
           >
-            {isExternal ? <ExternalLink size={16} /> : <Download size={16} />}
-          </a>
+            <img src={previewUrl} alt="Signature" className="w-full h-full object-contain" />
+          </button>
         ) : (
-          <div className="w-10 h-10 bg-slate-50 text-slate-300 rounded-xl flex items-center justify-center border border-slate-100 flex-shrink-0">
-            <Loader2 size={16} className="animate-spin" />
+          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors flex-shrink-0">
+            <FileText size={18} />
           </div>
         )}
-<<<<<<< HEAD
-      </div>
-    );
-  };
-=======
         <div className="min-w-0">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">{d.label}</p>
           <p className="text-[12px] font-black text-slate-800 truncate">{d.fileName ?? (d.url ? d.url : '-')}</p>
@@ -413,7 +316,6 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
       </button>
     </div>
   );
->>>>>>> 222da45d78fe884c4c35e1c5bab703105f6828b0
 
   return (
     <div className="animate-in slide-in-from-bottom-6 duration-500">
@@ -464,7 +366,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {policyAcknowledgements.map((d) => renderDocRow(d, downloadUrls[d.id]))}
+                  {policyAcknowledgements.map((d) => renderDocRow(d, policyPreviewUrls[d.id]))}
                 </div>
               )}
             </div>
@@ -484,7 +386,7 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {withdrawalEvidence.map((d) => renderDocRow(d, downloadUrls[d.id]))}
+                  {withdrawalEvidence.map((d) => renderDocRow(d, policyPreviewUrls[d.id]))}
                 </div>
               )}
             </div>
