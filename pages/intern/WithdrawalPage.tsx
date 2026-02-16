@@ -41,6 +41,7 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang: _lang }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
 
   const [dialog, setDialog] = useState<{ open: boolean; title?: string; message: string } | null>(null);
 
@@ -112,6 +113,14 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang: _lang }) => {
       const signatureStoragePath = `users/${user.id}/withdrawal/signatures/${Date.now()}.png`;
       await uploadBytes(storageRef(firebaseStorage, signatureStoragePath), blob);
 
+      let evidenceStoragePath: string | null = null;
+      let evidenceFileName: string | null = null;
+      if (evidenceFile) {
+        evidenceFileName = evidenceFile.name;
+        evidenceStoragePath = `users/${user.id}/withdrawal/evidence/${Date.now()}_${evidenceFileName}`;
+        await uploadBytes(storageRef(firebaseStorage, evidenceStoragePath), evidenceFile);
+      }
+
       await updateDoc(doc(firestoreDb, 'users', user.id), {
         lifecycleStatus: 'WITHDRAWAL_REQUESTED',
         withdrawalRequestedAt: serverTimestamp(),
@@ -133,6 +142,22 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang: _lang }) => {
         },
         { merge: true },
       );
+
+      if (evidenceStoragePath && evidenceFileName) {
+        await setDoc(
+          doc(firestoreDb, 'users', user.id, 'documents', 'withdrawal:evidence'),
+          {
+            label: 'WITHDRAWAL EVIDENCE',
+            fileName: evidenceFileName,
+            storagePath: evidenceStoragePath,
+            policyTitle: tr('intern_withdrawal.title'),
+            acknowledgementText: tr('intern_withdrawal.authorization.title'),
+            signedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
 
       setIsSubmitted(true);
     } catch {
@@ -268,6 +293,22 @@ const WithdrawalPage: React.FC<WithdrawalPageProps> = ({ lang: _lang }) => {
                   {hasSigned && <button onClick={clearSignature} className="absolute top-6 right-6 p-3 bg-white/80 rounded-xl text-slate-400 hover:text-rose-500"><Eraser size={24} /></button>}
                 </div>
               </div>
+
+              <div className="w-full mb-10">
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-3 block">Withdrawal Evidence Document (optional)</label>
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setEvidenceFile(f);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold text-slate-700"
+                />
+                {evidenceFile ? (
+                  <div className="mt-3 text-[11px] font-bold text-slate-500 break-words">Selected: {evidenceFile.name}</div>
+                ) : null}
+              </div>
+
               <button onClick={handleSubmit} disabled={!user || isSubmitting || !reason || !isAgreed || !isDataPurgeAgreed || !hasSigned} className="w-full py-5 bg-slate-900 text-white rounded-full font-black text-lg hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmitting ? tr('intern_withdrawal.actions.submitting') : tr('intern_withdrawal.actions.submit')}</button>
             </section>
             <div className="p-8 bg-slate-100 rounded-[2.5rem] flex gap-5"><Lock size={20} className="text-slate-400 shrink-0" /><p className="text-[11px] text-slate-500 font-bold uppercase">{tr('intern_withdrawal.record_note')}</p></div>

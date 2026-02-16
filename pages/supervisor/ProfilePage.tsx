@@ -71,7 +71,7 @@ const SupervisorProfilePage: React.FC<SupervisorProfilePageProps> = ({ user, lan
       <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">
         <div className="grid grid-cols-12 gap-8 max-w-[1700px] mx-auto">
           <div className="col-span-12 lg:col-span-4">
-            <ProfileCard user={user} lang={_lang} enableAvatarUpload />
+            <ProfileCard user={user} lang={_lang} enableAvatarUpload hideInternshipPeriod />
           </div>
 
           <div className="col-span-12 lg:col-span-8 space-y-8">

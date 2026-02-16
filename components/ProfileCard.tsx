@@ -10,9 +10,10 @@ interface ProfileCardProps {
   user: UserProfile;
   lang: Language;
   enableAvatarUpload?: boolean;
+  hideInternshipPeriod?: boolean;
 }
 
-const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang: _lang, enableAvatarUpload }) => {
+const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang: _lang, enableAvatarUpload, hideInternshipPeriod }) => {
   const { t } = useTranslation();
   const [isUploadingAvatar, setIsUploadingAvatar] = React.useState(false);
   const [avatarUploadError, setAvatarUploadError] = React.useState<string | null>(null);
@@ -121,13 +122,15 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang: _lang, enableAvat
           </div>
           <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.position || t('common.not_assigned')}</p>
         </div>
-        <div className="bg-[#F8FAFC] p-5 rounded-[1.75rem] border border-slate-100 flex flex-col justify-center transition-all hover:bg-white hover:shadow-lg hover:border-blue-100 group/item">
-          <div className="flex items-center gap-2 text-slate-400 mb-2">
-            <div className="w-1.5 h-4 bg-indigo-600 rounded-full opacity-40 group-hover/item:opacity-100 transition-opacity"></div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('profile_card.labels.internship_period')}</span>
+        {!hideInternshipPeriod ? (
+          <div className="bg-[#F8FAFC] p-5 rounded-[1.75rem] border border-slate-100 flex flex-col justify-center transition-all hover:bg-white hover:shadow-lg hover:border-blue-100 group/item">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <div className="w-1.5 h-4 bg-indigo-600 rounded-full opacity-40 group-hover/item:opacity-100 transition-opacity"></div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('profile_card.labels.internship_period')}</span>
+            </div>
+            <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.internPeriod || t('common.tbd')}</p>
           </div>
-          <p className="text-[14px] font-black text-slate-900 leading-tight tracking-tight">{user.internPeriod || t('common.tbd')}</p>
-        </div>
+        ) : null}
       </div>
 
       {/* Detailed Info Rows */}
