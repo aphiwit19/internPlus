@@ -45,15 +45,17 @@ export const firebaseFunctions: Functions = getFunctions(firebaseApp, 'asia-sout
 export let firebaseAnalytics: Analytics | null = null;
 
 if (typeof window !== 'undefined') {
-  try {
-    const opts = firebaseApp.options as any;
-    console.log('Firebase runtime config', {
-      projectId: opts?.projectId,
-      authDomain: opts?.authDomain,
-      storageBucket: opts?.storageBucket,
-    });
-  } catch {
-    // ignore
+  if (import.meta.env.DEV) {
+    try {
+      const opts = firebaseApp.options as any;
+      console.log('Firebase runtime config', {
+        projectId: opts?.projectId,
+        authDomain: opts?.authDomain,
+        storageBucket: opts?.storageBucket,
+      });
+    } catch {
+      // ignore
+    }
   }
   void isAnalyticsSupported()
     .then((supported) => {

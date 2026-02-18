@@ -12,6 +12,10 @@
 
     "dev": "vite",
 
+    "lint": "eslint .",
+
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+
     "build": "vite build",
 
     "preview": "vite preview"

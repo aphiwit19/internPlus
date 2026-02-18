@@ -490,7 +490,6 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string; details?: unknown };
-      // eslint-disable-next-line no-console
       console.error('deleteBackground failed', err);
       const details = e?.details ? ` | details: ${JSON.stringify(e.details)}` : '';
       setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to remove background'}${details}`);
@@ -512,7 +511,6 @@ export default function CertificateTemplatesManager({ lang, onBack, initialView 
       }
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string; details?: unknown };
-      // eslint-disable-next-line no-console
       console.error('deleteTemplate failed', err);
       const details = e?.details ? ` | details: ${JSON.stringify(e.details)}` : '';
       setError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to delete template'}${details}`);

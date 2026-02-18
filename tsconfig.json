@@ -54,6 +54,23 @@
 
     "noEmit": true
 
-  }
+  },
+
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.d.ts"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "dist",
+    "functions",
+    "scripts",
+    "**/*.mjs",
+    "**/*.cjs"
+  ]
 
 }
+
+ 
