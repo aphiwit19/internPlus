@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Rect, Transformer } from 'react-konva';
-import type Konva from 'konva';
+import Konva from 'konva';
 import { doc, updateDoc } from 'firebase/firestore';
 
 import { firestoreDb } from '@/firebase';
@@ -35,6 +35,12 @@ export type TemplateTextBlock = {
 
 export type CertificateTemplateLayout = {
   canvas: { width: number; height: number };
+  background?: {
+    cx: number;
+    cy: number;
+    scale: number;
+    rotation: number;
+  };
   blocks: TemplateTextBlock[];
 };
 
@@ -81,6 +87,8 @@ const FIELD_LABELS: Record<TemplateFieldKey, string> = {
   issueDate: 'Issue Date',
 };
 
+const FIELD_KEYS_FOR_EDITOR = (Object.keys(FIELD_LABELS) as TemplateFieldKey[]).filter((k) => k !== 'systemId');
+
 const FONT_FAMILIES = [
   'Arial',
   'Times New Roman',
@@ -89,7 +97,24 @@ const FONT_FAMILIES = [
   'Verdana',
   'TH Sarabun New',
   'Cormorant Garamond',
+  'Cormorant Garamond Light',
+  'Cormorant Garamond Regular',
+  'Cormorant Garamond Medium',
+  'Cormorant Garamond SemiBold',
+  'Cormorant Garamond Bold',
+  'DM Serif Display',
+  'Yeseva One',
 ] as const;
+
+const FONT_FAMILIES_FORCE_400 = new Set<string>([
+  'Cormorant Garamond Light',
+  'Cormorant Garamond Regular',
+  'Cormorant Garamond Medium',
+  'Cormorant Garamond SemiBold',
+  'Cormorant Garamond Bold',
+  'DM Serif Display',
+  'Yeseva One',
+]);
 
 type Props = {
   lang: Language;
@@ -117,6 +142,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           fontSize: 'Font Size',
           fontWeight: 'Weight',
           color: 'Color',
+          scale: 'Scale',
           rotation: 'Rotation',
           noneSelected: 'Select an item to edit',
         },
@@ -133,6 +159,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           fontSize: 'ขนาดตัวอักษร',
           fontWeight: 'น้ำหนัก',
           color: 'สี',
+          scale: 'ขนาด',
           rotation: 'การหมุน',
           noneSelected: 'เลือกชิ้นงานเพื่อแก้ไข',
         },
@@ -141,9 +168,24 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   );
 
   const image = useHtmlImage(backgroundUrl);
-  const stageRef = useRef<Konva.Stage>(null);
-  const transformerRef = useRef<Konva.Transformer>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
   const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
+  const bgNodeRef = useRef<Konva.Image | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  const [layout, setLayout] = useState<CertificateTemplateLayout>({
+    canvas: { width: 2480, height: 3508 },
+    background: undefined,
+    blocks: [],
+  });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedKind, setSelectedKind] = useState<'block' | 'background' | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [nameDraft, setNameDraft] = useState((template.name ?? '').toString());
+  const [isExportingPreview, setIsExportingPreview] = useState(false);
+  const [windowH, setWindowH] = useState<number>(() => (typeof window !== 'undefined' ? window.innerHeight : 900));
+  const [viewportW, setViewportW] = useState<number>(0);
 
   const dataUrlToBlob = useCallback((dataUrl: string): Blob | null => {
     const parts = dataUrl.split(',');
@@ -160,40 +202,126 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   const initialLayout = useMemo<CertificateTemplateLayout>(() => {
     const w = image?.naturalWidth ?? template.layout?.canvas.width ?? 2480;
     const h = image?.naturalHeight ?? template.layout?.canvas.height ?? 3508;
+    const bg = (template.layout as any)?.background as CertificateTemplateLayout['background'] | undefined;
     return {
       canvas: { width: w, height: h },
+      background: {
+        cx: bg?.cx ?? w / 2,
+        cy: bg?.cy ?? h / 2,
+        scale: bg?.scale ?? 1,
+        rotation: bg?.rotation ?? 0,
+      },
       blocks: template.layout?.blocks ?? [],
     };
   }, [image?.naturalHeight, image?.naturalWidth, template.layout?.blocks, template.layout?.canvas.height, template.layout?.canvas.width]);
 
-  const [layout, setLayout] = useState<CertificateTemplateLayout>(initialLayout);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [isExportingPreview, setIsExportingPreview] = useState(false);
-  const [nameDraft, setNameDraft] = useState<string>((template.name ?? '').toString());
-
   useEffect(() => {
     setLayout(initialLayout);
     setSelectedId(null);
+    setSelectedKind(null);
   }, [initialLayout]);
 
   useEffect(() => {
     setNameDraft((template.name ?? '').toString());
   }, [template.name]);
 
+  useEffect(() => {
+    const fontsApi: any = (document as any)?.fonts;
+    if (!fontsApi || typeof fontsApi.ready?.then !== 'function') return;
+
+    const families = Array.from(
+      new Set(
+        layout.blocks
+          .map((b) => (typeof (b as any)?.fontFamily === 'string' ? String((b as any).fontFamily) : ''))
+          .filter(Boolean),
+      ),
+    );
+
+    let cancelled = false;
+    (async () => {
+      // Ensure fonts are loaded before drawing; Konva won't always repaint automatically when fonts arrive.
+      await Promise.all(
+        families.map(async (ff) => {
+          if (typeof fontsApi.load !== 'function') return;
+          // Prefer the full font shorthand, which some browsers use for matching.
+          try {
+            await fontsApi.load(`normal 400 20px "${ff}"`);
+            await fontsApi.load(`italic 400 20px "${ff}"`);
+          } catch {
+            // ignore
+          }
+        }),
+      );
+
+      try {
+        await fontsApi.ready;
+      } catch {
+        // ignore
+      }
+
+      for (const ff of families) {
+        try {
+          if (typeof fontsApi.check === 'function' && !fontsApi.check(`20px "${ff}"`)) {
+            console.warn('CertificateTemplateEditor:fontNotAvailable', ff);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (cancelled) return;
+
+      const stage = stageRef.current;
+      if (!stage) return;
+      for (const layer of stage.getLayers()) {
+        layer.batchDraw();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [layout.blocks]);
+
+  useEffect(() => {
+    const onResize = () => setWindowH(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setViewportW(Math.floor(entry.contentRect.width));
+    });
+    ro.observe(el);
+    setViewportW(Math.floor(el.getBoundingClientRect().width));
+    return () => ro.disconnect();
+  }, []);
+
   const selected = useMemo(() => layout.blocks.find((b) => b.id === selectedId) ?? null, [layout.blocks, selectedId]);
+  const background = layout.background ?? { cx: layout.canvas.width / 2, cy: layout.canvas.height / 2, scale: 1, rotation: 0 };
 
   const stageScale = useMemo(() => {
-    const maxW = 900;
-    const maxH = 640;
+    const paddingW = 32;
+    const maxW = Math.max(320, (viewportW || 0) - paddingW);
+    const maxH = Math.max(320, Math.floor(windowH * 0.65));
     const sx = maxW / layout.canvas.width;
     const sy = maxH / layout.canvas.height;
     return Math.min(1, sx, sy);
-  }, [layout.canvas.height, layout.canvas.width]);
+  }, [layout.canvas.height, layout.canvas.width, viewportW, windowH]);
 
   const displayText = useCallback((block: TemplateTextBlock) => {
     if (block.source.type === 'static') return block.source.text;
     return `{{${block.source.key}}}`;
+  }, []);
+
+  const measureTextWidth = useCallback((text: string, fontSize: number, fontFamily: string) => {
+    const t = new Konva.Text({ text, fontSize, fontFamily, fontStyle: 'normal' });
+    return t.width();
   }, []);
 
   const updateBlock = useCallback((id: string, patch: Partial<TemplateTextBlock>) => {
@@ -203,11 +331,63 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
     }));
   }, []);
 
+  const updateBackground = useCallback((patch: Partial<NonNullable<CertificateTemplateLayout['background']>>) => {
+    setLayout((prev) => {
+      const cur = prev.background ?? {
+        cx: prev.canvas.width / 2,
+        cy: prev.canvas.height / 2,
+        scale: 1,
+        rotation: 0,
+      };
+
+      const nextBg = {
+        ...cur,
+        ...patch,
+        scale: Math.max(0.05, Number((patch as any)?.scale ?? cur.scale) || cur.scale),
+        rotation: Number((patch as any)?.rotation ?? cur.rotation) || 0,
+        cx: Number((patch as any)?.cx ?? cur.cx) || cur.cx,
+        cy: Number((patch as any)?.cy ?? cur.cy) || cur.cy,
+      };
+
+      const scaleRatio = cur.scale ? nextBg.scale / cur.scale : 1;
+      const rotDeltaDeg = nextBg.rotation - cur.rotation;
+      const rotDelta = (rotDeltaDeg * Math.PI) / 180;
+      const cos = Math.cos(rotDelta);
+      const sin = Math.sin(rotDelta);
+
+      const nextBlocks = prev.blocks.map((b) => {
+        const vx = b.x - cur.cx;
+        const vy = b.y - cur.cy;
+        const svx = vx * scaleRatio;
+        const svy = vy * scaleRatio;
+        const rvx = svx * cos - svy * sin;
+        const rvy = svx * sin + svy * cos;
+
+        const nextX = nextBg.cx + rvx;
+        const nextY = nextBg.cy + rvy;
+
+        return {
+          ...b,
+          x: Math.round(nextX),
+          y: Math.round(nextY),
+          width: b.width != null ? Math.max(20, Math.round(b.width * scaleRatio)) : undefined,
+          fontSize: Math.max(6, Math.round((b.fontSize ?? 20) * scaleRatio)),
+          rotation: Math.round(((b.rotation ?? 0) + rotDeltaDeg) * 100) / 100,
+        };
+      });
+
+      return { ...prev, background: nextBg, blocks: nextBlocks };
+    });
+  }, []);
+
   const addStaticText = () => {
     const baseX = Math.round(layout.canvas.width * 0.1);
     const baseY = Math.round(layout.canvas.height * 0.2);
     const maxY = layout.blocks.reduce((acc, b) => Math.max(acc, b.y), 0);
     const nextY = Math.min(layout.canvas.height - 60, Math.max(baseY, maxY + 60));
+
+    const fontSize = 20;
+    const fontFamily = 'Arial';
     const block: TemplateTextBlock = {
       id: makeId(),
       kind: 'text',
@@ -215,13 +395,14 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       y: nextY,
       width: Math.round(layout.canvas.width * 0.6),
       rotation: 0,
-      fontSize: 16,
-      fontFamily: 'Arial',
+      fontSize,
+      fontFamily,
       color: '#111827',
       source: { type: 'static', text: 'New text\n(second line)' },
     };
     setLayout((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
-    setSelectedId(block.id);
+    setSelectedId(null);
+    setSelectedKind(null);
   };
 
   const addFieldText = () => {
@@ -229,38 +410,47 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
     const baseY = Math.round(layout.canvas.height * 0.3);
     const maxY = layout.blocks.reduce((acc, b) => Math.max(acc, b.y), 0);
     const nextY = Math.min(layout.canvas.height - 60, Math.max(baseY, maxY + 60));
+
+    const fontSize = 20;
+    const fontFamily = 'Arial';
+    const placeholder = '{{internName}}';
+    const measuredWidth = Math.ceil(measureTextWidth(placeholder, fontSize, fontFamily));
+
     const block: TemplateTextBlock = {
       id: makeId(),
       kind: 'text',
       x: baseX,
       y: nextY,
-      width: Math.round(layout.canvas.width * 0.6),
+      width: Math.max(20, Math.min(layout.canvas.width - baseX, measuredWidth + 8)),
       rotation: 0,
-      fontSize: 16,
-      fontFamily: 'Arial',
+      fontSize,
+      fontFamily,
       color: '#111827',
       source: { type: 'field', key: 'internName' },
     };
     setLayout((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
-    setSelectedId(block.id);
+    setSelectedId(null);
+    setSelectedKind(null);
   };
 
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const node = selectedId ? textNodeRefs.current[selectedId] : null;
-    if (node) {
-      transformer.nodes([node]);
-    } else {
-      transformer.nodes([]);
-    }
+    const node =
+      selectedKind === 'background'
+        ? bgNodeRef.current
+        : selectedKind === 'block' && selectedId
+          ? textNodeRefs.current[selectedId]
+          : null;
+    transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selectedId, layout.blocks]);
+  }, [selectedId, selectedKind, layout.blocks, layout.background]);
 
   const removeSelected = () => {
     if (!selectedId) return;
     setLayout((prev) => ({ ...prev, blocks: prev.blocks.filter((b) => b.id !== selectedId) }));
     setSelectedId(null);
+    setSelectedKind(null);
   };
 
   const save = async () => {
@@ -268,6 +458,12 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
     try {
       const normalizedLayout: CertificateTemplateLayout = {
         ...layout,
+        background: {
+          cx: Number((layout.background as any)?.cx ?? layout.canvas.width / 2) || layout.canvas.width / 2,
+          cy: Number((layout.background as any)?.cy ?? layout.canvas.height / 2) || layout.canvas.height / 2,
+          scale: Math.max(0.05, Number((layout.background as any)?.scale ?? 1) || 1),
+          rotation: Number((layout.background as any)?.rotation ?? 0) || 0,
+        },
         blocks: layout.blocks.map((b) => {
           const { align: _align, ...rest } = b as any;
           return { ...rest, rotation: (b as any).rotation ?? 0 } as TemplateTextBlock;
@@ -368,20 +564,56 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8">
-          <div className="bg-white border border-slate-100 rounded-[2rem] p-4 shadow-sm overflow-hidden">
-            <div className="w-full flex justify-center">
+          <div className="bg-white border border-slate-100 rounded-[2rem] p-4 shadow-sm">
+            <div ref={viewportRef} className="w-full flex justify-center p-3 bg-slate-50 rounded-2xl">
               <Stage
                 ref={stageRef}
                 width={layout.canvas.width * stageScale}
                 height={layout.canvas.height * stageScale}
                 onMouseDown={(e) => {
                   const clickedOnEmpty = e.target === e.target.getStage();
-                  if (clickedOnEmpty) setSelectedId(null);
+                  if (clickedOnEmpty) {
+                    setSelectedId(null);
+                    setSelectedKind(null);
+                  }
                 }}
               >
                 <Layer scaleX={stageScale} scaleY={stageScale}>
                   {image ? (
-                    <KonvaImage x={0} y={0} width={layout.canvas.width} height={layout.canvas.height} image={image} />
+                    <KonvaImage
+                      ref={(node) => {
+                        bgNodeRef.current = node;
+                      }}
+                      x={background.cx}
+                      y={background.cy}
+                      offsetX={layout.canvas.width / 2}
+                      offsetY={layout.canvas.height / 2}
+                      width={layout.canvas.width}
+                      height={layout.canvas.height}
+                      scaleX={background.scale}
+                      scaleY={background.scale}
+                      rotation={background.rotation}
+                      image={image}
+                      draggable={selectedKind === 'background'}
+                      listening
+                      onMouseDown={() => {
+                        setSelectedId(null);
+                        setSelectedKind('background');
+                      }}
+                      onDragEnd={(e) => {
+                        updateBackground({ cx: Math.round(e.target.x()), cy: Math.round(e.target.y()) });
+                      }}
+                      onTransformEnd={(e) => {
+                        const node = e.target as unknown as Konva.Image;
+                        const sx = node.scaleX();
+                        const nextScale = Math.max(0.05, Number(sx) || 1);
+                        const nextRotation = Math.round(node.rotation());
+                        const nextCx = Math.round(node.x());
+                        const nextCy = Math.round(node.y());
+
+                        updateBackground({ cx: nextCx, cy: nextCy, scale: nextScale, rotation: nextRotation });
+                      }}
+                    />
                   ) : (
                     <Rect x={0} y={0} width={layout.canvas.width} height={layout.canvas.height} fill="#f8fafc" />
                   )}
@@ -427,9 +659,11 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                       onDragEnd={(e) => {
                         updateBlock(b.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) });
                         setSelectedId(null);
+                        setSelectedKind(null);
                       }}
                       onMouseDown={() => {
                         setSelectedId(b.id);
+                        setSelectedKind('block');
                       }}
                       listening
                     />
@@ -438,7 +672,12 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                   <Transformer
                     ref={transformerRef}
                     rotateEnabled
-                    enabledAnchors={['middle-left', 'middle-right']}
+                    keepRatio={selectedKind === 'background'}
+                    enabledAnchors={
+                      selectedKind === 'background'
+                        ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+                        : ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right']
+                    }
                     boundBoxFunc={(oldBox, newBox) => {
                       if (newBox.width < 20) return oldBox;
                       return newBox;
@@ -454,97 +693,130 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           <div className="bg-white border border-slate-100 rounded-[2rem] p-6 shadow-sm">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.properties}</div>
 
-            {!selected ? (
+            {!selected && selectedKind !== 'background' ? (
               <div className="text-sm text-slate-500 font-bold">{t.noneSelected}</div>
             ) : (
               <div className="space-y-4">
-                <div>
-                  <div className="text-xs font-black text-slate-600 mb-2">{selected.source.type === 'static' ? t.text : t.field}</div>
+                {selectedKind === 'background' ? (
+                  <>
+                    <div>
+                      <div className="text-xs font-black text-slate-600 mb-2">{t.scale}</div>
+                      <input
+                        type="number"
+                        value={background.scale}
+                        step={0.05}
+                        onChange={(e) => updateBackground({ scale: Math.max(0.05, Number(e.target.value) || 0.05) })}
+                        className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                      />
+                    </div>
 
-                  {selected.source.type === 'static' ? (
-                    <textarea
-                      value={selected.source.text}
-                      onChange={(e) =>
-                        updateBlock(selected.id, {
-                          source: { type: 'static', text: e.target.value },
-                        })
-                      }
-                      rows={6}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                    />
-                  ) : (
-                    <select
-                      value={selected.source.key}
-                      onChange={(e) =>
-                        updateBlock(selected.id, {
-                          source: { type: 'field', key: e.target.value as TemplateFieldKey },
-                        })
-                      }
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                    <div>
+                      <div className="text-xs font-black text-slate-600 mb-2">{t.rotation}</div>
+                      <input
+                        type="number"
+                        value={background.rotation}
+                        onChange={(e) => updateBackground({ rotation: Number(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-xs font-black text-slate-600 mb-2">{selected.source.type === 'static' ? t.text : t.field}</div>
+
+                      {selected.source.type === 'static' ? (
+                        <textarea
+                          value={selected.source.text}
+                          onChange={(e) =>
+                            updateBlock(selected.id, {
+                              source: { type: 'static', text: e.target.value },
+                            })
+                          }
+                          rows={6}
+                          className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                        />
+                      ) : (
+                        <select
+                          value={selected.source.key}
+                          onChange={(e) =>
+                            updateBlock(selected.id, {
+                              source: { type: 'field', key: e.target.value as TemplateFieldKey },
+                            })
+                          }
+                          className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                        >
+                          {FIELD_KEYS_FOR_EDITOR.map((k) => (
+                            <option key={k} value={k}>
+                              {FIELD_LABELS[k]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-black text-slate-600 mb-2">{t.fontSize}</div>
+                      <input
+                        type="number"
+                        value={selected.fontSize}
+                        onChange={(e) => updateBlock(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 0) })}
+                        className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-black text-slate-600 mb-2">{lang === 'TH' ? 'ฟอนต์' : 'Font'}</div>
+                      <select
+                        value={selected.fontFamily ?? 'Arial'}
+                        onChange={(e) => {
+                          const ff = e.target.value;
+                          updateBlock(selected.id, {
+                            fontFamily: ff,
+                            fontWeight: FONT_FAMILIES_FORCE_400.has(ff) ? 400 : selected.fontWeight,
+                          });
+                        }}
+                        className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                      >
+                        {FONT_FAMILIES.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs font-black text-slate-600 mb-2">{t.color}</div>
+                        <input
+                          type="color"
+                          value={selected.color}
+                          onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
+                          className="w-full h-12 px-2 py-2 rounded-2xl border border-slate-200"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-black text-slate-600 mb-2">{t.rotation}</div>
+                        <input
+                          type="number"
+                          value={selected.rotation ?? 0}
+                          onChange={(e) => updateBlock(selected.id, { rotation: Number(e.target.value) || 0 })}
+                          className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={removeSelected}
+                      className="w-full px-4 py-3 rounded-2xl bg-rose-50 text-rose-700 border border-rose-100 text-xs font-black"
                     >
-                      {Object.keys(FIELD_LABELS).map((k) => (
-                        <option key={k} value={k}>
-                          {FIELD_LABELS[k as TemplateFieldKey]}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div>
-                  <div className="text-xs font-black text-slate-600 mb-2">{t.fontSize}</div>
-                  <input
-                    type="number"
-                    value={selected.fontSize}
-                    onChange={(e) => updateBlock(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 0) })}
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <div className="text-xs font-black text-slate-600 mb-2">{lang === 'TH' ? 'ฟอนต์' : 'Font'}</div>
-                  <select
-                    value={selected.fontFamily ?? 'Arial'}
-                    onChange={(e) => updateBlock(selected.id, { fontFamily: e.target.value })}
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                  >
-                    {FONT_FAMILIES.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-xs font-black text-slate-600 mb-2">{t.color}</div>
-                    <input
-                      type="color"
-                      value={selected.color}
-                      onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
-                      className="w-full h-12 px-2 py-2 rounded-2xl border border-slate-200"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-black text-slate-600 mb-2">{t.rotation}</div>
-                    <input
-                      type="number"
-                      value={selected.rotation ?? 0}
-                      onChange={(e) => updateBlock(selected.id, { rotation: Number(e.target.value) || 0 })}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={removeSelected}
-                  className="w-full px-4 py-3 rounded-2xl bg-rose-50 text-rose-700 border border-rose-100 text-xs font-black"
-                >
-                  {t.delete}
-                </button>
+                      {t.delete}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

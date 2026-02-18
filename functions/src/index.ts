@@ -171,6 +171,22 @@ const EMBEDDED_FONTS: EmbeddedFontSpec[] = [
   },
   {
     family: 'Cormorant Garamond',
+    weight: 300,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-Light.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond',
+    weight: 300,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-LightItalic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond',
     weight: 400,
     style: 'normal',
     relativePath: 'front/eng/static/CormorantGaramond-Regular.ttf',
@@ -196,6 +212,118 @@ const EMBEDDED_FONTS: EmbeddedFontSpec[] = [
   {
     family: 'Cormorant Garamond',
     weight: 700,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-BoldItalic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'DM Serif Display',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/eng/DM_Serif_Display/DMSerifDisplay-Regular.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'DM Serif Display',
+    weight: 400,
+    style: 'italic',
+    relativePath: 'front/eng/eng/DM_Serif_Display/DMSerifDisplay-Italic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Yeseva One',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/eng/Yeseva_One/YesevaOne-Regular.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Yeseva One',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/eng02/Yeseva_One/YesevaOne-Regular.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Light',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-Light.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Light',
+    weight: 400,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-LightItalic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Regular',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-Regular.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Regular',
+    weight: 400,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-Italic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Medium',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-Medium.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Medium',
+    weight: 400,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-MediumItalic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond SemiBold',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-SemiBold.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond SemiBold',
+    weight: 400,
+    style: 'italic',
+    relativePath: 'front/eng/static/CormorantGaramond-SemiBoldItalic.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Bold',
+    weight: 400,
+    style: 'normal',
+    relativePath: 'front/eng/static/CormorantGaramond-Bold.ttf',
+    mime: 'font/ttf',
+    format: 'truetype',
+  },
+  {
+    family: 'Cormorant Garamond Bold',
+    weight: 400,
     style: 'italic',
     relativePath: 'front/eng/static/CormorantGaramond-BoldItalic.ttf',
     mime: 'font/ttf',
@@ -363,6 +491,38 @@ function resolveStoragePathFromTemplate(tpl: CertificateTemplateDoc): string {
   throw new HttpsError('failed-precondition', 'Template has no backgroundPath');
 }
 
+async function buildTransformedBackgroundPng(
+  backgroundInput: Buffer,
+  target: { width: number; height: number },
+  bg: { cx: number; cy: number; scale: number; rotation: number } | null,
+): Promise<Buffer> {
+  const width = target.width;
+  const height = target.height;
+
+  const basePng = await sharp(backgroundInput)
+    .resize(width, height, { fit: 'fill' })
+    .png()
+    .toBuffer();
+
+  const t = bg ?? { cx: width / 2, cy: height / 2, scale: 1, rotation: 0 };
+  const cx = Number(t.cx) || width / 2;
+  const cy = Number(t.cy) || height / 2;
+  const scale = Math.max(0.05, Number(t.scale) || 1);
+  const rotation = Number(t.rotation) || 0;
+
+  if (scale === 1 && rotation === 0 && cx === width / 2 && cy === height / 2) {
+    return basePng;
+  }
+
+  const b64 = basePng.toString('base64');
+  const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="transparent"/>
+  <image href="data:image/png;base64,${b64}" width="${width}" height="${height}" transform="translate(${cx} ${cy}) rotate(${rotation}) scale(${scale}) translate(${-width / 2} ${-height / 2})"/>
+</svg>`;
+
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
 function placeholderValueForField(
   key: 'internName' | 'position' | 'department' | 'internPeriod' | 'systemId' | 'issueDate',
 ): string {
@@ -393,7 +553,6 @@ export const generateTemplatePreview = onCall({ cors: true }, async (request) =>
 
     const db = admin.firestore();
     const bucket = admin.storage().bucket();
-
     const tplRef = db.collection('certificateTemplates').doc(templateId);
     const tplSnap = await tplRef.get();
     if (!tplSnap.exists) throw new HttpsError('not-found', 'certificateTemplates doc not found');
@@ -425,7 +584,8 @@ export const generateTemplatePreview = onCall({ cors: true }, async (request) =>
     const width = tpl.layout.canvas?.width ?? meta.width ?? 2480;
     const height = tpl.layout.canvas?.height ?? meta.height ?? 3508;
 
-    const bg = bgSharp.resize(width, height, { fit: 'fill' });
+    const transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, (tpl.layout as any)?.background ?? null);
+    const bg = sharp(transformedBgPng);
 
     // Note: buildSvgFromLayout already resolves field values; we want placeholders instead.
     // So we re-map blocks on the fly by injecting placeholders via a cloned layout.
@@ -620,16 +780,11 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
     .name { font-size: ${Math.round(width * 0.055)}px; font-family: Arial, sans-serif; font-weight: 800; fill: #111827; }
     .meta { font-size: ${Math.round(width * 0.022)}px; font-family: Arial, sans-serif; font-weight: 600; fill: #334155; }
   </style>
-
   <text x="50%" y="${Math.round(height * 0.30)}" text-anchor="middle" class="title">${escapeXml(
     req.type === 'COMPLETION' ? 'Certificate of Completion' : 'Recommendation Letter',
   )}</text>
 
   <text x="50%" y="${Math.round(height * 0.45)}" text-anchor="middle" class="name">${escapeXml(internName)}</text>
-
-  <text x="50%" y="${Math.round(height * 0.55)}" text-anchor="middle" class="meta">${escapeXml(
-    [internPosition, internDepartment].filter(Boolean).join(' • '),
-  )}</text>
 
   <text x="50%" y="${Math.round(height * 0.60)}" text-anchor="middle" class="meta">${escapeXml(internPeriod)}</text>
 
@@ -652,7 +807,8 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         )
       : fixedSvg;
 
-    const issuedPng = await bgSharp
+    const transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, (tpl.layout as any)?.background ?? null);
+    const issuedPng = await sharp(transformedBgPng)
       .composite([
         {
           input: Buffer.from(svg),
