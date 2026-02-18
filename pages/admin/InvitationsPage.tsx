@@ -24,7 +24,7 @@ import { getDefaultAvatarUrl } from '@/app/avatar';
 
 const InvitationsPage: React.FC = () => {
   const { t } = useTranslation();
-  const tr = (key: string) => String(t(key));
+  const tr = (key: string, options?: any) => String(t(key, options));
   const { user } = useAppContext();
 
   const [inviteRole, setInviteRole] = useState<UserRole>('INTERN');
@@ -119,9 +119,9 @@ const InvitationsPage: React.FC = () => {
         const data = d.data() as { name?: string; department?: string; position?: string; roles?: UserRole[]; isDualRole?: boolean };
         return {
           id: d.id,
-          name: data.name || 'Unknown',
-          department: data.department || 'Unknown',
-          position: data.position || 'Supervisor',
+          name: data.name || tr('admin_invitations.unknown'),
+          department: data.department || tr('admin_invitations.unknown'),
+          position: data.position || tr('admin_invitations.supervisor_position'),
           roles: Array.isArray(data.roles) ? data.roles : (['SUPERVISOR'] as UserRole[]),
           isDualRole: data.isDualRole,
         };
@@ -145,7 +145,7 @@ const InvitationsPage: React.FC = () => {
     if (!managedSupervisor || !coAdminAction) return;
 
     if (coAdminAction === 'revoke' && user?.id && managedSupervisor.id === user.id) {
-      setInviteError('You cannot revoke admin access from the account you are currently using.');
+      setInviteError(tr('admin_invitations.errors.cannot_revoke_self'));
       setIsCoAdminModalOpen(false);
       return;
     }
@@ -166,11 +166,15 @@ const InvitationsPage: React.FC = () => {
           updatedAt: serverTimestamp(),
         });
       }
-      setInviteSuccess(coAdminAction === 'grant' ? 'Granted co-admin access.' : 'Revoked co-admin access.');
+      setInviteSuccess(
+        coAdminAction === 'grant'
+          ? tr('admin_invitations.success.granted_co_admin')
+          : tr('admin_invitations.success.revoked_co_admin'),
+      );
       setIsCoAdminModalOpen(false);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to update supervisor roles.'}`);
+      setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_invitations.errors.update_supervisor_roles_failed')}`);
     } finally {
       setIsUpdatingCoAdmin(false);
     }
@@ -179,14 +183,14 @@ const InvitationsPage: React.FC = () => {
   const handleAddDepartment = () => {
     const name = newDepartmentName.trim();
     if (!name) {
-      alert('Please enter a Department name.');
+      alert(tr('admin_invitations.errors.enter_department_name'));
       return;
     }
 
     setDepartments((prev) => {
       const exists = prev.some((d) => d.toLowerCase() === name.toLowerCase());
       if (exists) {
-        alert('This department already exists.');
+        alert(tr('admin_invitations.errors.department_exists'));
         return prev;
       }
       const next = [...prev, name];
@@ -209,14 +213,14 @@ const InvitationsPage: React.FC = () => {
   const handleAddHrLead = () => {
     const name = newHrLeadName.trim();
     if (!name) {
-      alert('Please enter an HR Lead name.');
+      alert(tr('admin_invitations.errors.enter_hr_lead_name'));
       return;
     }
 
     setHrLeads((prev) => {
       const exists = prev.some((d) => d.toLowerCase() === name.toLowerCase());
       if (exists) {
-        alert('This HR Lead already exists.');
+        alert(tr('admin_invitations.errors.hr_lead_exists'));
         return prev;
       }
       const next = [...prev, name];
@@ -257,7 +261,9 @@ const InvitationsPage: React.FC = () => {
       setIsClearHrLeadsModalOpen(false);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setInviteError(`Failed to clear HR Leads (${e?.code ?? 'unknown'}): ${e?.message ?? ''}`.trim());
+      setInviteError(
+        `${tr('admin_invitations.errors.clear_hr_leads_failed')} (${e?.code ?? 'unknown'}): ${e?.message ?? ''}`.trim(),
+      );
     } finally {
       setIsClearingHrLeads(false);
     }
@@ -268,7 +274,7 @@ const InvitationsPage: React.FC = () => {
     setInviteSuccess(null);
 
     if (!user || !user.roles.includes('HR_ADMIN')) {
-      setInviteError('You do not have permission to send invitations.');
+      setInviteError(tr('admin_invitations.errors.no_permission_send_invitations'));
       return;
     }
 
@@ -276,15 +282,15 @@ const InvitationsPage: React.FC = () => {
     const name = recipientName.trim();
 
     if (!email || !name) {
-      setInviteError('Please fill in Name and Email.');
+      setInviteError(tr('admin_invitations.errors.fill_name_and_email'));
       return;
     }
     if (inviteRole === 'INTERN' && !selectedSupervisor) {
-      setInviteError('Please assign a Supervisor for the Trainee.');
+      setInviteError(tr('admin_invitations.errors.assign_supervisor_for_trainee'));
       return;
     }
     if (inviteRole === 'SUPERVISOR' && !selectedHrLead) {
-      setInviteError('Please assign an HR Lead for the Supervisor.');
+      setInviteError(tr('admin_invitations.errors.assign_hr_lead_for_supervisor'));
       return;
     }
 
@@ -355,8 +361,8 @@ const InvitationsPage: React.FC = () => {
       } catch (mailErr: unknown) {
         const me = mailErr as { code?: string; message?: string };
         setInviteError(
-          `Failed to send password setup email (${me?.code ?? 'unknown'}). ` +
-            `Check Firebase Auth email templates + authorized domains. ${me?.message ?? ''}`,
+          `${tr('admin_invitations.errors.send_password_setup_failed')} (${me?.code ?? 'unknown'}). ` +
+            `${tr('admin_invitations.errors.check_firebase_auth_templates')} ${me?.message ?? ''}`,
         );
         return;
       }
@@ -367,7 +373,7 @@ const InvitationsPage: React.FC = () => {
           ? `Supervisor: ${selectedSupervisorInfo?.name ?? ''}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
           : `HR Lead: ${selectedHrLead}`;
 
-      setInviteSuccess(`Invitation sent to ${email}. Password setup email has been sent (check inbox/spam).`);
+      setInviteSuccess(tr('admin_invitations.success.invitation_sent', { email }));
 
       setRecipientName('');
       setInviteEmail('');
@@ -379,7 +385,7 @@ const InvitationsPage: React.FC = () => {
       if (e?.code === 'auth/email-already-in-use') {
         try {
           await sendPasswordResetEmail(secondaryAuth, email, actionCodeSettings);
-          setInviteSuccess(`Account already exists. Password setup/reset email sent to ${email} (check inbox/spam).`);
+          setInviteSuccess(tr('admin_invitations.success.account_exists_reset_sent', { email }));
           setRecipientName('');
           setInviteEmail('');
           setSelectedSupervisor('');
@@ -387,10 +393,10 @@ const InvitationsPage: React.FC = () => {
           setSupervisorCoAdmin(false);
         } catch (resetErr: unknown) {
           const re = resetErr as { code?: string; message?: string };
-          setInviteError(`${re?.code ?? 'unknown'}: ${re?.message ?? 'This email is already in use, and sending reset email failed.'}`);
+          setInviteError(`${re?.code ?? 'unknown'}: ${re?.message ?? tr('admin_invitations.errors.reset_email_failed')}`);
         }
       } else {
-        setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to send invitation.'}`);
+        setInviteError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_invitations.errors.send_invitation_failed')}`);
       }
     } finally {
       try {
@@ -410,14 +416,14 @@ const InvitationsPage: React.FC = () => {
             type="button"
             onClick={() => (isClearingHrLeads ? null : setIsClearHrLeadsModalOpen(false))}
             className="absolute inset-0 bg-slate-900/40"
-            aria-label="Close"
+            aria-label={tr('admin_invitations.close')}
           />
           <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em]">Danger zone</div>
-                <h3 className="mt-2 text-xl font-black text-slate-900">Clear HR Leads</h3>
-                <p className="mt-2 text-sm font-bold text-slate-500">This will remove all HR Leads from the dropdown. You can add them again later.</p>
+                <div className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em]">{tr('admin_invitations.danger_zone')}</div>
+                <h3 className="mt-2 text-xl font-black text-slate-900">{tr('admin_invitations.clear_hr_leads_title')}</h3>
+                <p className="mt-2 text-sm font-bold text-slate-500">{tr('admin_invitations.clear_hr_leads_desc')}</p>
               </div>
               <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center text-2xl font-black">×</div>
             </div>
@@ -429,7 +435,7 @@ const InvitationsPage: React.FC = () => {
                 disabled={isClearingHrLeads}
                 className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all disabled:opacity-50"
               >
-                Cancel
+                {tr('admin_invitations.cancel')}
               </button>
               <button
                 type="button"
@@ -437,7 +443,7 @@ const InvitationsPage: React.FC = () => {
                 disabled={isClearingHrLeads}
                 className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-50"
               >
-                {isClearingHrLeads ? 'Clearing…' : 'Clear'}
+                {isClearingHrLeads ? tr('admin_invitations.clearing') : tr('admin_invitations.clear')}
               </button>
             </div>
           </div>
@@ -450,19 +456,19 @@ const InvitationsPage: React.FC = () => {
             type="button"
             onClick={() => (isUpdatingCoAdmin ? null : setIsCoAdminModalOpen(false))}
             className="absolute inset-0 bg-slate-900/40"
-            aria-label="Close"
+            aria-label={tr('admin_invitations.close')}
           />
           <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Confirm</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('admin_invitations.confirm')}</div>
                 <h3 className="mt-2 text-xl font-black text-slate-900">
-                  {coAdminAction === 'grant' ? 'Grant Co-admin' : 'Revoke Co-admin'}
+                  {coAdminAction === 'grant' ? tr('admin_invitations.grant_co_admin') : tr('admin_invitations.revoke_co_admin')}
                 </h3>
                 <p className="mt-2 text-sm font-bold text-slate-500">
                   {coAdminAction === 'grant'
-                    ? 'This supervisor will gain HR admin permissions.'
-                    : 'This supervisor will lose HR admin permissions.'}
+                    ? tr('admin_invitations.grant_co_admin_desc')
+                    : tr('admin_invitations.revoke_co_admin_desc')}
                 </p>
                 <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4">
                   <div className="text-xs font-black text-slate-900">{managedSupervisor.name}</div>
@@ -489,7 +495,7 @@ const InvitationsPage: React.FC = () => {
                 disabled={isUpdatingCoAdmin}
                 className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all disabled:opacity-50"
               >
-                Cancel
+                {tr('admin_invitations.cancel')}
               </button>
               <button
                 type="button"
@@ -499,7 +505,11 @@ const InvitationsPage: React.FC = () => {
                   coAdminAction === 'grant' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
                 }`}
               >
-                {isUpdatingCoAdmin ? 'Updating…' : coAdminAction === 'grant' ? 'Grant' : 'Revoke'}
+                {isUpdatingCoAdmin
+                  ? tr('admin_invitations.updating')
+                  : coAdminAction === 'grant'
+                    ? tr('admin_invitations.grant')
+                    : tr('admin_invitations.revoke')}
               </button>
             </div>
           </div>
@@ -555,14 +565,14 @@ const InvitationsPage: React.FC = () => {
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.full_name')}</label>
                       <div className="relative">
                          <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                         <input type="text" placeholder="John Doe" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
+                         <input type="text" placeholder={tr('admin_invitations.placeholders.full_name')} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} />
                       </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.recipient_email')}</label>
                       <div className="relative">
                          <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                         <input type="email" placeholder="user@company.io" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
+                         <input type="email" placeholder={tr('admin_invitations.placeholders.email')} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
                       </div>
                     </div>
                   </div>
@@ -612,8 +622,8 @@ const InvitationsPage: React.FC = () => {
                               type="button"
                               onClick={() => setIsClearHrLeadsModalOpen(true)}
                               className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-all"
-                              aria-label="Clear HR Leads"
-                              title="Clear HR Leads"
+                              aria-label={tr('admin_invitations.clear_hr_leads_title')}
+                              title={tr('admin_invitations.clear_hr_leads_title')}
                             >
                               ×
                             </button>
@@ -627,7 +637,7 @@ const InvitationsPage: React.FC = () => {
                                   <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                                   <input
                                     type="text"
-                                    placeholder="e.g. Jane Doe"
+                                    placeholder={tr('admin_invitations.placeholders.hr_lead')}
                                     className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
                                     value={newHrLeadName}
                                     onChange={(e) => setNewHrLeadName(e.target.value)}
@@ -708,7 +718,7 @@ const InvitationsPage: React.FC = () => {
                                   <Briefcase size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                                   <input
                                     type="text"
-                                    placeholder="e.g. Marketing"
+                                    placeholder={tr('admin_invitations.placeholders.department')}
                                     className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
                                     value={newDepartmentName}
                                     onChange={(e) => setNewDepartmentName(e.target.value)}
@@ -799,14 +809,14 @@ const InvitationsPage: React.FC = () => {
                     <ShieldCheck size={28} />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Supervisor Co-admin</h2>
-                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1">Grant or revoke HR admin access</p>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_invitations.supervisor_co_admin_title')}</h2>
+                    <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest mt-1">{tr('admin_invitations.supervisor_co_admin_subtitle')}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Select Supervisor</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.select_supervisor_manage')}</label>
                     <div className="relative">
                       <ShieldCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                       <select
@@ -814,7 +824,7 @@ const InvitationsPage: React.FC = () => {
                         value={selectedSupervisorToManage}
                         onChange={(e) => setSelectedSupervisorToManage(e.target.value)}
                       >
-                        <option value="">Select a supervisor…</option>
+                        <option value="">{tr('admin_invitations.select_supervisor_manage_placeholder')}</option>
                         {supervisors.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name} ({s.department})
@@ -826,13 +836,17 @@ const InvitationsPage: React.FC = () => {
 
                   <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 flex flex-col justify-between">
                     <div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Current status</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{tr('admin_invitations.current_status')}</div>
                       <div className="mt-3">
                         <div className="text-sm font-black text-slate-900">
-                          {managedSupervisor ? managedSupervisor.name : '—'}
+                          {managedSupervisor ? managedSupervisor.name : tr('admin_invitations.dash')}
                         </div>
                         <div className="text-[10px] font-black uppercase tracking-widest mt-2">
-                          {managedSupervisor ? (managedIsCoAdmin ? 'CO-ADMIN ENABLED' : 'CO-ADMIN DISABLED') : 'SELECT A SUPERVISOR'}
+                          {managedSupervisor
+                            ? managedIsCoAdmin
+                              ? tr('admin_invitations.co_admin_enabled')
+                              : tr('admin_invitations.co_admin_disabled')
+                            : tr('admin_invitations.select_a_supervisor')}
                         </div>
                       </div>
                     </div>
@@ -844,7 +858,7 @@ const InvitationsPage: React.FC = () => {
                         disabled={!managedSupervisor || managedIsCoAdmin}
                         className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-emerald-700 transition-all disabled:opacity-50"
                       >
-                        Grant
+                        {tr('admin_invitations.grant')}
                       </button>
                       <button
                         type="button"
@@ -852,11 +866,11 @@ const InvitationsPage: React.FC = () => {
                         disabled={!managedSupervisor || !managedIsCoAdmin || (user?.id ? managedSupervisor?.id === user.id : false)}
                         className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-50"
                       >
-                        Revoke
+                        {tr('admin_invitations.revoke')}
                       </button>
                     </div>
                     {managedSupervisor && user?.id && managedSupervisor.id === user.id ? (
-                      <div className="mt-3 text-[11px] font-bold text-slate-500">You cannot revoke co-admin from the account you are using.</div>
+                      <div className="mt-3 text-[11px] font-bold text-slate-500">{tr('admin_invitations.errors.cannot_revoke_self')}</div>
                     ) : null}
                   </div>
                 </div>
