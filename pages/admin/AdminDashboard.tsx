@@ -63,12 +63,6 @@ import { firebaseAuth } from '@/firebase';
 import { UserRole } from '@/types';
 import { getDefaultAvatarUrl, normalizeAvatarUrl } from '@/app/avatar';
 
-const MOCK_MENTORS: Mentor[] = [
-  { id: 'm-1', name: 'Sarah Connor', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2574&auto=format&fit=crop', dept: 'Design' },
-  { id: 'm-2', name: 'Marcus Miller', avatar: getDefaultAvatarUrl(), dept: 'Engineering' },
-  { id: 'm-3', name: 'Emma Watson', avatar: getDefaultAvatarUrl(), dept: 'Product' },
-];
-
 type MentorOption = Mentor & {
   position?: string;
   isCoAdmin?: boolean;
@@ -174,11 +168,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Mock Data
-  const [certRequests, setCertRequests] = useState<CertRequest[]>([
-    { id: 'cr-1', internName: 'Alex Rivera', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=2574&auto=format&fit=crop', type: 'Completion', date: 'Nov 18, 2024', status: 'ISSUED' },
-    { id: 'cr-2', internName: 'James Wilson', avatar: getDefaultAvatarUrl(), type: 'Recommendation', date: 'Nov 17, 2024', status: 'PENDING' },
-  ]);
+  const [certRequests, setCertRequests] = useState<CertRequest[]>([]);
 
   const [allowanceClaims, setAllowanceClaims] = useState<AllowanceClaim[]>([]);
   const [isAllowanceLoading, setIsAllowanceLoading] = useState(false);
@@ -773,9 +763,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
         prev.map((intern) => (intern.id === internId ? { ...intern, supervisor: mentor } : intern)),
       );
       setAssigningIntern(null);
-    } catch {
-      // keep modal open so user can retry
-      alert('Failed to assign supervisor. Please check Firestore permissions and try again.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error('Failed to assign supervisor', { internId, mentorId: mentor.id }, err);
+      alert(`Failed to assign supervisor: ${message}`);
     }
   };
 
@@ -1098,34 +1089,40 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               </div>
 
               <div className="space-y-3">
-                 {(mentorOptions.length > 0 ? mentorOptions : MOCK_MENTORS).map((mentor) => (
-                   <button 
-                     key={mentor.id}
-                     onClick={() => handleAssignMentor(mentor)}
-                     className="w-full flex items-center justify-between p-5 bg-white border border-slate-100 rounded-2xl hover:border-blue-600 hover:bg-blue-50/30 transition-all group"
-                   >
-                      <div className="flex items-center gap-4">
-                        <img src={mentor.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white shadow-sm" alt=""/>
-                        <div className="text-left">
-                          <p className="text-sm font-black text-slate-900 group-hover:text-blue-600">{mentor.name}</p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              {mentor.dept}
-                              {'position' in mentor && mentor.position ? ` • ${mentor.position}` : ` ${tr('admin_dashboard.team_lead')}`}
-                            </p>
-                            {'isCoAdmin' in mentor && mentor.isCoAdmin ? (
-                              <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-indigo-100">
-                                CO-ADMIN
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                        <ChevronRight size={18}/>
-                      </div>
-                   </button>
-                 ))}
+                 {mentorOptions.length === 0 ? (
+                   <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-sm font-bold">
+                     {tr('admin_dashboard.no_mentors_available')}
+                   </div>
+                 ) : (
+                   mentorOptions.map((mentor) => (
+                     <button
+                       key={mentor.id}
+                       onClick={() => handleAssignMentor(mentor)}
+                       className="w-full flex items-center justify-between p-5 bg-white border border-slate-100 rounded-2xl hover:border-blue-600 hover:bg-blue-50/30 transition-all group"
+                     >
+                       <div className="flex items-center gap-4">
+                         <img src={mentor.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white shadow-sm" alt="" />
+                         <div className="text-left">
+                           <p className="text-sm font-black text-slate-900 group-hover:text-blue-600">{mentor.name}</p>
+                           <div className="flex items-center gap-2">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                               {mentor.dept}
+                               {mentor.position ? ` • ${mentor.position}` : ` ${tr('admin_dashboard.team_lead')}`}
+                             </p>
+                             {mentor.isCoAdmin ? (
+                               <span className="bg-indigo-50 text-indigo-600 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border border-indigo-100">
+                                 CO-ADMIN
+                               </span>
+                             ) : null}
+                           </div>
+                         </div>
+                       </div>
+                       <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                         <ChevronRight size={18} />
+                       </div>
+                     </button>
+                   ))
+                 )}
               </div>
            </div>
         </div>
