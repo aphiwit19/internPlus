@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Rect } from 'react-konva';
+import { Stage, Layer, Text as KonvaText, Image as KonvaImage, Rect, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { doc, updateDoc } from 'firebase/firestore';
 
@@ -24,7 +24,7 @@ export type TemplateTextBlock = {
   x: number;
   y: number;
   width?: number;
-  align?: 'left' | 'center' | 'right';
+  rotation?: number;
   fontSize: number;
   fontFamily?: string;
   fontWeight?: 400 | 600 | 700 | 800;
@@ -117,10 +117,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           fontSize: 'Font Size',
           fontWeight: 'Weight',
           color: 'Color',
-          align: 'Align',
-          left: 'Left',
-          center: 'Center',
-          right: 'Right',
+          rotation: 'Rotation',
           noneSelected: 'Select an item to edit',
         },
         TH: {
@@ -136,10 +133,7 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
           fontSize: 'ขนาดตัวอักษร',
           fontWeight: 'น้ำหนัก',
           color: 'สี',
-          align: 'จัดชิด',
-          left: 'ซ้าย',
-          center: 'กลาง',
-          right: 'ขวา',
+          rotation: 'การหมุน',
           noneSelected: 'เลือกชิ้นงานเพื่อแก้ไข',
         },
       }[lang]),
@@ -148,6 +142,8 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
 
   const image = useHtmlImage(backgroundUrl);
   const stageRef = useRef<Konva.Stage>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const textNodeRefs = useRef<Record<string, Konva.Text | null>>({});
 
   const dataUrlToBlob = useCallback((dataUrl: string): Blob | null => {
     const parts = dataUrl.split(',');
@@ -217,10 +213,11 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       kind: 'text',
       x: baseX,
       y: nextY,
+      width: Math.round(layout.canvas.width * 0.6),
+      rotation: 0,
       fontSize: 16,
       fontFamily: 'Arial',
       color: '#111827',
-      align: 'left',
       source: { type: 'static', text: 'New text\n(second line)' },
     };
     setLayout((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
@@ -237,15 +234,28 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       kind: 'text',
       x: baseX,
       y: nextY,
+      width: Math.round(layout.canvas.width * 0.6),
+      rotation: 0,
       fontSize: 16,
       fontFamily: 'Arial',
       color: '#111827',
-      align: 'left',
       source: { type: 'field', key: 'internName' },
     };
     setLayout((prev) => ({ ...prev, blocks: [...prev.blocks, block] }));
     setSelectedId(block.id);
   };
+
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) return;
+    const node = selectedId ? textNodeRefs.current[selectedId] : null;
+    if (node) {
+      transformer.nodes([node]);
+    } else {
+      transformer.nodes([]);
+    }
+    transformer.getLayer()?.batchDraw();
+  }, [selectedId, layout.blocks]);
 
   const removeSelected = () => {
     if (!selectedId) return;
@@ -256,6 +266,14 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
   const save = async () => {
     setSaving(true);
     try {
+      const normalizedLayout: CertificateTemplateLayout = {
+        ...layout,
+        blocks: layout.blocks.map((b) => {
+          const { align: _align, ...rest } = b as any;
+          return { ...rest, rotation: (b as any).rotation ?? 0 } as TemplateTextBlock;
+        }),
+      };
+
       let previewPng: Blob | null = null;
       try {
         const canExportPreview = (() => {
@@ -289,12 +307,12 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
       }
 
       if (onSave) {
-        await onSave(layout, previewPng, nameDraft.trim() || (template.name ?? templateId));
+        await onSave(normalizedLayout, previewPng, nameDraft.trim() || (template.name ?? templateId));
       } else {
         const ref = doc(firestoreDb, 'certificateTemplates', templateId);
         const nextVersion = (template.layoutVersion ?? 0) + 1;
         await updateDoc(ref, {
-          layout,
+          layout: normalizedLayout,
           layoutVersion: nextVersion,
         });
       }
@@ -371,6 +389,9 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                   {layout.blocks.map((b) => (
                     <KonvaText
                       key={b.id}
+                      ref={(node) => {
+                        textNodeRefs.current[b.id] = node;
+                      }}
                       x={b.x}
                       y={b.y}
                       width={b.width}
@@ -380,8 +401,29 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                       fontStyle="normal"
                       fill={b.color}
                       opacity={b.opacity ?? 1}
-                      align={b.align ?? 'left'}
+                      rotation={b.rotation ?? 0}
+                      align="left"
                       draggable
+                      onTransformEnd={(e) => {
+                        const node = e.target as unknown as Konva.Text;
+                        const scaleX = node.scaleX();
+                        const scaleY = node.scaleY();
+
+                        const nextWidth = Math.max(20, Math.round((node.width() || 0) * scaleX));
+                        const nextFontSize = Math.max(6, Math.round((b.fontSize ?? 16) * scaleY));
+                        const nextRotation = Math.round(node.rotation());
+
+                        node.scaleX(1);
+                        node.scaleY(1);
+
+                        updateBlock(b.id, {
+                          x: Math.round(node.x()),
+                          y: Math.round(node.y()),
+                          width: nextWidth,
+                          fontSize: nextFontSize,
+                          rotation: nextRotation,
+                        });
+                      }}
                       onDragEnd={(e) => {
                         updateBlock(b.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) });
                         setSelectedId(null);
@@ -392,6 +434,16 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                       listening
                     />
                   ))}
+
+                  <Transformer
+                    ref={transformerRef}
+                    rotateEnabled
+                    enabledAnchors={['middle-left', 'middle-right']}
+                    boundBoxFunc={(oldBox, newBox) => {
+                      if (newBox.width < 20) return oldBox;
+                      return newBox;
+                    }}
+                  />
                 </Layer>
               </Stage>
             </div>
@@ -476,16 +528,13 @@ export default function CertificateTemplateEditor({ lang, templateId, template, 
                   </div>
 
                   <div>
-                    <div className="text-xs font-black text-slate-600 mb-2">{t.align}</div>
-                    <select
-                      value={selected.align ?? 'left'}
-                      onChange={(e) => updateBlock(selected.id, { align: e.target.value as 'left' | 'center' | 'right' })}
+                    <div className="text-xs font-black text-slate-600 mb-2">{t.rotation}</div>
+                    <input
+                      type="number"
+                      value={selected.rotation ?? 0}
+                      onChange={(e) => updateBlock(selected.id, { rotation: Number(e.target.value) || 0 })}
                       className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-800"
-                    >
-                      <option value="left">{t.left}</option>
-                      <option value="center">{t.center}</option>
-                      <option value="right">{t.right}</option>
-                    </select>
+                    />
                   </div>
                 </div>
 

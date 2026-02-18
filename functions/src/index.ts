@@ -69,7 +69,7 @@ type CertificateTemplateDoc = {
       x: number;
       y: number;
       width?: number;
-      align?: 'left' | 'center' | 'right';
+      rotation?: number;
       fontSize: number;
       fontWeight?: number;
       color: string;
@@ -322,7 +322,7 @@ function buildSvgFromLayout(
       const fontWeight = b.fontWeight ?? 600;
       const fill = b.color ?? '#111827';
       const opacity = b.opacity ?? 1;
-      const align = b.align ?? 'left';
+      const rotation = Number((b as any)?.rotation ?? 0) || 0;
       const fontFamily = typeof (b as any).fontFamily === 'string' && String((b as any).fontFamily).trim()
         ? String((b as any).fontFamily).trim()
         : 'Arial';
@@ -331,7 +331,7 @@ function buildSvgFromLayout(
       // sharp's SVG renderer may ignore dominant-baseline, so we convert explicitly.
       const y = yTop + fontSize;
 
-      const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start';
+      const anchor = 'start';
       const lines = String(raw ?? '').split('\n');
       const lineHeight = Math.round(fontSize * 1.2);
 
@@ -342,7 +342,13 @@ function buildSvgFromLayout(
         })
         .join('');
 
-      return `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escapeXml(fill)}" opacity="${opacity}" font-size="${fontSize}" font-family="${escapeXml(fontFamily)}, sans-serif" font-weight="${fontWeight}">${tspans}</text>`;
+      const text = `<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escapeXml(fill)}" opacity="${opacity}" font-size="${fontSize}" font-family="${escapeXml(fontFamily)}, sans-serif" font-weight="${fontWeight}">${tspans}</text>`;
+
+      // Konva rotates around the node origin (top-left). We rotate around (x, yTop).
+      if (rotation) {
+        return `<g transform="rotate(${rotation} ${x} ${yTop})">${text}</g>`;
+      }
+      return text;
     })
     .join('\n');
 
