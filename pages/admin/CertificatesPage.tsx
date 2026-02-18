@@ -516,6 +516,8 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       RECOMMENDATION: [],
     };
     for (const tpl of templates) {
+      const isDraft = (tpl as any)?.isDraft === true;
+      if (isDraft) continue;
       const isTplActive = tpl.active ?? tpl.isActive ?? true;
       if (!isTplActive) continue;
 

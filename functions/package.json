@@ -4,6 +4,7 @@
   "type": "module",
   "main": "lib/index.js",
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc && node -e \"const fs=require('fs'); const path=require('path'); const src=path.join('src','front'); const dst=path.join('lib','front'); if(fs.existsSync(src)){ fs.mkdirSync(dst,{recursive:true}); fs.cpSync(src,dst,{recursive:true}); }\"",
     "build:watch": "tsc -w",
     "deploy": "firebase deploy --only functions"
