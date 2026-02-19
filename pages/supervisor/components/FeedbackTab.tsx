@@ -636,8 +636,11 @@ const PerformanceAnalysisPanel = ({
   submissionDate?: string;
   reviewedDate?: string;
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+
+  const isTh = (i18n.language ?? '').toLowerCase().startsWith('th');
+  const hasSentBack = Boolean((reviewedDate ?? '').trim());
   const displayOverall = computeOverall(editPerformance);
   const mentorshipRating = Math.max(0, Math.min(5, Number(editMentorshipQualityRating) || 0));
   const supervisorProgramSat = Math.max(0, Math.min(5, Number(editSupervisorProgramSatisfaction) || 0));
@@ -812,10 +815,22 @@ const PerformanceAnalysisPanel = ({
             <div className="flex items-center justify-end gap-3">
               <button
                 onClick={onSendBack}
-                className="px-8 py-3 rounded-2xl bg-[#111827] text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl"
-                disabled={isSaving}
+                className={`px-8 py-3 rounded-2xl text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-xl ${
+                  hasSentBack
+                    ? 'bg-emerald-600'
+                    : isSaving
+                      ? 'bg-blue-600'
+                      : 'bg-[#111827] hover:bg-blue-600'
+                } ${hasSentBack ? 'opacity-100' : ''}`}
+                disabled={isSaving || hasSentBack}
               >
-                {isSaving ? tr('supervisor_dashboard.feedback.sending') : tr('supervisor_dashboard.feedback.send_back')}
+                {isSaving
+                  ? tr('supervisor_dashboard.feedback.sending')
+                  : hasSentBack
+                    ? isTh
+                      ? 'ส่งกลับแล้ว'
+                      : 'Sent back'
+                    : tr('supervisor_dashboard.feedback.send_back')}
               </button>
             </div>
           </div>

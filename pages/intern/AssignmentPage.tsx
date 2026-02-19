@@ -60,11 +60,11 @@ import { Language, SubTask, TaskLog } from '@/types';
 
 
 
-import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 
 
-import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 
 
 
@@ -107,7 +107,6 @@ interface Project {
     links?: string[];
 
   };
-
 }
 
 
@@ -143,6 +142,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   const tr = (key: string, options?: any) => String(t(key, options));
 
+  const isProjectCompleted = (project: Project): boolean => {
+    const status = String(project?.handoffLatest?.status ?? '').toUpperCase();
+    return status === 'SUBMITTED' || status === 'REVIEWED';
+  };
+
 
 
   const [assignedProjects, setAssignedProjects] = useState<Project[]>([]);
@@ -170,6 +174,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
   const [uploadTaskId, setUploadTaskId] = useState<string | null>(null);
 
   const [showShiftNotice, setShowShiftNotice] = useState(false);
+
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = (message: string) => {
+    setToast({ message });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3500);
+  };
 
   
 
@@ -240,6 +256,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
 
   const [projectsPage, setProjectsPage] = useState(1);
+
+  const [showAssignmentHistory, setShowAssignmentHistory] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: 'assigned' | 'personal'; project: Project } | null>(null);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
 
 
 
@@ -1270,7 +1291,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     
 
-    return allProjects.sort((a, b) => {
+    const sorted = allProjects.sort((a, b) => {
 
       const getTimestamp = (item: typeof allProjects[0]) => {
 
@@ -1300,7 +1321,12 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     });
 
-  }, [assignedProjects, personalProjects]);
+    if (showAssignmentHistory) {
+      return sorted.filter((x) => isProjectCompleted(x.p));
+    }
+    return sorted.filter((x) => !isProjectCompleted(x.p));
+
+  }, [assignedProjects, personalProjects, showAssignmentHistory]);
 
 
 
@@ -1366,6 +1392,70 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   }, [MAX_PROJECT_CARDS, pagedProjects, projectsPage]);
 
+  useEffect(() => {
+    if (!selectedProject) return;
+    const completed = isProjectCompleted(selectedProject);
+    if (completed && !showAssignmentHistory) {
+      setSelectedProjectKey(null);
+    }
+  }, [selectedProject, showAssignmentHistory]);
+
+  const handleConfirmDeleteProject = async () => {
+    if (!user) return;
+    if (!deleteTarget) return;
+    if (isDeletingProject) return;
+
+    setIsDeletingProject(true);
+    try {
+      const { kind, project } = deleteTarget;
+      const colName = kind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
+      const attachmentPaths: string[] = [];
+
+      if (Array.isArray(project.attachments)) {
+        for (const a of project.attachments) {
+          if (a?.storagePath) attachmentPaths.push(a.storagePath);
+        }
+      }
+
+      const tasks = Array.isArray(project.tasks) ? project.tasks : [];
+      for (const t of tasks) {
+        const atts = Array.isArray((t as any)?.attachments) ? (t as any).attachments : [];
+        for (const a of atts) {
+          if (typeof a === 'string') continue;
+          if (a?.storagePath) attachmentPaths.push(a.storagePath);
+        }
+      }
+
+      const hl = project.handoffLatest as any;
+      const hlFiles = Array.isArray(hl?.files) ? hl.files : [];
+      for (const f of hlFiles) {
+        if (f?.storagePath) attachmentPaths.push(String(f.storagePath));
+      }
+      const hlVideos = Array.isArray(hl?.videos) ? hl.videos : [];
+      for (const v of hlVideos) {
+        if (typeof v === 'string') continue;
+        if (v?.storagePath) attachmentPaths.push(String(v.storagePath));
+      }
+
+      await Promise.all(
+        attachmentPaths.map(async (path) => {
+          try {
+            await deleteObject(storageRef(firebaseStorage, path));
+          } catch {
+            // ignore
+          }
+        }),
+      );
+
+      await deleteDoc(doc(firestoreDb, 'users', user.id, colName, project.id));
+
+      if (selectedProjectKey === `${kind}:${project.id}`) setSelectedProjectKey(null);
+    } finally {
+      setIsDeletingProject(false);
+      setDeleteTarget(null);
+    }
+  };
+
 
 
   return (
@@ -1392,6 +1482,80 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
       )}
 
+      {deleteTarget && (
+        <>
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[120]"
+            onClick={() => (isDeletingProject ? null : setDeleteTarget(null))}
+          />
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+            <div className="w-full max-w-xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="text-xl font-black text-slate-900 tracking-tight">{_lang === 'TH' ? 'ยืนยันการลบ' : 'Confirm delete'}</div>
+                <button
+                  onClick={() => (isDeletingProject ? null : setDeleteTarget(null))}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                  disabled={isDeletingProject}
+                  type="button"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="text-sm font-bold text-slate-600">
+                  {_lang === 'TH' ? 'ต้องการลบชิ้นงานนี้ใช่ไหม?' : 'Do you want to delete this assignment?'}
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{_lang === 'TH' ? 'ชิ้นงาน' : 'Assignment'}</div>
+                  <div className="mt-2 text-lg font-black text-slate-900">{deleteTarget.project.title}</div>
+                  {deleteTarget.project.description ? <div className="mt-2 text-sm font-bold text-slate-500">{deleteTarget.project.description}</div> : null}
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setDeleteTarget(null)}
+                    className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+                    disabled={isDeletingProject}
+                    type="button"
+                  >
+                    {_lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                  </button>
+                  <button
+                    onClick={() => void handleConfirmDeleteProject()}
+                    className="px-8 py-3 bg-rose-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-xl shadow-rose-500/20"
+                    disabled={isDeletingProject}
+                    type="button"
+                  >
+                    {isDeletingProject ? (_lang === 'TH' ? 'กำลังลบ...' : 'Deleting...') : _lang === 'TH' ? 'ลบ' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {toast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[310] max-w-[min(720px,calc(100vw-2rem))] w-full">
+          <div className="bg-white border border-rose-200 shadow-2xl rounded-[1.75rem] px-6 py-4 flex items-center gap-4 animate-in slide-in-from-top-10 duration-300">
+            <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center border border-rose-100">
+              <AlertCircle size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">{_lang === 'TH' ? 'แจ้งเตือน' : 'Alert'}</div>
+              <div className="mt-1 text-sm font-bold text-slate-800 break-words">{toast.message}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center"
+              title={_lang === 'TH' ? 'ปิด' : 'Close'}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
 
 
       <div className="max-w-[1600px] mx-auto w-full overflow-y-auto scrollbar-hide pb-20">
@@ -1401,6 +1565,35 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
           <h1 className="text-3xl font-black text-[#0F172A] tracking-tight mb-2">{tr('intern_assignment.title')}</h1>
 
           <p className="text-slate-400 text-sm font-medium">{tr('intern_assignment.subtitle')}</p>
+
+          <div className="mt-6 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProjectKey(null);
+                setProjectsPage(1);
+                setShowAssignmentHistory(false);
+              }}
+              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                showAssignmentHistory ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50' : 'bg-slate-900 border-slate-900 text-white'
+              }`}
+            >
+              {_lang === 'TH' ? 'Assignment' : 'Assignments'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedProjectKey(null);
+                setProjectsPage(1);
+                setShowAssignmentHistory(true);
+              }}
+              className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                showAssignmentHistory ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {_lang === 'TH' ? 'ประวัติ Assignment' : 'Assignment History'}
+            </button>
+          </div>
 
         </div>
 
@@ -1431,6 +1624,20 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                   }`}
 
                 >
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteTarget({ kind, project });
+                    }}
+                    className="absolute top-6 right-6 w-11 h-11 rounded-2xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all shadow-sm flex items-center justify-center"
+                    title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                    disabled={isDeletingProject}
+                  >
+                    <Trash2 size={18} />
+                  </button>
 
                   {isNew && (
 
@@ -1646,7 +1853,21 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
               </div>
 
-              <button onClick={() => setSelectedProjectKey(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedKind || !selectedProject) return;
+                    setDeleteTarget({ kind: selectedKind, project: selectedProject });
+                  }}
+                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-2xl transition-all"
+                  title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                  disabled={isDeletingProject}
+                >
+                  <Trash2 size={18} />
+                </button>
+                <button onClick={() => setSelectedProjectKey(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
+              </div>
 
             </div>
 
