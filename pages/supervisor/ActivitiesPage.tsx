@@ -75,7 +75,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     return { EN: en, TH: th };
   };
 
-  const [viewMode, setViewMode] = useState<'ALL' | 'APPOINTMENT'>('ALL');
+  const [viewMode, setViewMode] = useState<'LEAVE' | 'APPOINTMENT'>('APPOINTMENT');
 
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
@@ -85,7 +85,13 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [isMonthFilterEnabled, setIsMonthFilterEnabled] = useState(false);
 
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'REQUESTED' | 'CONFIRMED' | 'CANCELLED' | 'APPROVED' | 'REJECTED'
+  >('ALL');
+
+  useEffect(() => {
+    setStatusFilter('ALL');
+  }, [viewMode]);
 
   const [apptActivities, setApptActivities] = useState<ActivityEvent[]>([]);
   const [leaveActivities, setLeaveActivities] = useState<ActivityEvent[]>([]);
@@ -143,6 +149,10 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
         const out: ActivityEvent[] = [];
         snap.docs.forEach((d) => {
           const data = d.data() as LeaveRequestDoc;
+          const rawStatus = typeof data.status === 'string' ? data.status : '';
+          const normStatus = rawStatus.toUpperCase();
+          // Only show leave activities after supervisor action (approve/reject)
+          if (normStatus !== 'APPROVED' && normStatus !== 'REJECTED') return;
           const start = typeof data.startDate === 'string' ? data.startDate : null;
           if (!start) return;
           const date = parseIsoDateKey(start);
@@ -162,7 +172,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
             time: start === end ? start : `${start} - ${end}`,
             type: 'LEAVE',
             internName: typeof data.internName === 'string' ? data.internName : undefined,
-            status: typeof data.status === 'string' ? data.status : undefined,
+            status: rawStatus || undefined,
           });
         });
         out.sort((a, b) => a.id.localeCompare(b.id));
@@ -173,9 +183,23 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
   }, [i18n.language, user.id]);
 
   const filteredApptActivities = useMemo(() => {
+    if (viewMode !== 'APPOINTMENT') return [];
     if (statusFilter === 'ALL') return apptActivities;
-    return apptActivities.filter((ev) => String(ev.status ?? 'REQUESTED') === statusFilter);
-  }, [apptActivities, statusFilter]);
+    return apptActivities.filter((ev) => String(ev.status ?? 'REQUESTED').toUpperCase() === statusFilter);
+  }, [apptActivities, statusFilter, viewMode]);
+
+  const filteredLeaveActivities = useMemo(() => {
+    if (viewMode !== 'LEAVE') return [];
+    if (statusFilter === 'ALL') return leaveActivities;
+    return leaveActivities.filter((ev) => String(ev.status ?? '').toUpperCase() === statusFilter);
+  }, [leaveActivities, statusFilter, viewMode]);
+
+  const appointmentStatusLabel = (s: string) => {
+    const norm = s.toUpperCase();
+    if (norm === 'CONFIRMED') return tr('supervisor_activities.status.confirmed');
+    if (norm === 'CANCELLED') return tr('supervisor_activities.status.cancelled');
+    return tr('supervisor_activities.status.requested');
+  };
 
   const groupedActivities = useMemo(() => {
     const groups: Array<{ dateLabel: string; items: ActivityEvent[] }> = [];
@@ -201,16 +225,12 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       return fallback.getTime();
     };
 
-    const merged = [...filteredApptActivities, ...leaveActivities]
+    const merged = [...filteredApptActivities, ...filteredLeaveActivities]
       .map((ev) => ({ ev, key: toSortKey(ev) }))
       .sort((a, b) => a.key - b.key)
       .map((x) => x.ev);
 
-    const filtered = merged.filter((ev) => {
-      if (viewMode === 'ALL') return true;
-      if (viewMode === 'APPOINTMENT') return ev.type === 'APPOINTMENT';
-      return true;
-    });
+    const filtered = merged;
 
     const activeMonthKey = `${calendarDate.getFullYear()}-${String(calendarDate.getMonth() + 1).padStart(2, '0')}`;
     const filteredBySelectedDate = selectedDateKey ? filtered.filter((ev) => extractDateKey(ev) === selectedDateKey) : filtered;
@@ -230,7 +250,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
     });
 
     return groups;
-  }, [calendarDate, filteredApptActivities, isMonthFilterEnabled, lang, selectedDateKey, viewMode]);
+  }, [calendarDate, filteredApptActivities, filteredLeaveActivities, isMonthFilterEnabled, lang, selectedDateKey]);
 
   const calendarYear = calendarDate.getFullYear();
   const calendarMonth = calendarDate.getMonth();
@@ -255,12 +275,11 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
       return s;
     };
 
-    const showAppt = viewMode === 'ALL' || viewMode === 'APPOINTMENT';
     return {
-      appt: showAppt ? setFor(filteredApptActivities) : new Set<string>(),
-      leave: viewMode === 'ALL' ? setFor(leaveActivities) : new Set<string>(),
+      appt: viewMode === 'APPOINTMENT' ? setFor(filteredApptActivities) : new Set<string>(),
+      leave: viewMode === 'LEAVE' ? setFor(filteredLeaveActivities) : new Set<string>(),
     };
-  }, [filteredApptActivities, leaveActivities, viewMode]);
+  }, [filteredApptActivities, filteredLeaveActivities, viewMode]);
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50/50 overflow-hidden relative p-6 md:p-10 lg:p-12">
@@ -275,12 +294,12 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
             <div className="inline-flex bg-white border border-slate-100/60 rounded-[1.5rem] p-1.5 shadow-sm">
               <button
                 type="button"
-                onClick={() => setViewMode('ALL')}
+                onClick={() => setViewMode('LEAVE')}
                 className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
-                  viewMode === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                  viewMode === 'LEAVE' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {tr('supervisor_activities.filters.all')}
+                {uiLang === 'TH' ? 'คำขอลา' : 'Leave Requests'}
               </button>
               <button
                 type="button"
@@ -289,7 +308,7 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                   viewMode === 'APPOINTMENT' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {tr('supervisor_activities.filters.appointments')}
+                {uiLang === 'TH' ? 'คำขอนัดหมาย' : 'Appointment Requests'}
               </button>
             </div>
 
@@ -300,10 +319,18 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
                 className="bg-white text-slate-700 text-[10px] font-black uppercase tracking-widest px-4 py-2.5 rounded-[1.25rem] border border-transparent focus:outline-none"
               >
                 <option value="ALL">{tr('supervisor_activities.status.all')}</option>
-                <option value="REQUESTED">{tr('supervisor_activities.status.requested')}</option>
-                <option value="CONFIRMED">{tr('supervisor_activities.status.confirmed')}</option>
-                <option value="RESCHEDULED">{tr('supervisor_activities.status.rescheduled')}</option>
-                <option value="CANCELLED">{tr('supervisor_activities.status.cancelled')}</option>
+                {viewMode === 'APPOINTMENT' ? (
+                  <>
+                    <option value="REQUESTED">{tr('supervisor_activities.status.requested')}</option>
+                    <option value="CONFIRMED">{tr('supervisor_activities.status.confirmed')}</option>
+                    <option value="CANCELLED">{tr('supervisor_activities.status.cancelled')}</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="APPROVED">{tr('leave.status_approved')}</option>
+                    <option value="REJECTED">{tr('leave.status_rejected')}</option>
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -373,13 +400,48 @@ const SupervisorActivitiesPage: React.FC<SupervisorActivitiesPageProps> = ({ lan
 
                       <div className="flex items-center gap-4">
                         {item.type === 'APPOINTMENT' ? (
-                          <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-blue-50 text-blue-600 border-blue-200">
-                            {tr('supervisor_activities.appointment.badge')}
-                          </span>
+                          <>
+                            <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-blue-50 text-blue-600 border-blue-200">
+                              {tr('supervisor_activities.appointment.badge')}
+                            </span>
+                            {(() => {
+                              const s = String(item.status ?? 'REQUESTED').toUpperCase();
+                              const isConfirmed = s === 'CONFIRMED';
+                              const isCancelled = s === 'CANCELLED';
+                              const klass = isCancelled
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : isConfirmed
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200';
+                              return (
+                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${klass}`}>
+                                  {appointmentStatusLabel(s)}
+                                </span>
+                              );
+                            })()}
+                          </>
                         ) : (
-                          <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-rose-50 text-rose-600 border-rose-200 flex items-center gap-2">
-                            <UserX size={12} /> {tr('supervisor_activities.leave.badge')}
-                          </span>
+                          <>
+                            <span className="px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border bg-rose-50 text-rose-600 border-rose-200 flex items-center gap-2">
+                              <UserX size={12} /> {tr('supervisor_activities.leave.badge')}
+                            </span>
+                            {(() => {
+                              const s = String(item.status ?? '').toUpperCase();
+                              if (s !== 'APPROVED' && s !== 'REJECTED') return null;
+                              const isApproved = s === 'APPROVED';
+                              return (
+                                <span
+                                  className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${
+                                    isApproved
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                                  }`}
+                                >
+                                  {isApproved ? tr('leave.status_approved') : tr('leave.status_rejected')}
+                                </span>
+                              );
+                            })()}
+                          </>
                         )}
                       </div>
                     </div>
