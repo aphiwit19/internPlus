@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ArrowUpRight, Banknote, Building2, ChevronLeft, ChevronRight, CreditCard, Home, ShieldCheck, UserX } from 'lucide-react';
+import { ArrowUpRight, Banknote, Building2, ChevronLeft, ChevronRight, CreditCard, Edit2, Home, ShieldCheck, UserX } from 'lucide-react';
 
 import { AllowanceClaim } from '../adminDashboardTypes';
 
@@ -272,7 +272,13 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                 <tr
                   key={claim.id}
                   className={`group hover:bg-slate-50/50 transition-all ${onRowClick ? 'cursor-pointer' : ''}`}
-                  onClick={() => onRowClick?.(claim)}
+                  onClick={() => {
+                    if (!onRowClick) return;
+                    if (readOnly) return;
+                    if (claim.status !== 'PENDING') return;
+                    if (claim.isPayoutLocked) return;
+                    onRowClick(claim);
+                  }}
                 >
                   <td className="py-6 pl-4">
                     <div className="flex items-center gap-4">
@@ -312,7 +318,38 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                             : undefined
                       }
                     >
-                      <span className="text-sm font-black text-slate-900">{Number(claim.amount ?? 0).toLocaleString()} THB</span>
+                      <div className="flex items-center gap-2">
+                        {!readOnly && onRowClick && claim.status === 'PENDING' && !claim.isPayoutLocked ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onRowClick(claim);
+                            }}
+                            className="text-sm font-black text-slate-900 hover:underline"
+                            title={tr('allowances_tab.col_amount')}
+                          >
+                            {Number(claim.amount ?? 0).toLocaleString()} THB
+                          </button>
+                        ) : (
+                          <span className="text-sm font-black text-slate-900">{Number(claim.amount ?? 0).toLocaleString()} THB</span>
+                        )}
+                        {!readOnly && onRowClick && claim.status === 'PENDING' && !claim.isPayoutLocked ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onRowClick(claim);
+                            }}
+                            className="w-9 h-9 rounded-xl bg-white border border-slate-100 text-slate-300 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all flex items-center justify-center"
+                            title={tr('allowances_tab.col_amount')}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                        ) : null}
+                      </div>
                       {typeof claim.adminAdjustedAmount === 'number' ? (
                         <button
                           type="button"
@@ -387,12 +424,12 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           <button
                             disabled
                             className="px-5 py-2.5 bg-slate-100 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2"
-                            title={claim.lockReason || tr('allowances_tab.locked_reason')}
+                            title={tr('allowances_tab.locked_reason')}
                           >
                             <ShieldCheck size={14} /> {tr('allowances_tab.locked')}
                           </button>
                           <div className="text-[10px] font-bold text-slate-400 max-w-[220px] text-right">
-                            {claim.lockReason || tr('allowances_tab.locked_reason')}
+                            {tr('allowances_tab.locked_reason')}
                           </div>
                         </div>
                       ) : claim.status === 'PENDING' ? (

@@ -203,7 +203,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
   const handleOpenAdminAllowanceEdit = (claim: AllowanceClaim) => {
     if (activeTab !== 'allowances') return;
-    if (claim.status === 'PAID') return;
+    if (claim.status !== 'PENDING') return;
     if (claim.isPayoutLocked) return;
     setEditingAllowanceClaim(claim);
     setEditAllowanceAmount(String(claim.amount ?? 0));
@@ -212,7 +212,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
   const handleSaveAdminAllowanceEdit = async () => {
     if (!editingAllowanceClaim) return;
-    if (editingAllowanceClaim.status === 'PAID') return;
+    if (editingAllowanceClaim.status !== 'PENDING') return;
     if (editingAllowanceClaim.isPayoutLocked) return;
 
     const nextAmount = Number(editAllowanceAmount);
@@ -566,9 +566,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
           const isPayoutLocked = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
-          const lockReason = isPayoutLocked
-            ? 'END_PROGRAM: payouts are available after program completion.'
-            : undefined;
+          const lockReason = undefined;
 
           next.push({
             id: claimDocId,
@@ -596,7 +594,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             status,
             ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
             ...(typeof existing?.paidAtMs === 'number' ? { paidAtMs: existing.paidAtMs } : {}),
-            ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
+            ...(isPayoutLocked ? { isPayoutLocked } : {}),
           });
 
           const claimRef = doc(firestoreDb, 'allowanceClaims', claimDocId);
@@ -613,7 +611,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               calculatedAmount: net,
               breakdown: { wfo, wfh, leaves },
               status,
-              ...(isPayoutLocked ? { isPayoutLocked, lockReason } : {}),
+              ...(isPayoutLocked ? { isPayoutLocked } : {}),
               ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
               ...(typeof existing?.paidAtMs === 'number' ? { paidAt: Timestamp.fromMillis(existing.paidAtMs) } : {}),
               ...(typeof existing?.supervisorAdjustedAmount === 'number'
