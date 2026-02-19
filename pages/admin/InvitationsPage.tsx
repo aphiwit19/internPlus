@@ -6,12 +6,10 @@ import {
   Mail, 
   ShieldCheck, 
   Calendar, 
-  Clock, 
   Send, 
   Plus,
   UserCheck,
   Briefcase,
-  Users
 } from 'lucide-react';
 import { UserRole } from '@/types';
 import { createUserWithEmailAndPassword, sendPasswordResetEmail, signOut, updateProfile } from 'firebase/auth';
@@ -32,20 +30,12 @@ const InvitationsPage: React.FC = () => {
   const [recipientName, setRecipientName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [selectedSupervisor, setSelectedSupervisor] = useState('');
-  const [selectedHrLead, setSelectedHrLead] = useState('');
-  const [selectedDept, setSelectedDept] = useState('Design');
+  const [selectedDept, setSelectedDept] = useState('');
   const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('');
 
   const [departments, setDepartments] = useState<string[]>(['Design', 'Engineering', 'Product', 'Operations']);
   const [isAddingDepartment, setIsAddingDepartment] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
-
-  const [hrLeads, setHrLeads] = useState<string[]>([]);
-  const [isAddingHrLead, setIsAddingHrLead] = useState(false);
-  const [newHrLeadName, setNewHrLeadName] = useState('');
-  const [isClearHrLeadsModalOpen, setIsClearHrLeadsModalOpen] = useState(false);
-  const [isClearingHrLeads, setIsClearingHrLeads] = useState(false);
 
   const [supervisors, setSupervisors] = useState<
     Array<{ id: string; name: string; department: string; position: string; roles: UserRole[]; isDualRole?: boolean }>
@@ -83,31 +73,22 @@ const InvitationsPage: React.FC = () => {
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const min = String(now.getMinutes()).padStart(2, '0');
 
     setStartDate(`${yyyy}-${mm}-${dd}`);
-    setStartTime(`${hh}:${min}`);
   }, []);
 
   useEffect(() => {
     const ref = doc(firestoreDb, 'config', 'systemSettings');
     return onSnapshot(ref, (snap) => {
       if (!snap.exists()) return;
-      const data = snap.data() as { departments?: string[]; hrLeads?: string[] };
+      const data = snap.data() as { departments?: string[] };
 
       if (Array.isArray(data.departments) && data.departments.length > 0) {
         const nextDepts = normalizeUniqueList(data.departments);
         if (nextDepts.length > 0) {
           setDepartments(nextDepts);
-          setSelectedDept((prev) => (nextDepts.includes(prev) ? prev : nextDepts[0]));
+          setSelectedDept((prev) => (prev && nextDepts.includes(prev) ? prev : ''));
         }
-      }
-
-      if (Array.isArray(data.hrLeads)) {
-        const nextLeads = normalizeUniqueList(data.hrLeads);
-        setHrLeads(nextLeads);
-        setSelectedHrLead((prev) => (nextLeads.includes(prev) ? prev : nextLeads[0] ?? ''));
       }
     });
   }, []);
@@ -210,65 +191,6 @@ const InvitationsPage: React.FC = () => {
     setIsAddingDepartment(false);
   };
 
-  const handleAddHrLead = () => {
-    const name = newHrLeadName.trim();
-    if (!name) {
-      alert(tr('admin_invitations.errors.enter_hr_lead_name'));
-      return;
-    }
-
-    setHrLeads((prev) => {
-      const exists = prev.some((d) => d.toLowerCase() === name.toLowerCase());
-      if (exists) {
-        alert(tr('admin_invitations.errors.hr_lead_exists'));
-        return prev;
-      }
-      const next = [...prev, name];
-      void setDoc(
-        doc(firestoreDb, 'config', 'systemSettings'),
-        {
-          hrLeads: next,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return next;
-    });
-
-    setSelectedHrLead(name);
-    setNewHrLeadName('');
-    setIsAddingHrLead(false);
-  };
-
-  const handleClearHrLeads = async () => {
-    setInviteError(null);
-    setInviteSuccess(null);
-    setIsClearingHrLeads(true);
-    try {
-      await setDoc(
-        doc(firestoreDb, 'config', 'systemSettings'),
-        {
-          hrLeads: [],
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-
-      setHrLeads([]);
-      setSelectedHrLead('');
-      setIsAddingHrLead(false);
-      setNewHrLeadName('');
-      setIsClearHrLeadsModalOpen(false);
-    } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
-      setInviteError(
-        `${tr('admin_invitations.errors.clear_hr_leads_failed')} (${e?.code ?? 'unknown'}): ${e?.message ?? ''}`.trim(),
-      );
-    } finally {
-      setIsClearingHrLeads(false);
-    }
-  };
-
   const handleSendInviteEmail = async () => {
     setInviteError(null);
     setInviteSuccess(null);
@@ -287,10 +209,6 @@ const InvitationsPage: React.FC = () => {
     }
     if (inviteRole === 'INTERN' && !selectedSupervisor) {
       setInviteError(tr('admin_invitations.errors.assign_supervisor_for_trainee'));
-      return;
-    }
-    if (inviteRole === 'SUPERVISOR' && !selectedHrLead) {
-      setInviteError(tr('admin_invitations.errors.assign_hr_lead_for_supervisor'));
       return;
     }
 
@@ -342,7 +260,9 @@ const InvitationsPage: React.FC = () => {
       }
 
       if (inviteRole === 'SUPERVISOR') {
-        profileDoc.department = selectedDept;
+        if (selectedDept) {
+          profileDoc.department = selectedDept;
+        }
         profileDoc.assignedInterns = [];
       }
 
@@ -367,18 +287,13 @@ const InvitationsPage: React.FC = () => {
         return;
       }
 
-      const selectedSupervisorInfo = supervisors.find((s) => s.id === selectedSupervisor);
-      const leadInfo =
-        inviteRole === 'INTERN'
-          ? `Supervisor: ${selectedSupervisorInfo?.name ?? ''}${selectedSupervisorInfo?.position ? ` (${selectedSupervisorInfo.position})` : ''}`
-          : `HR Lead: ${selectedHrLead}`;
+      void 0;
 
       setInviteSuccess(tr('admin_invitations.success.invitation_sent', { email }));
 
       setRecipientName('');
       setInviteEmail('');
       setSelectedSupervisor('');
-      setSelectedHrLead('');
       setSupervisorCoAdmin(false);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
@@ -389,7 +304,6 @@ const InvitationsPage: React.FC = () => {
           setRecipientName('');
           setInviteEmail('');
           setSelectedSupervisor('');
-          setSelectedHrLead('');
           setSupervisorCoAdmin(false);
         } catch (resetErr: unknown) {
           const re = resetErr as { code?: string; message?: string };
@@ -410,46 +324,6 @@ const InvitationsPage: React.FC = () => {
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-hidden relative p-4 md:p-8 lg:p-10">
-      {isClearHrLeadsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <button
-            type="button"
-            onClick={() => (isClearingHrLeads ? null : setIsClearHrLeadsModalOpen(false))}
-            className="absolute inset-0 bg-slate-900/40"
-            aria-label={tr('admin_invitations.close')}
-          />
-          <div className="relative w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-8">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em]">{tr('admin_invitations.danger_zone')}</div>
-                <h3 className="mt-2 text-xl font-black text-slate-900">{tr('admin_invitations.clear_hr_leads_title')}</h3>
-                <p className="mt-2 text-sm font-bold text-slate-500">{tr('admin_invitations.clear_hr_leads_desc')}</p>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center text-2xl font-black">×</div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setIsClearHrLeadsModalOpen(false)}
-                disabled={isClearingHrLeads}
-                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-50 transition-all disabled:opacity-50"
-              >
-                {tr('admin_invitations.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleClearHrLeads()}
-                disabled={isClearingHrLeads}
-                className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-700 transition-all disabled:opacity-50"
-              >
-                {isClearingHrLeads ? tr('admin_invitations.clearing') : tr('admin_invitations.clear')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {isCoAdminModalOpen && coAdminAction && managedSupervisor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
           <button
@@ -593,81 +467,8 @@ const InvitationsPage: React.FC = () => {
                           </select>
                         </div>
                       </div>
-                    ) : (
+                  ) : (
                       <div className="space-y-6">
-                        <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.assign_hr_lead')}</label>
-                          <div className="flex items-stretch gap-3">
-                            <div className="relative flex-1">
-                              <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                              <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer" value={selectedHrLead} onChange={(e) => setSelectedHrLead(e.target.value)}>
-                                <option value="">{tr('admin_invitations.select_hr_rep')}</option>
-                                {hrLeads.map((lead) => (
-                                  <option key={lead} value={lead}>
-                                    {lead}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setIsAddingHrLead((v) => !v)}
-                              className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
-                              aria-label={tr('admin_invitations.add_hr_lead')}
-                              title={tr('admin_invitations.add_hr_lead')}
-                            >
-                              <Plus size={18} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIsClearHrLeadsModalOpen(true)}
-                              className="w-12 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-all"
-                              aria-label={tr('admin_invitations.clear_hr_leads_title')}
-                              title={tr('admin_invitations.clear_hr_leads_title')}
-                            >
-                              ×
-                            </button>
-                          </div>
-
-                          {isAddingHrLead && (
-                            <div className="mt-4 p-5 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
-                              <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.new_hr_lead')}</label>
-                                <div className="relative">
-                                  <Users size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                                  <input
-                                    type="text"
-                                    placeholder={tr('admin_invitations.placeholders.hr_lead')}
-                                    className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
-                                    value={newHrLeadName}
-                                    onChange={(e) => setNewHrLeadName(e.target.value)}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="flex gap-3 pt-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsAddingHrLead(false);
-                                    setNewHrLeadName('');
-                                  }}
-                                  className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-slate-100 transition-all"
-                                >
-                                  {tr('admin_invitations.cancel')}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleAddHrLead}
-                                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-600 transition-all"
-                                >
-                                  {tr('admin_invitations.add')}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
                         <div className="flex items-center justify-between gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
                           <div>
                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{tr('admin_invitations.co_admin_access')}</div>
@@ -692,6 +493,7 @@ const InvitationsPage: React.FC = () => {
                             <div className="relative flex-1">
                               <Briefcase size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                               <select className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-6 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all appearance-none cursor-pointer" value={selectedDept} onChange={(e) => setSelectedDept(e.target.value)}>
+                                <option value=""></option>
                                 {departments.map((d) => (
                                   <option key={d} value={d}>
                                     {d}
@@ -757,13 +559,6 @@ const InvitationsPage: React.FC = () => {
                         <div className="relative">
                           <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                           <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">{tr('admin_invitations.start_time')}</label>
-                        <div className="relative">
-                          <Clock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                          <input type="time" className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
                         </div>
                       </div>
                     </div>

@@ -122,6 +122,17 @@ interface AssignmentPageProps {
 
 }
 
+const isValidHttpUrl = (value: string): boolean => {
+  const v = value.trim();
+  if (!v) return false;
+  try {
+    const url = new URL(v);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 
 
 const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
@@ -746,6 +757,26 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    if (!selectedProject) return;
+
+    const ok = window.confirm(_lang === 'TH' ? 'ลบรายการนี้ใช่หรือไม่?' : 'Delete this task?');
+    if (!ok) return;
+
+    const nextTasks = (selectedProject.tasks ?? []).filter((t) => t.id !== taskId);
+
+    setDelayRemarkDrafts((prev) => {
+      if (prev[taskId] === undefined) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+
+    if (uploadTaskId === taskId) setUploadTaskId(null);
+
+    await updateSelectedProjectTasks(nextTasks);
+  };
+
 
 
   const handleSubmitWithProof = async (taskId: string) => {
@@ -839,7 +870,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
       .filter((u) => u.length > 0)
 
-      .filter((u) => u.startsWith('http://') || u.startsWith('https://'));
+      .filter((u) => isValidHttpUrl(u));
 
 
 
@@ -1929,6 +1960,22 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                                 )}
 
+                                <button
+
+                                  type="button"
+
+                                  onClick={() => void handleDeleteTask(task.id)}
+
+                                  className="p-3 bg-white border border-slate-100 text-slate-300 rounded-xl transition-all shadow-sm hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
+
+                                  title={_lang === 'TH' ? 'ลบรายการ' : 'Delete'}
+
+                                >
+
+                                  <Trash2 size={16} />
+
+                                </button>
+
                                 {isDone && (
 
                                   <div className="flex items-center gap-2 text-emerald-500 font-black text-[11px] uppercase">
@@ -2153,6 +2200,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                       if (!url) return;
 
+                      if (!isValidHttpUrl(url)) {
+                        window.alert(tr('intern_assignment.errors.url_must_start_with_http'));
+                        return;
+                      }
+
                       setHandoffLinks((prev) => [...prev, url]);
 
                       setHandoffLinkDraft('');
@@ -2179,13 +2231,14 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                       <div key={`${url}-${idx}`} className="flex items-center justify-between gap-4">
 
-                        <div className="min-w-0">
-
+                        <button
+                          type="button"
+                          onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                          className="min-w-0 text-left hover:underline"
+                        >
                           <div className="text-[12px] font-black text-slate-900 truncate">{tr('intern_assignment.handoff.link_label')}</div>
-
                           <div className="text-[10px] font-bold text-slate-400 truncate">{url}</div>
-
-                        </div>
+                        </button>
 
                         <button
 
@@ -2825,12 +2878,9 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                       if (!v) return;
 
-                      if (!v.startsWith('http://') && !v.startsWith('https://')) {
-
+                      if (!isValidHttpUrl(v)) {
                         window.alert(tr('intern_assignment.errors.url_must_start_with_http'));
-
                         return;
-
                       }
 
                       setSelectedProofLinks((prev) => Array.from(new Set([...prev, v])));
