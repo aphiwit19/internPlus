@@ -251,12 +251,14 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     if (!req) return;
 
     const url = linkDraft.trim();
-    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
-      setUploadError(
-        lang === 'TH'
-          ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://'
-          : 'Please enter a link that starts with http:// or https://',
-      );
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        setUploadError(lang === 'TH' ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://' : 'Please enter a link that starts with http:// or https://');
+        return;
+      }
+    } catch {
+      setUploadError(lang === 'TH' ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://' : 'Please enter a link that starts with http:// or https://');
       return;
     }
 

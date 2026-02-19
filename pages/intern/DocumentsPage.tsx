@@ -205,7 +205,13 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     if (!user) return;
     const v = url.trim();
     if (!v) return;
-    if (!v.startsWith('http://') && !v.startsWith('https://')) {
+    try {
+      const parsed = new URL(v);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        setUploadError(tr('intern_documents.errors.url_must_start_with_http'));
+        return;
+      }
+    } catch {
       setUploadError(tr('intern_documents.errors.url_must_start_with_http'));
       return;
     }

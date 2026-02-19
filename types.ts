@@ -99,6 +99,7 @@ export interface SubTask {
   type: 'SINGLE' | 'CONTINUE';
   status: 'DONE' | 'IN_PROGRESS' | 'DELAYED' | 'REVISION';
   reviewStatus?: 'SUBMITTED' | 'REVIEWED';
+  workResult?: 'FINISHED' | 'NOT_FINISHED';
   plannedStart: string; // ISO string
   plannedEnd: string;   // ISO string
   actualEnd?: string;   // ISO string

@@ -603,6 +603,22 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     if (isSubmittingHandoff) return;
 
+    const hasAnyHandoffPayload =
+      handoffDocFiles.length > 0 ||
+      handoffVideoFiles.length > 0 ||
+      handoffLinks.some((l) => l.trim().length > 0) ||
+      handoffExistingFiles.length > 0 ||
+      handoffExistingVideos.length > 0;
+
+    if (!hasAnyHandoffPayload) {
+      showToast(
+        _lang === 'TH'
+          ? 'กรุณาแนบไฟล์ ลิงก์ หรือวิดีโออย่างน้อย 1 รายการก่อนส่ง'
+          : 'Please attach at least one file, link, or video before submitting.',
+      );
+      return;
+    }
+
 
 
     const oversizedDoc = handoffDocFiles.find((f) => f.size > MAX_DOC_BYTES);
@@ -839,6 +855,12 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     if (targetTask) {
 
+      const hasNewProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+      if (!hasNewProof) {
+        showToast(_lang === 'TH' ? 'กรุณาแนบไฟล์ หรือลิงก์อย่างน้อย 1 รายการก่อนส่ง' : 'Please attach at least one file or link before submitting.');
+        return;
+      }
+
       const overdueNow = !targetTask.actualEnd && now > new Date(targetTask.plannedEnd);
 
       const remarkFromDraft = (delayRemarkDrafts[taskId] ?? targetTask.delayRemark ?? '').trim();
@@ -902,16 +924,21 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
       const pEnd = new Date(t.plannedEnd);
 
       let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
-
       if (now > pEnd) finalStatus = 'DELAYED';
 
+      // ...
 
-
-      const mergedAttachments = [...(t.attachments ?? []), ...uploaded, ...linkAttachments];
-
-
+      const mergedAttachments = [...(targetTask?.attachments ?? []), ...uploaded, ...linkAttachments];
 
       const remarkFromDraft = (delayRemarkDrafts[taskId] ?? t.delayRemark ?? '').trim();
+
+      const hasAnyProof = mergedAttachments.length > 0;
+      const workResult: 'FINISHED' | 'NOT_FINISHED' =
+        finalStatus === 'DELAYED'
+          ? hasAnyProof
+            ? 'FINISHED'
+            : 'NOT_FINISHED'
+          : 'FINISHED';
 
 
 
@@ -922,6 +949,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
         status: finalStatus,
 
         reviewStatus: 'SUBMITTED' as const,
+
+        workResult,
 
         actualEnd: now.toISOString(),
 
@@ -1625,19 +1654,21 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                 >
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDeleteTarget({ kind, project });
-                    }}
-                    className="absolute top-6 right-6 w-11 h-11 rounded-2xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all shadow-sm flex items-center justify-center"
-                    title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
-                    disabled={isDeletingProject}
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  {kind === 'personal' ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDeleteTarget({ kind, project });
+                      }}
+                      className="absolute top-6 right-6 w-11 h-11 rounded-2xl bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all shadow-sm flex items-center justify-center"
+                      title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                      disabled={isDeletingProject}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  ) : null}
 
                   {isNew && (
 
@@ -1854,18 +1885,20 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!selectedKind || !selectedProject) return;
-                    setDeleteTarget({ kind: selectedKind, project: selectedProject });
-                  }}
-                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-2xl transition-all"
-                  title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
-                  disabled={isDeletingProject}
-                >
-                  <Trash2 size={18} />
-                </button>
+                {selectedKind === 'personal' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!selectedProject) return;
+                      setDeleteTarget({ kind: 'personal', project: selectedProject });
+                    }}
+                    className="w-12 h-12 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-2xl transition-all"
+                    title={_lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                    disabled={isDeletingProject}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                ) : null}
                 <button onClick={() => setSelectedProjectKey(null)} className="w-12 h-12 flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-full hover:bg-slate-50 transition-all"><X size={32} /></button>
               </div>
 
@@ -2199,11 +2232,31 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                                 {isDone && (
 
-                                  <div className="flex items-center gap-2 text-emerald-500 font-black text-[11px] uppercase">
+                                  <div
+                                    className={`flex items-center gap-2 font-black text-[11px] uppercase ${
+                                      task.status === 'DELAYED' && (task as any).workResult === 'NOT_FINISHED'
+                                        ? 'text-amber-600'
+                                        : 'text-emerald-500'
+                                    }`}
+                                  >
 
-                                     <div className="w-8 h-8 rounded-full border-2 border-emerald-500 flex items-center justify-center shadow-sm"><CheckCircle2 size={18} strokeWidth={3} /></div>
+                                     <div
+                                       className={`w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-sm ${
+                                         task.status === 'DELAYED' && (task as any).workResult === 'NOT_FINISHED'
+                                           ? 'border-amber-600'
+                                           : 'border-emerald-500'
+                                       }`}
+                                     >
+                                       <CheckCircle2 size={18} strokeWidth={3} />
+                                     </div>
 
-                                     <span>{tr('intern_assignment.status.finished')}</span>
+                                     <span>
+                                       {task.status === 'DELAYED' && (task as any).workResult === 'NOT_FINISHED'
+                                         ? _lang === 'TH'
+                                           ? 'งานยังไม่เสร็จ'
+                                           : 'The work is not finished yet.'
+                                         : tr('intern_assignment.status.finished')}
+                                     </span>
 
                                   </div>
 
@@ -3319,21 +3372,24 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                   onClick={() => void handleSubmitWithProof(uploadTaskId)}
 
                   disabled={(() => {
-
                     if (!selectedProject) return false;
 
                     const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
 
                     if (!task) return false;
 
+                    const hasProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+                    if (!hasProof) return true;
+
                     const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
 
-                    if (!isOverdue) return false;
+                    const remarkValue = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
 
-                    const value = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+                    if (isOverdue) {
+                      return !remarkValue.trim();
+                    }
 
-                    return !value.trim();
-
+                    return false;
                   })()}
 
                   className={`flex-[2] py-5 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-emerald-100 transition-all ${
@@ -3345,6 +3401,9 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                       const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
 
                       if (!task) return 'bg-emerald-500 hover:bg-emerald-600';
+
+                      const hasProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+                      if (!hasProof) return 'bg-emerald-200 cursor-not-allowed';
 
                       const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
 

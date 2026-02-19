@@ -32,6 +32,8 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
   const { roleSlug, pageId } = useParams<{ roleSlug: string; pageId: string }>();
   const { user, lang } = useAppContext();
 
+  const [internSupervisorId, setInternSupervisorId] = useState<string | null>(null);
+
   const baseRole = roleSlug ?? 'admin';
   const basePage = pageId ?? 'manage-interns';
 
@@ -55,6 +57,18 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
   const [newProjectFiles, setNewProjectFiles] = useState<File[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<AssignmentProject | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'users', internId);
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) {
+        setInternSupervisorId(null);
+        return;
+      }
+      const data = snap.data() as { supervisorId?: string | null };
+      setInternSupervisorId(typeof data?.supervisorId === 'string' ? data.supervisorId : null);
+    });
+  }, [internId]);
 
   useEffect(() => {
     const assignedRef = collection(firestoreDb, 'users', internId, 'assignmentProjects');
@@ -177,12 +191,13 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
 
   const canDeleteProject = (p: AssignmentProject) => {
     if (!user) return false;
-    if (p.kind !== 'assigned') return false;
-    // HR admin can delete any assignment; supervisor can delete only what they created.
+
+    // HR admin can delete any assignment (assigned or personal).
     if (user.roles.includes('HR_ADMIN')) return true;
-    if (p.createdById && p.createdById === user.id) return true;
-    // Backward-compat for old docs (createdById missing)
-    if (!p.createdById && p.createdBy && p.createdBy === user.name) return true;
+
+    // Supervisor can delete any assignment for interns they supervise.
+    if (user.roles.includes('SUPERVISOR') && internSupervisorId && internSupervisorId === user.id) return true;
+
     return false;
   };
 
@@ -212,6 +227,17 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
         }
       }
 
+      const hl = (deleteTarget as any)?.handoffLatest;
+      const hlFiles = Array.isArray(hl?.files) ? hl.files : [];
+      for (const f of hlFiles) {
+        if (f?.storagePath) attachmentPaths.push(String(f.storagePath));
+      }
+      const hlVideos = Array.isArray(hl?.videos) ? hl.videos : [];
+      for (const v of hlVideos) {
+        if (typeof v === 'string') continue;
+        if (v?.storagePath) attachmentPaths.push(String(v.storagePath));
+      }
+
       await Promise.all(
         attachmentPaths.map(async (path) => {
           try {
@@ -222,7 +248,8 @@ export default function AssignmentsTab({ internId }: AssignmentsTabProps) {
         }),
       );
 
-      await deleteDoc(doc(firestoreDb, 'users', internId, 'assignmentProjects', deleteTarget.id));
+      const colName = deleteTarget.kind === 'personal' ? 'personalProjects' : 'assignmentProjects';
+      await deleteDoc(doc(firestoreDb, 'users', internId, colName, deleteTarget.id));
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);

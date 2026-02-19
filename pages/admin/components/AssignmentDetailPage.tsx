@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, CalendarDays, Download, ExternalLink, FileText } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { getDownloadURL, ref as storageRef } from 'firebase/storage';
+import { ChevronLeft, Clock, CalendarDays, Download, ExternalLink, FileText, Trash2, X } from 'lucide-react';
+import { deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { deleteObject, getDownloadURL, ref as storageRef } from 'firebase/storage';
 
 import { firebaseStorage, firestoreDb } from '@/firebase';
 import { TaskAttachment } from '@/types';
@@ -32,6 +32,22 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
 
   const [project, setProject] = useState<(AssignmentProjectDoc & { id: string }) | null>(null);
   const [resolvedKind, setResolvedKind] = useState<ProjectKind | null>(null);
+
+  const [internSupervisorId, setInternSupervisorId] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'users', internId);
+    return onSnapshot(ref, (snap) => {
+      if (!snap.exists()) {
+        setInternSupervisorId(null);
+        return;
+      }
+      const data = snap.data() as { supervisorId?: string | null };
+      setInternSupervisorId(typeof data?.supervisorId === 'string' ? data.supervisorId : null);
+    });
+  }, [internId]);
 
   useEffect(() => {
     const normalizedKind = projectKind === 'assigned' || projectKind === 'personal' ? projectKind : null;
@@ -121,6 +137,70 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
     window.open(url, '_blank');
   };
 
+  const canDelete = useMemo(() => {
+    if (!user) return false;
+    if (user.roles.includes('HR_ADMIN')) return true;
+    if (user.roles.includes('SUPERVISOR') && internSupervisorId && internSupervisorId === user.id) return true;
+    return false;
+  }, [internSupervisorId, user]);
+
+  const handleConfirmDelete = async () => {
+    if (!project || !resolvedKind) return;
+    if (!canDelete) {
+      setDeleteOpen(false);
+      return;
+    }
+    if (isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      const attachmentPaths: string[] = [];
+
+      const projectAttachments = Array.isArray(project.attachments) ? project.attachments : [];
+      for (const a of projectAttachments) {
+        if (a?.storagePath) attachmentPaths.push(a.storagePath);
+      }
+
+      const tasks = Array.isArray(project.tasks) ? project.tasks : [];
+      for (const t of tasks) {
+        const atts = Array.isArray((t as any)?.attachments) ? (t as any).attachments : [];
+        for (const a of atts) {
+          if (typeof a === 'string') continue;
+          if (a?.storagePath) attachmentPaths.push(a.storagePath);
+        }
+      }
+
+      const hl = (project as any)?.handoffLatest;
+      const hlFiles = Array.isArray(hl?.files) ? hl.files : [];
+      for (const f of hlFiles) {
+        if (f?.storagePath) attachmentPaths.push(String(f.storagePath));
+      }
+      const hlVideos = Array.isArray(hl?.videos) ? hl.videos : [];
+      for (const v of hlVideos) {
+        if (typeof v === 'string') continue;
+        if (v?.storagePath) attachmentPaths.push(String(v.storagePath));
+      }
+
+      await Promise.all(
+        attachmentPaths.map(async (path) => {
+          try {
+            await deleteObject(storageRef(firebaseStorage, path));
+          } catch {
+            // ignore missing/permission errors; still attempt to delete the doc
+          }
+        }),
+      );
+
+      const col = resolvedKind === 'personal' ? 'personalProjects' : 'assignmentProjects';
+      await deleteDoc(doc(firestoreDb, 'users', internId, col, project.id));
+
+      setDeleteOpen(false);
+      onBack();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!project) {
     return (
       <div className="w-full h-full overflow-y-auto scrollbar-hide">
@@ -204,6 +284,18 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
                 <CalendarDays size={14} /> {project.date}
               </div>
             ) : null}
+
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="w-12 h-12 flex items-center justify-center bg-white border border-slate-100 text-slate-300 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 rounded-2xl transition-all"
+                title={lang === 'TH' ? 'ลบชิ้นงาน' : 'Delete assignment'}
+                disabled={isDeleting}
+              >
+                <Trash2 size={18} />
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -214,6 +306,25 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
                 <div>
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{task.status ?? '-'}</div>
                   <div className="text-xl font-black text-slate-900 mt-3">{task.title ?? '-'}</div>
+                  {String(task.status ?? '') === 'DELAYED' ? (
+                    <div className="mt-3">
+                      <div
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-widest ${
+                          String(task.workResult ?? '') === 'NOT_FINISHED'
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        }`}
+                      >
+                        {String(task.workResult ?? '') === 'NOT_FINISHED'
+                          ? lang === 'TH'
+                            ? 'งานยังไม่เสร็จ'
+                            : 'The work is not finished yet.'
+                          : lang === 'TH'
+                            ? 'เสร็จแล้ว'
+                            : 'Finished'}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2 pt-1">
                   <Clock size={14} />
@@ -288,6 +399,55 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
           ) : null}
         </div>
       </div>
+
+      {deleteOpen && project && (
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={() => (isDeleting ? null : setDeleteOpen(false))} />
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            <div className="w-full max-w-xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="text-xl font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ยืนยันการลบ' : 'Confirm delete'}</div>
+                <button
+                  onClick={() => (isDeleting ? null : setDeleteOpen(false))}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                  disabled={isDeleting}
+                  type="button"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="text-sm font-bold text-slate-600">
+                  {lang === 'TH' ? 'ต้องการลบชิ้นงานนี้ใช่ไหม?' : 'Do you want to delete this assignment?'}
+                </div>
+                <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6">
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'ชิ้นงาน' : 'Assignment'}</div>
+                  <div className="mt-2 text-lg font-black text-slate-900">{project.title}</div>
+                  {project.description ? <div className="mt-2 text-sm font-bold text-slate-500">{project.description}</div> : null}
+                </div>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setDeleteOpen(false)}
+                    className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+                    disabled={isDeleting}
+                    type="button"
+                  >
+                    {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                  </button>
+                  <button
+                    onClick={() => void handleConfirmDelete()}
+                    className="px-8 py-3 bg-rose-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-xl shadow-rose-500/20"
+                    disabled={isDeleting}
+                    type="button"
+                  >
+                    {isDeleting ? (lang === 'TH' ? 'กำลังลบ...' : 'Deleting...') : lang === 'TH' ? 'ลบ' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
