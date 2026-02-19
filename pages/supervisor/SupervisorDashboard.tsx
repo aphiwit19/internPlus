@@ -122,7 +122,21 @@ import {
 
 } from 'lucide-react';
 
-import { arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { 
+  arrayUnion, 
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  limit, 
+  onSnapshot, 
+  orderBy, 
+  query, 
+  serverTimestamp, 
+  setDoc, 
+  updateDoc, 
+  where 
+} from 'firebase/firestore';
 
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -400,6 +414,29 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   const [pendingUniversityEvaluationCount, setPendingUniversityEvaluationCount] = useState<number>(0);
 
+  const [pendingTimeCorrections, setPendingTimeCorrections] = useState<
+    Array<{
+      id: string;
+      internId: string;
+      internName: string;
+      date: string;
+      reason: string;
+      requestedClockIn?: string;
+      requestedClockOut?: string;
+      attachments: Array<{ fileName: string; storagePath: string }>
+    }>
+  >([]);
+
+  type TimeCorrectionItem = (typeof pendingTimeCorrections)[number];
+
+  const [decisionCorrection, setDecisionCorrection] = useState<(typeof pendingTimeCorrections)[number] | null>(null);
+  const [decisionMode, setDecisionMode] = useState<'APPROVE' | 'REJECT' | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
+
+  const [isTimeCorrectionsOpen, setIsTimeCorrectionsOpen] = useState(false);
+  const [timeCorrectionsPage, setTimeCorrectionsPage] = useState(1);
+
 
 
   const [pendingActionPage, setPendingActionPage] = useState(1);
@@ -520,6 +557,111 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   }, [interns]);
 
+  const toLocalDateFromKey = (dateKey: string): Date | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+    const [y, m, d] = dateKey.split('-').map((x) => Number(x));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    const dt = new Date(y, m - 1, d);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+
+  const TIME_CORRECTIONS_PAGE_SIZE = 5;
+  const timeCorrectionsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(pendingTimeCorrections.length / TIME_CORRECTIONS_PAGE_SIZE)),
+    [pendingTimeCorrections.length],
+  );
+
+  useEffect(() => {
+    if (timeCorrectionsPage > timeCorrectionsTotalPages) setTimeCorrectionsPage(timeCorrectionsTotalPages);
+  }, [timeCorrectionsPage, timeCorrectionsTotalPages]);
+
+  useEffect(() => {
+    setTimeCorrectionsPage(1);
+  }, [pendingTimeCorrections.length, isTimeCorrectionsOpen]);
+
+  const pagedTimeCorrections = useMemo(() => {
+    const start = (timeCorrectionsPage - 1) * TIME_CORRECTIONS_PAGE_SIZE;
+    return pendingTimeCorrections.slice(start, start + TIME_CORRECTIONS_PAGE_SIZE);
+  }, [pendingTimeCorrections, timeCorrectionsPage]);
+
+  const parseHHMM = (value: string): { h: number; m: number } | null => {
+    const m = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
+    if (h < 0 || h > 23) return null;
+    if (mm < 0 || mm > 59) return null;
+    return { h, m: mm };
+  };
+
+  const buildTimestampForDate = (dateKey: string, hhmm: string): Date | null => {
+    const base = toLocalDateFromKey(dateKey);
+    const t = parseHHMM(hhmm);
+    if (!base || !t) return null;
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), t.h, t.m, 0, 0);
+  };
+
+  const handleOpenDecision = (req: (typeof pendingTimeCorrections)[number], mode: 'APPROVE' | 'REJECT') => {
+    setDecisionCorrection(req);
+    setDecisionMode(mode);
+    setDecisionNote('');
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!decisionCorrection || !decisionMode) return;
+    if (isSavingDecision) return;
+
+    if (decisionMode === 'APPROVE') {
+      if (!decisionCorrection.requestedClockIn || !decisionCorrection.requestedClockOut) return;
+      const clockInAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockIn);
+      const clockOutAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockOut);
+      if (!clockInAt || !clockOutAt) return;
+      if (clockOutAt.getTime() <= clockInAt.getTime()) return;
+      try {
+        setIsSavingDecision(true);
+        await updateDoc(doc(firestoreDb, 'timeCorrections', decisionCorrection.id), {
+          status: 'APPROVED',
+          approvedBy: user.id,
+          approvedAt: serverTimestamp(),
+          ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
+          updatedAt: serverTimestamp(),
+        });
+        await updateDoc(doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date), {
+          clockInAt,
+          clockOutAt,
+          updatedAt: serverTimestamp(),
+        });
+        setDecisionCorrection(null);
+        setDecisionMode(null);
+        setDecisionNote('');
+      } catch {
+        // ignore
+      } finally {
+        setIsSavingDecision(false);
+      }
+      return;
+    }
+
+    try {
+      setIsSavingDecision(true);
+      await updateDoc(doc(firestoreDb, 'timeCorrections', decisionCorrection.id), {
+        status: 'REJECTED',
+        rejectedBy: user.id,
+        rejectedAt: serverTimestamp(),
+        ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
+        updatedAt: serverTimestamp(),
+      });
+      setDecisionCorrection(null);
+      setDecisionMode(null);
+      setDecisionNote('');
+    } catch {
+      // ignore
+    } finally {
+      setIsSavingDecision(false);
+    }
+  };
+
 
 
   const pendingByIntern = useMemo(() => {
@@ -593,6 +735,69 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return count > 0 ? count : 1;
 
   }, [pendingByIntern.length]);
+
+  useEffect(() => {
+    const assignedIds = interns.map((x) => x.id).filter(Boolean);
+    if (assignedIds.length === 0) {
+      setPendingTimeCorrections([]);
+      return () => void 0;
+    }
+
+    const chunkArray = <T,>(items: T[], size: number): T[][] => {
+      if (size <= 0) return [items];
+      const out: T[][] = [];
+      for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+      return out;
+    };
+
+    const ref = collection(firestoreDb, 'timeCorrections');
+    const idChunks = chunkArray(assignedIds, 10);
+    const byChunkKey = new Map<string, TimeCorrectionItem[]>();
+
+    const unsubs = idChunks.map((chunk) => {
+      const chunkKey = chunk.join('|');
+      const q = query(ref, where('status', '==', 'PENDING'), where('internId', 'in', chunk));
+      return onSnapshot(
+        q,
+        (snap) => {
+          const items: TimeCorrectionItem[] = [];
+          snap.forEach((d) => {
+            const raw = d.data() as any;
+            const internId = typeof raw?.internId === 'string' ? raw.internId : '';
+            const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+            const date = typeof raw?.date === 'string' ? raw.date : '';
+            const reason = typeof raw?.reason === 'string' ? raw.reason : '';
+            const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
+            const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
+            const attachments = Array.isArray(raw?.attachments)
+              ? (raw.attachments as any[]).flatMap((a) => {
+                  const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
+                  const storagePath = typeof a?.storagePath === 'string' ? a.storagePath : '';
+                  if (!fileName || !storagePath) return [];
+                  return [{ fileName, storagePath }];
+                })
+              : [];
+            if (!internId || !date) return;
+            items.push({ id: d.id, internId, internName, date, reason, requestedClockIn, requestedClockOut, attachments });
+          });
+          byChunkKey.set(chunkKey, items);
+          const merged = Array.from(byChunkKey.values()).flat();
+          merged.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          setPendingTimeCorrections(merged);
+        },
+        () => {
+          byChunkKey.set(chunkKey, []);
+          const merged = Array.from(byChunkKey.values()).flat();
+          merged.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          setPendingTimeCorrections(merged);
+        },
+      );
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [interns]);
 
 
 
@@ -3600,6 +3805,75 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     <div className="lg:col-span-4 space-y-8">
 
+                       <button
+                         type="button"
+                         onClick={() => setIsTimeCorrectionsOpen(true)}
+                         className="w-full text-left bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm hover:border-rose-200 hover:shadow-xl transition-all"
+                       >
+
+                          <div className="flex items-center justify-between mb-8">
+
+                            <div className="flex items-start gap-3">
+
+                              {pendingTimeCorrections.length > 0 ? (
+                                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 mt-1">
+                                  <CircleAlert size={18} />
+                                </div>
+                              ) : null}
+
+                              <div>
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                              </div>
+
+                            </div>
+
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pendingTimeCorrections.length}</div>
+
+                          </div>
+
+                          {pendingTimeCorrections.length === 0 ? (
+
+                            <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed text-center">
+
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+
+                            </div>
+
+                          ) : (
+                            <div className="space-y-3">
+                              {pendingTimeCorrections.slice(0, 5).map((req) => (
+                                <div key={req.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-[11px] font-black text-slate-900 truncate">{req.internName}</div>
+                                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.date}</div>
+                                    </div>
+                                    <ChevronRight size={18} className="text-slate-200 flex-shrink-0" />
+                                  </div>
+                                  {(req.requestedClockIn || req.requestedClockOut) ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Time</div>
+                                      <div className="text-[10px] font-black text-slate-700">
+                                        {req.requestedClockIn || '--'} — {req.requestedClockOut || '--'}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {req.reason ? (
+                                    <div className="mt-2 text-[10px] font-bold text-slate-500 line-clamp-2 break-words">{req.reason}</div>
+                                  ) : null}
+                                </div>
+                              ))}
+                              {pendingTimeCorrections.length > 5 ? (
+                                <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  Click to view all
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
+
+                       </button>
+
                        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
 
                           <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">{t('supervisor_dashboard.dashboard.total_interns')}</h3>
@@ -3757,6 +4031,216 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   return (
 
     <div className="h-full w-full bg-slate-50 overflow-hidden flex flex-col">
+
+      {isTimeCorrectionsOpen ? (
+        <>
+          <div
+            className="fixed inset-0 z-[180] bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setIsTimeCorrectionsOpen(false)}
+          />
+          <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                </div>
+                <button
+                  onClick={() => setIsTimeCorrectionsOpen(false)}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-4">
+                {pendingTimeCorrections.length === 0 ? (
+                  <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      {pagedTimeCorrections.map((req) => (
+                        <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.date}</div>
+                              {(req.requestedClockIn || req.requestedClockOut) ? (
+                                <div className="mt-3 flex items-center gap-4">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-in</div>
+                                    <div className="text-[13px] font-black text-emerald-700">{req.requestedClockIn || '--'}</div>
+                                  </div>
+                                  <div className="text-slate-200 font-black">→</div>
+                                  <div className="flex flex-col gap-1">
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-out</div>
+                                    <div className="text-[13px] font-black text-rose-600">{req.requestedClockOut || '--'}</div>
+                                  </div>
+                                </div>
+                              ) : null}
+                              {req.reason ? (
+                                <div className="mt-3 text-[11px] font-bold text-slate-700 whitespace-pre-wrap break-words">{req.reason}</div>
+                              ) : null}
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                              <div className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100 text-[9px] font-black uppercase tracking-widest">
+                                PENDING
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDecision(req, 'REJECT')}
+                                  className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDecision(req, 'APPROVE')}
+                                  disabled={!req.requestedClockIn || !req.requestedClockOut}
+                                  className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60 disabled:hover:bg-emerald-50 disabled:hover:text-emerald-700"
+                                >
+                                  Approve
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {req.attachments.length > 0 ? (
+                            <div className="mt-5 pt-5 border-t border-slate-100">
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attachments</div>
+                              <div className="mt-3 space-y-2">
+                                {req.attachments.map((a) => (
+                                  <button
+                                    key={a.storagePath}
+                                    type="button"
+                                    className="w-full text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                    onClick={async () => {
+                                      try {
+                                        const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+                                        window.open(url, '_blank', 'noopener,noreferrer');
+                                      } catch {
+                                        // ignore
+                                      }
+                                    }}
+                                  >
+                                    {a.fileName}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+
+                    {timeCorrectionsTotalPages > 1 ? (
+                      <div className="pt-2 flex justify-center">
+                        <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                          {Array.from({ length: timeCorrectionsTotalPages }, (_, idx) => idx + 1).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setTimeCorrectionsPage(p)}
+                              className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                p === timeCorrectionsPage
+                                  ? 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                              }`}
+                              aria-current={p === timeCorrectionsPage ? 'page' : undefined}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {decisionCorrection && decisionMode ? (
+        <>
+          <div
+            className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => (isSavingDecision ? void 0 : (setDecisionCorrection(null), setDecisionMode(null)))}
+          />
+          <div className="fixed inset-0 z-[210] flex items-center justify-center p-4">
+            <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                    {decisionMode === 'APPROVE' ? 'Approve time correction' : 'Reject time correction'}
+                  </h3>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                    {decisionCorrection.internName} • {decisionCorrection.date}
+                  </div>
+                </div>
+                <button
+                  onClick={() => (isSavingDecision ? void 0 : (setDecisionCorrection(null), setDecisionMode(null)))}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                  disabled={isSavingDecision}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-8 space-y-5">
+                {decisionMode === 'APPROVE' ? (
+                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-[1.5rem]">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requested</div>
+                    <div className="mt-2 text-sm font-black text-slate-900">
+                      {(decisionCorrection.requestedClockIn || '--') + ' — ' + (decisionCorrection.requestedClockOut || '--')}
+                    </div>
+                    {!decisionCorrection.requestedClockIn || !decisionCorrection.requestedClockOut ? (
+                      <div className="mt-2 text-[11px] font-bold text-rose-600">Clock-in and Clock-out are required to approve.</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <label className="space-y-2 block">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (optional)</div>
+                  <textarea
+                    value={decisionNote}
+                    onChange={(e) => setDecisionNote(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[120px]"
+                  />
+                </label>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => (isSavingDecision ? void 0 : (setDecisionCorrection(null), setDecisionMode(null)))}
+                    disabled={isSavingDecision}
+                    className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void handleConfirmDecision()}
+                    disabled={
+                      isSavingDecision ||
+                      (decisionMode === 'APPROVE' && (!decisionCorrection.requestedClockIn || !decisionCorrection.requestedClockOut))
+                    }
+                    className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl disabled:opacity-60 ${
+                      decisionMode === 'APPROVE'
+                        ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/20'
+                        : 'bg-rose-600 text-white hover:bg-rose-700 shadow-rose-500/20'
+                    }`}
+                  >
+                    {decisionMode === 'APPROVE' ? 'Approve' : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {selectedInternId ? renderDeepDive() : renderDashboard()}
 

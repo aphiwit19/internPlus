@@ -518,7 +518,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           };
 
           const attendanceRef = collection(firestoreDb, 'users', intern.id, 'attendance');
-          const [attRes, leaveRes] = await Promise.allSettled([
+          const [attRes, leaveRes, corrRes] = await Promise.allSettled([
             getDocs(
               query(
                 attendanceRef,
@@ -535,10 +535,39 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                 where('startDate', '<=', leaveToKey),
               ),
             ),
+            getDocs(
+              query(
+                collection(firestoreDb, 'timeCorrections'),
+                where('internId', '==', intern.id),
+                where('status', '==', 'PENDING'),
+              ),
+            ),
           ]);
 
           const attSnap = attRes.status === 'fulfilled' ? attRes.value : null;
           const leaveSnap = leaveRes.status === 'fulfilled' ? leaveRes.value : null;
+          const corrSnap = corrRes.status === 'fulfilled' ? corrRes.value : null;
+
+          const today = new Date();
+          const todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+          const pendingCorrWithin7 = new Set<string>();
+          const pendingCorrOver7 = new Set<string>();
+          if (corrSnap) {
+            corrSnap.forEach((d) => {
+              const raw = d.data() as any;
+              const dateKey = typeof raw?.date === 'string' ? raw.date : '';
+              if (!dateKey) return;
+              const [y, m, dy] = dateKey.split('-').map(Number);
+              if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(dy)) return;
+              const corrDayMs = new Date(y, m - 1, dy).getTime();
+              const diffDays = Math.floor((todayMs - corrDayMs) / (1000 * 60 * 60 * 24));
+              if (diffDays <= 7) {
+                pendingCorrWithin7.add(dateKey);
+              } else {
+                pendingCorrOver7.add(dateKey);
+              }
+            });
+          }
 
           let wfo = 0;
           let wfh = 0;
@@ -546,8 +575,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           if (attSnap) {
             attSnap.forEach((d) => {
               const raw = d.data() as any;
+              const dateKey = typeof raw?.date === 'string' ? raw.date : d.id;
               const hasClockIn = Boolean(raw?.clockInAt);
               if (!hasClockIn) return;
+              if (pendingCorrOver7.has(dateKey)) return;
               const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
               if (mode === 'WFH') wfh += 1;
               else wfo += 1;
@@ -613,8 +644,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             shouldPreserveExistingAmount && typeof existing?.amount === 'number' ? existing.amount : finalAmount;
 
           const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
-          const isPayoutLocked = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
-          const lockReason = undefined;
+          const lockedByEndProgram = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
+          const lockedByPendingCorrection = pendingCorrWithin7.size > 0;
+          const isPayoutLocked = lockedByEndProgram || lockedByPendingCorrection;
+          const lockReason = lockedByPendingCorrection
+            ? `Has ${pendingCorrWithin7.size} pending time correction request(s). Payout locked until resolved.`
+            : undefined;
 
           next.push({
             id: claimDocId,
@@ -643,6 +678,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
             ...(typeof existing?.paidAtMs === 'number' ? { paidAtMs: existing.paidAtMs } : {}),
             ...(isPayoutLocked ? { isPayoutLocked } : {}),
+            ...(lockReason ? { lockReason } : {}),
           });
 
           const claimRef = doc(firestoreDb, 'allowanceClaims', claimDocId);
@@ -660,6 +696,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               breakdown: { wfo, wfh, leaves },
               status,
               ...(isPayoutLocked ? { isPayoutLocked } : {}),
+              ...(lockReason ? { lockReason } : { lockReason: null }),
               ...(existing?.paymentDate ? { paymentDate: existing.paymentDate } : {}),
               ...(typeof existing?.paidAtMs === 'number' ? { paidAt: Timestamp.fromMillis(existing.paidAtMs) } : {}),
               ...(typeof existing?.supervisorAdjustedAmount === 'number'

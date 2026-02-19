@@ -26,9 +26,11 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes } from 'firebase/storage';
 
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useTranslation } from 'react-i18next';
 
 type WorkMode = 'WFH' | 'WFO';
@@ -66,6 +68,22 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const [pendingFilterStatus, setPendingFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
   const [pendingFilterWorkMode, setPendingFilterWorkMode] = useState<'ALL' | WorkMode>('ALL');
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [correctionRecord, setCorrectionRecord] = useState<AttendanceRecord | null>(null);
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionClockIn, setCorrectionClockIn] = useState('');
+  const [correctionClockOut, setCorrectionClockOut] = useState('');
+  const [correctionFiles, setCorrectionFiles] = useState<File[]>([]);
+  const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
+
+  type CorrectionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+  interface CorrectionInfo {
+    status: CorrectionStatus;
+    supervisorDecisionNote?: string;
+    requestedClockIn?: string;
+    requestedClockOut?: string;
+  }
+  const [correctionsByDate, setCorrectionsByDate] = useState<Record<string, CorrectionInfo>>({});
 
   const PAGE_SIZE = 6;
   const [currentPage, setCurrentPage] = useState(1);
@@ -197,6 +215,34 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     return () => unsub();
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      setCorrectionsByDate({});
+      return;
+    }
+    const q = query(
+      collection(firestoreDb, 'timeCorrections'),
+      where('internId', '==', user.id),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const map: Record<string, CorrectionInfo> = {};
+      snap.forEach((d) => {
+        const raw = d.data() as any;
+        const date = typeof raw?.date === 'string' ? raw.date : '';
+        const status: CorrectionStatus =
+          raw?.status === 'APPROVED' ? 'APPROVED' :
+          raw?.status === 'REJECTED' ? 'REJECTED' : 'PENDING';
+        if (!date) return;
+        const note = typeof raw?.supervisorDecisionNote === 'string' ? raw.supervisorDecisionNote : undefined;
+        const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
+        const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
+        map[date] = { status, supervisorDecisionNote: note, requestedClockIn, requestedClockOut };
+      });
+      setCorrectionsByDate(map);
+    }, () => setCorrectionsByDate({}));
+    return () => unsub();
+  }, [user]);
+
   const handleClockToggle = async () => {
     if (!user) return;
     setActionError(null);
@@ -264,9 +310,205 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
 
   const pagedHistory = filteredHistory.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  const daysSince = (dateKey: string): number | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+    const [y, m, d] = dateKey.split('-').map((x) => Number(x));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    const localDay = new Date(y, m - 1, d);
+    if (Number.isNaN(localDay.getTime())) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffMs = today.getTime() - localDay.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  };
+
+  const canRequestCorrection = (r: AttendanceRecord): boolean => {
+    if (!user) return false;
+    const hasClockIn = r.clockIn !== '--';
+    const hasClockOut = Boolean(r.clockOut);
+    if (!hasClockIn && !hasClockOut) return false;
+    if (hasClockIn && hasClockOut) return false;
+    const ds = daysSince(r.date);
+    if (ds == null) return false;
+    return ds >= 0 && ds <= 7;
+  };
+
+  const handleOpenCorrection = (r: AttendanceRecord) => {
+    if (!canRequestCorrection(r)) return;
+    setCorrectionRecord(r);
+    setCorrectionReason('');
+    setCorrectionClockIn(r.clockIn !== '--' ? r.clockIn : '');
+    setCorrectionClockOut(r.clockOut ? r.clockOut : '');
+    setCorrectionFiles([]);
+  };
+
+  const handleSubmitCorrection = async () => {
+    if (!user) return;
+    if (!correctionRecord) return;
+    if (!canRequestCorrection(correctionRecord)) return;
+    const reason = correctionReason.trim();
+    if (!reason) return;
+    const hasIn = correctionRecord.clockIn !== '--';
+    const hasOut = Boolean(correctionRecord.clockOut);
+
+    const requestedClockIn = correctionClockIn.trim();
+    const requestedClockOut = correctionClockOut.trim();
+    if (!hasIn && !requestedClockIn) return;
+    if (!hasOut && !requestedClockOut) return;
+
+    const record = correctionRecord;
+    setCorrectionRecord(null);
+
+    let supervisorId: string | undefined = typeof (user as any)?.supervisorId === 'string' ? (user as any).supervisorId : undefined;
+    if (!supervisorId) {
+      try {
+        const userSnap = await getDoc(doc(firestoreDb, 'users', user.id));
+        const userData = userSnap.exists() ? (userSnap.data() as any) : null;
+        const fromDoc = typeof userData?.supervisorId === 'string' ? userData.supervisorId : undefined;
+        supervisorId = fromDoc;
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      setIsSubmittingCorrection(true);
+      const id = `${user.id}_${record.date}`;
+
+      const attachments: Array<{ fileName: string; storagePath: string }> = [];
+      for (const file of correctionFiles) {
+        const safeName = file.name;
+        const storagePath = `users/${user.id}/documents/timeCorrections/${record.date}/${Date.now()}_${safeName}`;
+        await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        attachments.push({ fileName: safeName, storagePath });
+      }
+
+      await setDoc(
+        doc(firestoreDb, 'timeCorrections', id),
+        {
+          internId: user.id,
+          internName: (user as any)?.name ?? 'Unknown',
+          supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
+          date: record.date,
+          workMode: record.workMode,
+          reason,
+          ...(requestedClockIn ? { requestedClockIn } : {}),
+          ...(requestedClockOut ? { requestedClockOut } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
+          status: 'PENDING',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      setCorrectionReason('');
+      setCorrectionClockIn('');
+      setCorrectionClockOut('');
+      setCorrectionFiles([]);
+    } catch (e) {
+      setActionError((e as { message?: string })?.message ?? 'Failed to submit correction request');
+    } finally {
+      setIsSubmittingCorrection(false);
+    }
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-slate-50 overflow-y-auto overscroll-contain relative p-4 md:p-8 lg:p-10">
       <div className="max-w-7xl mx-auto w-full">
+        {correctionRecord && (
+          <>
+            <div
+              className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => (isSubmittingCorrection ? void 0 : setCorrectionRecord(null))}
+            />
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Request Time Correction</h3>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                      {correctionRecord.date}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => (isSubmittingCorrection ? void 0 : setCorrectionRecord(null))}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                    disabled={isSubmittingCorrection}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-8 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="space-y-2 block">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-in (HH:MM)</div>
+                      <input
+                        value={correctionClockIn}
+                        onChange={(e) => setCorrectionClockIn(e.target.value)}
+                        placeholder="08:30"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                      />
+                    </label>
+                    <label className="space-y-2 block">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-out (HH:MM)</div>
+                      <input
+                        value={correctionClockOut}
+                        onChange={(e) => setCorrectionClockOut(e.target.value)}
+                        placeholder="17:30"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reason (required)</div>
+                    <textarea
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[120px]"
+                    />
+                  </label>
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach document (optional)</div>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        setCorrectionFiles(files);
+                      }}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    />
+                    {correctionFiles.length > 0 ? (
+                      <div className="text-[11px] font-bold text-slate-500 break-words">
+                        {correctionFiles.map((f) => f.name).join(', ')}
+                      </div>
+                    ) : null}
+                  </label>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setCorrectionRecord(null)}
+                      disabled={isSubmittingCorrection}
+                      className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => void handleSubmitCorrection()}
+                      disabled={isSubmittingCorrection || !correctionReason.trim()}
+                      className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 md:mb-12">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_attendance.title')}</h1>
@@ -280,9 +522,30 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                 <button onClick={() => setPendingWorkMode('WFH')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${pendingWorkMode === 'WFH' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}><Home size={14} /> WFH</button>
               </div>
             )}
-            <button onClick={handleClockToggle} className={`flex items-center gap-3 px-8 py-3 rounded-2xl font-bold text-sm transition-all shadow-xl ${isClockedIn ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}`}>
-              {isClockedIn ? <><Square size={18} fill="currentColor" /> {tr('intern_attendance.actions.clock_out')}</> : <><Play size={18} fill="currentColor" /> {tr('intern_attendance.actions.clock_in')}</>}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { if (!isClockedIn) void handleClockToggle(); }}
+                disabled={isClockedIn}
+                className={`flex items-center gap-2 px-7 py-3 rounded-2xl font-bold text-sm transition-all shadow-xl ${
+                  !isClockedIn
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/20'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
+              >
+                <Play size={16} fill="currentColor" /> {tr('intern_attendance.actions.clock_in')}
+              </button>
+              <button
+                onClick={() => { if (isClockedIn) void handleClockToggle(); }}
+                disabled={!isClockedIn}
+                className={`flex items-center gap-2 px-7 py-3 rounded-2xl font-bold text-sm transition-all shadow-xl ${
+                  isClockedIn
+                    ? 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
+              >
+                <Square size={16} fill="currentColor" /> {tr('intern_attendance.actions.clock_out')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -398,9 +661,40 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                         <div className="inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[9px] font-bold">{record.workMode}</div>
                       </td>
                       <td className="py-6">
-                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${record.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                          {record.status === 'PRESENT' ? tr('intern_attendance.status.present') : tr('intern_attendance.status.late')}
-                        </span>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${record.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                              {record.status === 'PRESENT' ? tr('intern_attendance.status.present') : tr('intern_attendance.status.late')}
+                            </span>
+                            {correctionsByDate[record.date] ? (
+                              <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${
+                                correctionsByDate[record.date].status === 'APPROVED'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : correctionsByDate[record.date].status === 'REJECTED'
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-amber-50 text-amber-600'
+                              }`}>
+                                {correctionsByDate[record.date].status === 'APPROVED' ? '✓ Approved'
+                                  : correctionsByDate[record.date].status === 'REJECTED' ? '✕ Rejected'
+                                  : '⏳ Pending'}
+                              </span>
+                            ) : null}
+                            {canRequestCorrection(record) && !correctionsByDate[record.date] ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCorrection(record)}
+                                className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                              >
+                                Request correction
+                              </button>
+                            ) : null}
+                          </div>
+                          {correctionsByDate[record.date]?.supervisorDecisionNote ? (
+                            <div className="text-[10px] font-bold text-slate-500 italic">
+                              Note: {correctionsByDate[record.date].supervisorDecisionNote}
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}

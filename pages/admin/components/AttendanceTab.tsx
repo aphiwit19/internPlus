@@ -1,12 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Building2, ChevronLeft, ChevronRight, Home } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CircleAlert, Home, X } from 'lucide-react';
 
-import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseStorage } from '@/firebase';
 import { normalizeAvatarUrl } from '@/app/avatar';
+import { useAppContext } from '@/app/AppContext';
 
 type UserDoc = {
   name?: string;
@@ -33,13 +45,33 @@ type AttendanceRow = {
   status: 'PRESENT' | 'LATE' | '—';
 };
 
+type CorrectionDoc = {
+  id: string;
+  internId: string;
+  internName: string;
+  date: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedClockIn?: string;
+  requestedClockOut?: string;
+  supervisorDecisionNote?: string;
+  attachments: Array<{ fileName: string; storagePath: string }>;
+};
+
 const AttendanceTab: React.FC = () => {
   const { t } = useTranslation();
   const tr = (key: string) => String(t(key));
+  const { user } = useAppContext();
   const PAGE_SIZE = 5;
 
   const [interns, setInterns] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
   const [latestByIntern, setLatestByIntern] = useState<Record<string, AttendanceRow>>({});
+  const [corrections, setCorrections] = useState<CorrectionDoc[]>([]);
+
+  const [decisionTarget, setDecisionTarget] = useState<CorrectionDoc | null>(null);
+  const [decisionMode, setDecisionMode] = useState<'APPROVE' | 'REJECT' | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -85,6 +117,37 @@ const AttendanceTab: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const q = query(collection(firestoreDb, 'timeCorrections'));
+    return onSnapshot(q, (snap) => {
+      const list: CorrectionDoc[] = [];
+      snap.forEach((d) => {
+        const raw = d.data() as any;
+        const internId = typeof raw?.internId === 'string' ? raw.internId : '';
+        const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+        const date = typeof raw?.date === 'string' ? raw.date : '';
+        const reason = typeof raw?.reason === 'string' ? raw.reason : '';
+        const status: CorrectionDoc['status'] =
+          raw?.status === 'APPROVED' ? 'APPROVED' : raw?.status === 'REJECTED' ? 'REJECTED' : 'PENDING';
+        const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
+        const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
+        const supervisorDecisionNote = typeof raw?.supervisorDecisionNote === 'string' ? raw.supervisorDecisionNote : undefined;
+        const attachments = Array.isArray(raw?.attachments)
+          ? (raw.attachments as any[]).flatMap((a) => {
+              const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
+              const storagePath = typeof a?.storagePath === 'string' ? a.storagePath : '';
+              if (!fileName || !storagePath) return [];
+              return [{ fileName, storagePath }];
+            })
+          : [];
+        if (!internId || !date) return;
+        list.push({ id: d.id, internId, internName, date, reason, status, requestedClockIn, requestedClockOut, supervisorDecisionNote, attachments });
+      });
+      list.sort((a, b) => b.date.localeCompare(a.date));
+      setCorrections(list);
+    }, () => setCorrections([]));
+  }, []);
+
+  useEffect(() => {
     setLatestByIntern({});
     if (interns.length === 0) return;
 
@@ -114,19 +177,18 @@ const AttendanceTab: React.FC = () => {
           const clockOut = formatTime(raw?.clockOutAt) ?? '--';
           const status: AttendanceRow['status'] = raw?.clockInAt ? computeStatus(raw.clockInAt) : '—';
 
-          setLatestByIntern((prev) => ({
-            ...prev,
-            [intern.id]: {
-              internId: intern.id,
-              name: intern.name,
-              avatar: intern.avatar,
-              date: date || '--',
-              clockIn,
-              clockOut,
-              mode,
-              status,
-            },
-          }));
+              const nextRow: AttendanceRow = {
+            internId: intern.id,
+            name: intern.name,
+            avatar: intern.avatar,
+            date: date || '--',
+            clockIn,
+            clockOut,
+            mode,
+            status,
+          };
+
+          setLatestByIntern((prev) => ({ ...prev, [intern.id]: nextRow }));
         },
         () => {
           setLatestByIntern((prev) => {
@@ -181,8 +243,131 @@ const AttendanceTab: React.FC = () => {
     [currentPage, rows],
   );
 
+  const toLocalDateFromKey = (dateKey: string): Date | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+    const [y, m, d] = dateKey.split('-').map((x) => Number(x));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    const dt = new Date(y, m - 1, d);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+
+  const parseHHMM = (value: string): { h: number; m: number } | null => {
+    const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const h = Number(match[1]);
+    const mm = Number(match[2]);
+    if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+    return { h, m: mm };
+  };
+
+  const buildTimestamp = (dateKey: string, hhmm: string): Date | null => {
+    const base = toLocalDateFromKey(dateKey);
+    const t = parseHHMM(hhmm);
+    if (!base || !t) return null;
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), t.h, t.m, 0, 0);
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!decisionTarget || !decisionMode || isSavingDecision) return;
+    try {
+      setIsSavingDecision(true);
+      if (decisionMode === 'APPROVE') {
+        if (!decisionTarget.requestedClockIn || !decisionTarget.requestedClockOut) return;
+        const clockInAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockIn);
+        const clockOutAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockOut);
+        if (!clockInAt || !clockOutAt || clockOutAt.getTime() <= clockInAt.getTime()) return;
+        await updateDoc(doc(firestoreDb, 'timeCorrections', decisionTarget.id), {
+          status: 'APPROVED',
+          approvedBy: user?.id ?? 'admin',
+          approvedAt: serverTimestamp(),
+          ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
+          updatedAt: serverTimestamp(),
+        });
+        await updateDoc(doc(firestoreDb, 'users', decisionTarget.internId, 'attendance', decisionTarget.date), {
+          clockInAt,
+          clockOutAt,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(doc(firestoreDb, 'timeCorrections', decisionTarget.id), {
+          status: 'REJECTED',
+          rejectedBy: user?.id ?? 'admin',
+          rejectedAt: serverTimestamp(),
+          ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      setDecisionTarget(null);
+      setDecisionMode(null);
+      setDecisionNote('');
+    } catch {
+      // ignore
+    } finally {
+      setIsSavingDecision(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+
+      {decisionTarget && decisionMode ? (
+        <>
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm" onClick={() => (isSavingDecision ? void 0 : (setDecisionTarget(null), setDecisionMode(null)))} />
+          <div className="fixed inset-0 z-[210] flex items-center justify-center p-4">
+            <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                    {decisionMode === 'APPROVE' ? 'Approve time correction' : 'Reject time correction'}
+                  </h3>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                    {decisionTarget.internName} • {decisionTarget.date}
+                  </div>
+                </div>
+                <button onClick={() => (isSavingDecision ? void 0 : (setDecisionTarget(null), setDecisionMode(null)))} disabled={isSavingDecision} className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-8 space-y-5">
+                {decisionMode === 'APPROVE' ? (
+                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-[1.5rem]">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requested times</div>
+                    <div className="mt-3 flex items-center gap-4">
+                      <div className="flex flex-col gap-1">
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-in</div>
+                        <div className="text-[13px] font-black text-emerald-700">{decisionTarget.requestedClockIn || '--'}</div>
+                      </div>
+                      <div className="text-slate-200 font-black">→</div>
+                      <div className="flex flex-col gap-1">
+                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-out</div>
+                        <div className="text-[13px] font-black text-rose-600">{decisionTarget.requestedClockOut || '--'}</div>
+                      </div>
+                    </div>
+                    {!decisionTarget.requestedClockIn || !decisionTarget.requestedClockOut ? (
+                      <div className="mt-2 text-[11px] font-bold text-rose-600">Clock-in and Clock-out are required to approve.</div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <label className="space-y-2 block">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (optional)</div>
+                  <textarea value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[100px]" />
+                </label>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button onClick={() => (isSavingDecision ? void 0 : (setDecisionTarget(null), setDecisionMode(null)))} disabled={isSavingDecision} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60">Cancel</button>
+                  <button
+                    onClick={() => void handleConfirmDecision()}
+                    disabled={isSavingDecision || (decisionMode === 'APPROVE' && (!decisionTarget.requestedClockIn || !decisionTarget.requestedClockOut))}
+                    className={`px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl disabled:opacity-60 ${decisionMode === 'APPROVE' ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-rose-600 text-white hover:bg-rose-700 shadow-rose-500/20'}`}
+                  >
+                    {decisionMode === 'APPROVE' ? 'Approve' : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between mb-10">
           <div className="space-y-1">
@@ -216,24 +401,12 @@ const AttendanceTab: React.FC = () => {
                   <td className="py-6 text-sm font-bold text-slate-600">{log.clockIn}</td>
                   <td className="py-6 text-sm font-bold text-slate-600">{log.clockOut}</td>
                   <td className="py-6">
-                    <div
-                      className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[9px] font-black uppercase ${
-                        log.mode === 'WFO' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-500 border-slate-100'
-                      }`}
-                    >
+                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border text-[9px] font-black uppercase ${log.mode === 'WFO' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
                       {log.mode === 'WFO' ? <Building2 size={12} /> : <Home size={12} />} {log.mode}
                     </div>
                   </td>
                   <td className="py-6 text-right pr-4">
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${
-                        log.status === 'PRESENT'
-                          ? 'bg-emerald-50 text-emerald-600'
-                          : log.status === 'LATE'
-                            ? 'bg-amber-50 text-amber-600'
-                            : 'bg-slate-50 text-slate-400'
-                      }`}
-                    >
+                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase ${log.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-600' : log.status === 'LATE' ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
                       {log.status}
                     </span>
                   </td>
@@ -279,6 +452,109 @@ const AttendanceTab: React.FC = () => {
                 <ChevronRight size={18} />
               </button>
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-4 mb-10">
+          {corrections.some((c) => c.status === 'PENDING') ? (
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <CircleAlert size={18} />
+            </div>
+          ) : null}
+          <div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">All requests</h3>
+          </div>
+          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{corrections.length}</div>
+        </div>
+
+        {corrections.length === 0 ? (
+          <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No correction requests</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {corrections.map((req) => (
+              <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.date}</div>
+                    {(req.requestedClockIn || req.requestedClockOut) ? (
+                      <div className="mt-3 flex items-center gap-4">
+                        <div className="flex flex-col gap-1">
+                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-in</div>
+                          <div className="text-[13px] font-black text-emerald-700">{req.requestedClockIn || '--'}</div>
+                        </div>
+                        <div className="text-slate-200 font-black">→</div>
+                        <div className="flex flex-col gap-1">
+                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-out</div>
+                          <div className="text-[13px] font-black text-rose-600">{req.requestedClockOut || '--'}</div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {req.reason ? (
+                      <div className="mt-3 text-[11px] font-bold text-slate-700 whitespace-pre-wrap break-words">{req.reason}</div>
+                    ) : null}
+                    {req.supervisorDecisionNote ? (
+                      <div className="mt-2 text-[10px] font-bold text-slate-500 italic">Note: {req.supervisorDecisionNote}</div>
+                    ) : null}
+                    {req.attachments.length > 0 ? (
+                      <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
+                        {req.attachments.map((a) => (
+                          <button
+                            key={a.storagePath}
+                            type="button"
+                            className="text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                            onClick={async () => {
+                              try {
+                                const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+                                window.open(url, '_blank', 'noopener,noreferrer');
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                          >
+                            {a.fileName}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                      req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                      : req.status === 'REJECTED' ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                      : 'bg-amber-50 text-amber-600 border border-amber-100'
+                    }`}>
+                      {req.status === 'APPROVED' ? '✓ Approved' : req.status === 'REJECTED' ? '✕ Rejected' : '⏳ Pending'}
+                    </span>
+                    {req.status === 'PENDING' ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setDecisionTarget(req); setDecisionMode('REJECT'); setDecisionNote(''); }}
+                          className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setDecisionTarget(req); setDecisionMode('APPROVE'); setDecisionNote(''); }}
+                          disabled={!req.requestedClockIn || !req.requestedClockOut}
+                          className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60 disabled:hover:bg-emerald-50 disabled:hover:text-emerald-700"
+                        >
+                          Approve
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>

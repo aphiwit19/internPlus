@@ -139,6 +139,26 @@ service cloud.firestore {
       allow update, delete: if isHrAdmin() || (signedIn() && resource.data.supervisorId == request.auth.uid);
     }
 
+    match /timeCorrections/{id} {
+      allow read: if isHrAdmin() || (
+        signedIn() && (
+          resource.data.internId == request.auth.uid ||
+          resource.data.supervisorId == request.auth.uid ||
+          (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
+        )
+      );
+
+      allow create: if signedIn() && request.resource.data.internId == request.auth.uid;
+
+      allow update, delete: if isHrAdmin() || (
+        signedIn() && (
+          resource.data.internId == request.auth.uid ||
+          resource.data.supervisorId == request.auth.uid ||
+          (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
+        )
+      );
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
