@@ -486,6 +486,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
         const appendClaimForIntern = async (intern: InternRecord) => {
           if (cancelled) return;
 
+          const coerceToDate = (value: unknown): Date | null => {
+            if (!value) return null;
+            if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+            const maybeTs = value as { toDate?: () => Date };
+            if (typeof maybeTs?.toDate === 'function') {
+              const d = maybeTs.toDate();
+              return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+            }
+
+            if (typeof value === 'string') {
+              const d = new Date(value);
+              return Number.isNaN(d.getTime()) ? null : d;
+            }
+
+            if (typeof value === 'number') {
+              const d = new Date(value);
+              return Number.isNaN(d.getTime()) ? null : d;
+            }
+
+            const maybeObj = value as { seconds?: unknown; nanoseconds?: unknown };
+            if (typeof maybeObj?.seconds === 'number') {
+              const nanos = typeof maybeObj.nanoseconds === 'number' ? maybeObj.nanoseconds : 0;
+              const ms = maybeObj.seconds * 1000 + Math.floor(nanos / 1_000_000);
+              const d = new Date(ms);
+              return Number.isNaN(d.getTime()) ? null : d;
+            }
+
+            return null;
+          };
+
           const attendanceRef = collection(firestoreDb, 'users', intern.id, 'attendance');
           const [attRes, leaveRes] = await Promise.allSettled([
             getDocs(
@@ -511,6 +542,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           let wfo = 0;
           let wfh = 0;
+          let monthlyGross = 0;
           if (attSnap) {
             attSnap.forEach((d) => {
               const raw = d.data() as any;
@@ -519,6 +551,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
               if (mode === 'WFH') wfh += 1;
               else wfo += 1;
+
+              const clockInAt = coerceToDate(raw?.clockInAt);
+              const clockOutAt = coerceToDate(raw?.clockOutAt);
+              if (!clockInAt || !clockOutAt) return;
+              const startMs = clockInAt.getTime();
+              const endMs = clockOutAt.getTime();
+              if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+
+              const totalHours = (endMs - startMs) / (1000 * 60 * 60);
+              const payableHours = Math.min(8, Math.max(0, totalHours - 1));
+              if (payableHours <= 0) return;
+
+              const dayRate = mode === 'WFH' ? allowanceRules.wfhRate : allowanceRules.wfoRate;
+              const hourRate = dayRate / 8;
+              monthlyGross += hourRate * payableHours;
             });
           }
 
@@ -540,8 +587,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           const leaves = leaveDaysSet.size;
 
-          const gross = wfo * allowanceRules.wfoRate + wfh * allowanceRules.wfhRate;
-          const net = allowanceRules.applyTax ? Math.max(0, Math.round(gross * (1 - allowanceRules.taxPercent / 100))) : gross;
+          const net = allowanceRules.applyTax
+            ? Math.max(0, Math.round(monthlyGross * (1 - allowanceRules.taxPercent / 100)))
+            : Math.max(0, Math.round(monthlyGross));
 
           const existing = existingByInternId.get(intern.id);
           const claimDocId = existing?.id ?? `${intern.id}_${monthKey}`;

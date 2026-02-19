@@ -175,10 +175,14 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               leaves: typeof raw?.breakdown?.leaves === 'number' ? raw.breakdown.leaves : 0,
             };
 
+            const storedCalculated = typeof raw?.calculatedAmount === 'number' ? raw.calculatedAmount : undefined;
+
             const gross = breakdown.wfo * allowanceRules.wfoRate + breakdown.wfh * allowanceRules.wfhRate;
-            const computedNet = allowanceRules.applyTax
+            const fallbackNet = allowanceRules.applyTax
               ? Math.max(0, Math.round(gross * (1 - allowanceRules.taxPercent / 100)))
               : gross;
+
+            const computedNet = typeof storedCalculated === 'number' ? storedCalculated : fallbackNet;
 
             const storedAmount = typeof raw?.amount === 'number' ? raw.amount : 0;
             const supervisorAdjustedAmount = typeof raw?.supervisorAdjustedAmount === 'number' ? raw.supervisorAdjustedAmount : undefined;
