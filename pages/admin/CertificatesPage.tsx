@@ -798,7 +798,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                               {uploadingId === req.id ? t.uploading : t.upload}
                             </button>
 
-                            {meta.type === 'RECOMMENDATION' ? (
+                            {meta.type === 'RECOMMENDATION' || meta.type === 'COMPLETION' ? (
                               <button
                                 type="button"
                                 onClick={() => openAttachLink(req.id)}
@@ -836,7 +836,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                         ) : null}
                       </div>
 
-                      {pendingLink?.requestId === req?.id && meta.type === 'RECOMMENDATION' && req ? (
+                      {pendingLink?.requestId === req?.id && (meta.type === 'RECOMMENDATION' || meta.type === 'COMPLETION') && req ? (
                         <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                           <input
                             type="text"

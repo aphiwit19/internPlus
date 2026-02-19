@@ -385,8 +385,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
 
   // Access Control States
   const [accessLevel, setAccessLevel] = useState<'REVOCATION' | 'LIMITED' | 'EXTENDED'>('LIMITED');
-  const [retentionPeriod, setRetentionPeriod] = useState('6 Months post-offboard');
+  const [retentionPeriod, setRetentionPeriod] = useState('1 Month post-offboard');
   const displayRetention = (val: string) => {
+    if (lang === 'TH' && val === '1 Month post-offboard') return '1 เดือนหลังพ้นสภาพ';
     if (lang === 'TH' && val === '6 Months post-offboard') return '6 เดือนหลังพ้นสภาพ';
     return val;
   };

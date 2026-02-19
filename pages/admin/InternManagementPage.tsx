@@ -200,8 +200,10 @@ const DEFAULT_PERFORMANCE: PerformanceMetrics = {
 
 
 const InternManagementPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+
+  const isTh = (i18n.language ?? '').toLowerCase().startsWith('th');
 
   const navigate = useNavigate();
 
@@ -2005,19 +2007,151 @@ const InternManagementPage: React.FC = () => {
 
         {activeTab === 'feedback' && (
 
-          <FeedbackTab
+          <div className="space-y-10 animate-in slide-in-from-bottom-6 duration-500">
+            <div className="space-y-4">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-4">
+                {tr('supervisor_dashboard.feedback.select_assessment_period')}
+              </div>
+              <div className="flex bg-white p-2 rounded-[2rem] border border-slate-100 shadow-sm w-fit overflow-x-auto scrollbar-hide max-w-full">
+                {selectedIntern.feedback.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setActiveFeedbackId(f.id)}
+                    className={`px-8 py-4 rounded-[1.5rem] text-xs font-black uppercase tracking-widest transition-all flex-shrink-0 ${
+                      activeFeedbackId === f.id ? 'bg-[#0B0F19] text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-            feedback={selectedIntern.feedback}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
+                <div className="flex items-center justify-between gap-4 mb-10">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'ฟีดแบ็กนักศึกษา' : 'Intern Feedback'}</div>
+                    <div className="text-xl font-black text-slate-900 mt-2">{activeFeedback?.period ?? ''}</div>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{activeFeedback?.submissionDate ?? ''}</div>
+                </div>
 
-            activeFeedbackId={activeFeedbackId}
+                <div className="space-y-8">
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'Reflection' : 'Reflection'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.internReflection ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
 
-            onSelectFeedback={setActiveFeedbackId}
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'Feedback ต่อโปรแกรม' : 'Program Feedback'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.internProgramFeedback ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
 
-            activeFeedback={activeFeedback}
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'สรุปตัวเอง' : 'Self Summary'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.selfSummary ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
 
-            onOpenStoragePath={handleOpenStoragePath}
+                  {(activeFeedback?.videoStoragePath || activeFeedback?.videoUrl) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeFeedback?.videoStoragePath) {
+                          handleOpenStoragePath(activeFeedback.videoStoragePath);
+                          return;
+                        }
+                        if (activeFeedback?.videoUrl) window.open(activeFeedback.videoUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-left hover:bg-white hover:border-blue-200 transition-all"
+                    >
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'วิดีโอ' : 'Video'}</div>
+                      <div className="mt-2 text-sm font-black text-slate-900 truncate">{activeFeedback?.videoFileName ?? (isTh ? 'เปิดวิดีโอ' : 'Open video')}</div>
+                      <div className="mt-1 text-[10px] font-bold text-slate-300 uppercase tracking-widest">{isTh ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                    </button>
+                  )}
 
-          />
+                  {Array.isArray(activeFeedback?.attachments) && activeFeedback?.attachments.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'ไฟล์แนบ' : 'Attachments'}</div>
+                      <div className="space-y-2">
+                        {activeFeedback.attachments.map((a, idx) => (
+                          <button
+                            key={`${a.storagePath}-${idx}`}
+                            type="button"
+                            onClick={() => handleOpenStoragePath(a.storagePath)}
+                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left hover:bg-white hover:border-blue-200 transition-all"
+                          >
+                            <div className="text-sm font-black text-slate-900 truncate">{a.fileName}</div>
+                            <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{isTh ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative overflow-hidden">
+                <div className="flex items-center justify-between gap-4 mb-10">
+                  <div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'ฟีดแบ็กหัวหน้างาน' : 'Supervisor Feedback'}</div>
+                    <div className="text-xl font-black text-slate-900 mt-2">{activeFeedback?.period ?? ''}</div>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{activeFeedback?.supervisorReviewedDate ?? ''}</div>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'คะแนน' : 'Score'}</div>
+                      <div className="mt-2 text-2xl font-black text-slate-900">{typeof activeFeedback?.supervisorScore === 'number' ? activeFeedback.supervisorScore : '—'}</div>
+                    </div>
+                    <div className="p-5 bg-slate-50 border border-slate-100 rounded-2xl">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'Overall Rating' : 'Overall Rating'}</div>
+                      <div className="mt-2 text-2xl font-black text-slate-900">
+                        {typeof activeFeedback?.supervisorPerformance?.overallRating === 'number' ? activeFeedback.supervisorPerformance.overallRating : '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'ความคิดเห็นหัวหน้างาน' : 'Supervisor Comments'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.supervisorComments ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'สรุปหัวหน้างาน' : 'Supervisor Summary'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.supervisorSummary ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'Overall Comments' : 'Overall Comments'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.supervisorOverallComments ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isTh ? 'Work Performance' : 'Work Performance'}</div>
+                    <div className="text-sm font-bold text-slate-700 whitespace-pre-wrap break-words">
+                      {(activeFeedback?.supervisorWorkPerformanceComments ?? '').trim() || (isTh ? '—' : '—')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
         )}
 

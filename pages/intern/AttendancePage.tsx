@@ -82,29 +82,57 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     return `${y}-${m}-${day}`;
   };
 
-  const formatTime = (value: unknown): string | null => {
+  const coerceToDate = (value: unknown): Date | null => {
     if (!value) return null;
-    const maybe = value as { toDate?: () => Date };
-    if (typeof maybe?.toDate !== 'function') return null;
-    const d = maybe.toDate();
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+    const maybeTs = value as { toDate?: () => Date };
+    if (typeof maybeTs?.toDate === 'function') {
+      const d = maybeTs.toDate();
+      return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    }
+
+    if (typeof value === 'string') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    if (typeof value === 'number') {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    const maybeObj = value as { seconds?: unknown; nanoseconds?: unknown };
+    if (typeof maybeObj?.seconds === 'number') {
+      const nanos = typeof maybeObj.nanoseconds === 'number' ? maybeObj.nanoseconds : 0;
+      const ms = maybeObj.seconds * 1000 + Math.floor(nanos / 1_000_000);
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    return null;
+  };
+
+  const formatTime = (value: unknown): string | null => {
+    const d = coerceToDate(value);
+    if (!d) return null;
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const computeStatus = (clockInAt: unknown): 'PRESENT' | 'LATE' => {
-    const maybe = clockInAt as { toDate?: () => Date };
-    if (typeof maybe?.toDate !== 'function') return 'PRESENT';
-    const d = maybe.toDate();
+    const d = coerceToDate(clockInAt);
+    if (!d) return 'PRESENT';
     const minutes = d.getHours() * 60 + d.getMinutes();
     const lateAfterMinutes = 9 * 60;
     return minutes > lateAfterMinutes ? 'LATE' : 'PRESENT';
   };
 
   const computeDuration = (clockInAt: unknown, clockOutAt: unknown): string | undefined => {
-    const a = clockInAt as { toDate?: () => Date };
-    const b = clockOutAt as { toDate?: () => Date };
-    if (typeof a?.toDate !== 'function' || typeof b?.toDate !== 'function') return undefined;
-    const start = a.toDate().getTime();
-    const end = b.toDate().getTime();
+    const a = coerceToDate(clockInAt);
+    const b = coerceToDate(clockOutAt);
+    if (!a || !b) return undefined;
+    const start = a.getTime();
+    const end = b.getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return undefined;
     const totalMinutes = Math.floor((end - start) / (1000 * 60));
     const h = Math.floor(totalMinutes / 60);
