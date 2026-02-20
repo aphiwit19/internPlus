@@ -353,10 +353,11 @@ async function recalculateAllowanceClaimInternal(
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
-  const configuredStart = periodStartIso ? toUtcDate(periodStartIso) : null;
-  const configuredEnd = periodEndIso ? toUtcDate(periodEndIso) : null;
-  const periodStart = clampDay(configuredStart ?? monthStart);
-  const periodEnd = clampDay(configuredEnd ?? monthEnd);
+  const periodStart = clampDay(monthStart);
+  const periodEnd = clampDay(monthEnd);
+  void toUtcDate;
+  void periodStartIso;
+  void periodEndIso;
   const periodLabel = periodStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
   const allowanceRules = await loadAllowanceRules(db);

@@ -317,7 +317,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
       }
 
       try {
-        await addDoc(collection(firestoreDb, 'attendanceExcelImports'), {
+        const payload = {
           internId: user.id,
           internName: (user as any)?.name ?? 'Unknown',
           supervisorId: typeof supervisorId === 'string' ? supervisorId : null,
@@ -326,10 +326,23 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
           status: 'PENDING',
           submittedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
+        };
+        try {
+          await addDoc(collection(firestoreDb, 'attendanceExcelImports'), payload);
+        } catch (e) {
+          const err = e as { code?: string; message?: string };
+          const msg = String(err?.message ?? '');
+          if (msg.includes('INTERNAL ASSERTION FAILED')) {
+            await new Promise((r) => setTimeout(r, 300));
+            await addDoc(collection(firestoreDb, 'attendanceExcelImports'), payload);
+          } else {
+            throw e;
+          }
+        }
       } catch (e) {
         const err = e as { code?: string; message?: string };
-        console.error('excelUpload:firestoreCreateFailed', { storagePath, err });
+        const projectId = (firestoreDb.app.options as any)?.projectId;
+        console.error('excelUpload:firestoreCreateFailed', { storagePath, projectId, authUid: user.id, err });
         setExcelError(`Firestore create failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim());
         return;
       }
