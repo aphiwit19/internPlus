@@ -35,6 +35,10 @@ export interface UserProfile {
   lineId?: string;
   position?: string;
   internPeriod?: string;
+  professionalSummary?: string;
+  coreSkills?: string[];
+  professionalGoal?: string;
+  languageSkills?: Array<{ name: string; level: string }>;
   bankName?: string;
   bankAccountNumber?: string;
   supervisorId?: string;

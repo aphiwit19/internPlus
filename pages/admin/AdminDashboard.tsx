@@ -39,6 +39,7 @@ import {
   arrayUnion,
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
   onSnapshot,
@@ -67,6 +68,13 @@ type MentorOption = Mentor & {
   position?: string;
   isCoAdmin?: boolean;
 };
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 type UserDoc = {
   name?: string;
@@ -369,11 +377,97 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
         if (!cancelled) setIsAllowanceLoading(true);
         if (!cancelled) setAllowanceLoadError(null);
 
+        const internById = new Map(internRoster.map((i) => [i.id, i] as const));
+
+        if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+          const internIds = internRoster.map((i) => i.id);
+          const idChunks = chunkArray(internIds, 10);
+          const next: AllowanceClaim[] = [];
+          const foundWalletIds = new Set<string>();
+
+          for (const chunk of idChunks) {
+            const walletSnap = await getDocs(
+              query(collection(firestoreDb, 'CurrentWallet'), where(documentId(), 'in', chunk)),
+            );
+            walletSnap.forEach((d) => {
+              const raw = d.data() as any;
+              const internId = d.id;
+              foundWalletIds.add(internId);
+              const intern = internById.get(internId);
+              if (!intern) return;
+
+              const totalAmount = typeof raw?.totalAmount === 'number' ? raw.totalAmount : 0;
+              const totalCalculatedAmount =
+                typeof raw?.totalCalculatedAmount === 'number'
+                  ? raw.totalCalculatedAmount
+                  : typeof raw?.totalAmount === 'number'
+                    ? raw.totalAmount
+                    : 0;
+              const totalPaidAmount = typeof raw?.totalPaidAmount === 'number' ? raw.totalPaidAmount : 0;
+              const totalPendingAmount = typeof raw?.totalPendingAmount === 'number' ? raw.totalPendingAmount : 0;
+              const breakdown = {
+                wfo: typeof raw?.totalBreakdown?.wfo === 'number' ? raw.totalBreakdown.wfo : 0,
+                wfh: typeof raw?.totalBreakdown?.wfh === 'number' ? raw.totalBreakdown.wfh : 0,
+                leaves: typeof raw?.totalBreakdown?.leaves === 'number' ? raw.totalBreakdown.leaves : 0,
+              };
+              const status: AllowanceClaim['status'] =
+                totalAmount > 0 && totalPaidAmount >= totalAmount
+                  ? 'PAID'
+                  : totalPendingAmount > 0
+                    ? 'PENDING'
+                    : 'PENDING';
+
+              const isCompleted = intern.lifecycleStatus === 'COMPLETED';
+              const lockedByEndProgram = !isCompleted;
+
+              next.push({
+                id: internId,
+                internId,
+                internName: intern.name,
+                avatar: intern.avatar,
+                bankName: intern.bankName,
+                bankAccountNumber: intern.bankAccountNumber,
+                amount: totalAmount,
+                calculatedAmount: totalCalculatedAmount,
+                period: 'End Program',
+                breakdown,
+                status,
+                ...(lockedByEndProgram ? { isPayoutLocked: true, lockReason: 'Locked until program completion' } : {}),
+              });
+            });
+          }
+
+          // Include interns that don't have a wallet doc yet (e.g., never recalculated/synced).
+          for (const internId of internIds) {
+            if (foundWalletIds.has(internId)) continue;
+            const intern = internById.get(internId);
+            if (!intern) continue;
+            const isCompleted = intern.lifecycleStatus === 'COMPLETED';
+            const lockedByEndProgram = !isCompleted;
+            next.push({
+              id: internId,
+              internId,
+              internName: intern.name,
+              avatar: intern.avatar,
+              bankName: intern.bankName,
+              bankAccountNumber: intern.bankAccountNumber,
+              amount: 0,
+              calculatedAmount: 0,
+              period: 'End Program',
+              breakdown: { wfo: 0, wfh: 0, leaves: 0 },
+              status: 'PENDING',
+              ...(lockedByEndProgram ? { isPayoutLocked: true, lockReason: 'Locked until program completion' } : {}),
+            });
+          }
+
+          next.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+          if (!cancelled) setAllowanceClaims(next);
+          return;
+        }
+
         const snap = await getDocs(
           query(collection(firestoreDb, 'allowanceClaims'), where('monthKey', '==', monthKey)),
         );
-
-        const internById = new Map(internRoster.map((i) => [i.id, i] as const));
         const next: AllowanceClaim[] = [];
 
         snap.forEach((d) => {

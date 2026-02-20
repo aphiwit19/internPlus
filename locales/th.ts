@@ -672,6 +672,50 @@ const th = {
       clock_in: 'ลงเวลาเข้างาน',
       clock_out: 'ลงเวลาออกงาน',
     },
+    retroactive: {
+      open_button: 'ขอลงเวลาย้อนหลัง',
+      title: 'ขอลงเวลาย้อนหลัง',
+      status_label: 'สถานะ',
+      notice_submitted_waiting: 'ส่งคำขอแล้ว รอการอนุมัติ',
+      actions: {
+        cancel: 'ยกเลิก',
+        submit: 'ส่งคำขอ',
+        update: 'อัปเดต',
+      },
+      fields: {
+        date: 'วันที่',
+        work_mode: 'รูปแบบการทำงาน',
+        clock_in: 'เวลาเข้า (HH:MM)',
+        clock_out: 'เวลาออก (HH:MM)',
+        note_required: 'หมายเหตุ (จำเป็น)',
+        attachments_optional: 'แนบเอกสาร (ไม่บังคับ)',
+      },
+      errors: {
+        submit_failed: 'ส่งคำขอแก้ไขเวลาไม่สำเร็จ',
+      },
+    },
+    excel: {
+      section_label: 'นำเข้า Excel',
+      title: 'อัปโหลดไฟล์ลงเวลา (Excel)',
+      recent_uploads: 'อัปโหลดล่าสุด',
+      reviewed_by: 'ตรวจสอบโดย',
+      notice_uploaded_waiting: 'อัปโหลด Excel แล้ว รอการอนุมัติ',
+      actions: {
+        upload: 'อัปโหลด',
+        uploading: 'กำลังอัปโหลด...',
+      },
+      errors: {
+        upload_failed: 'อัปโหลด Excel ไม่สำเร็จ',
+      },
+    },
+    correction: {
+      actions: {
+        submit: 'ส่งคำขอ',
+      },
+      errors: {
+        submit_failed: 'ส่งคำขอแก้ไขเวลาไม่สำเร็จ',
+      },
+    },
     filters: {
       title: 'ตัวกรองรายงานเวลา',
       date_range: 'ช่วงวันที่',
@@ -719,8 +763,8 @@ const th = {
     breadcrumb: 'ตั้งค่า > บัญชี',
     title: 'โปรไฟล์และตัวตนของฉัน',
     subtitle: 'ตรวจสอบรายละเอียดส่วนตัวและคลังเอกสารที่ปลอดภัย',
-    summary_text:
-      'นักออกแบบ UI/UX ระดับเริ่มต้นที่มุ่งเน้นการสร้างประสบการณ์ดิจิทัลที่ใช้งานง่าย กำลังฝึกงานในทีม Product Design ที่ internPlus โดยเน้นแนวคิด user-centered และการสร้าง design system ที่ขยายได้',
+    summary_text: 'ตัวอย่าง: นักออกแบบ UI/UX ระดับเริ่มต้นที่มุ่งเน้นการสร้างประสบการณ์ที่ใช้งานง่าย',
+    summary_placeholder: 'ตัวอย่าง: นักออกแบบ UI/UX ระดับเริ่มต้นที่มุ่งเน้นการสร้างประสบการณ์ที่ใช้งานง่าย',
     labels: {
       position: 'ตำแหน่ง',
       period: 'ช่วงเวลา',

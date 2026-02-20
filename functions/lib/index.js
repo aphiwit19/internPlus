@@ -1,6 +1,7 @@
 import admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2/options';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 import sharp from 'sharp';
@@ -29,6 +30,55 @@ export const syncAllowanceWallet = onCall({ cors: true }, async (request) => {
         throw new HttpsError('internal', message);
     }
 });
+export const recalculateMyAllowance = onCall({ cors: true }, async (request) => {
+    const caller = await assertInternSelf(request);
+    const monthKey = String(request.data?.monthKey ?? '').trim();
+    if (!monthKey)
+        throw new HttpsError('invalid-argument', 'Missing monthKey');
+    if (!/^\d{4}-\d{2}$/.test(monthKey))
+        throw new HttpsError('invalid-argument', 'Invalid monthKey');
+    const db = admin.firestore();
+    try {
+        const result = await recalculateAllowanceClaimInternal(db, caller.uid, monthKey);
+        await syncAllowanceWalletInternal(db, caller.uid);
+        return { ok: true, ...result };
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error('recalculateMyAllowance:error', { uid: caller.uid, monthKey, err });
+        throw new HttpsError('internal', message);
+    }
+});
+export const onAttendanceWritten = onDocumentWritten('users/{internId}/attendance/{dateKey}', async (event) => {
+    try {
+        const internId = String(event.params?.internId ?? '').trim();
+        if (!internId)
+            return;
+        const after = event.data?.after?.data();
+        if (!after)
+            return;
+        const before = event.data?.before?.data();
+        // Only recompute once a clock-out exists (calculation requires both clockInAt + clockOutAt).
+        const hasClockIn = Boolean(after?.clockInAt);
+        const hasClockOut = Boolean(after?.clockOutAt);
+        if (!hasClockIn || !hasClockOut)
+            return;
+        // Avoid reprocessing if clockOutAt already existed before.
+        if (before?.clockOutAt)
+            return;
+        const dateKey = typeof after?.date === 'string' ? after.date : String(event.params?.dateKey ?? '');
+        // dateKey is expected to be YYYY-MM-DD.
+        const monthKey = typeof dateKey === 'string' && dateKey.length >= 7 ? dateKey.slice(0, 7) : '';
+        if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey))
+            return;
+        const db = admin.firestore();
+        await recalculateAllowanceClaimInternal(db, internId, monthKey);
+        await syncAllowanceWalletInternal(db, internId);
+    }
+    catch (err) {
+        console.error('onAttendanceWritten:error', err);
+    }
+});
 const THIS_FILE_DIR = path.dirname(fileURLToPath(import.meta.url));
 function assertAdmin(context) {
     const auth = context.auth;
@@ -41,6 +91,16 @@ async function getCallerRoles(uid) {
     const snap = await admin.firestore().collection('users').doc(uid).get();
     const roles = (snap.exists ? snap.data()?.roles : null);
     return Array.isArray(roles) ? roles : [];
+}
+async function assertInternSelf(context) {
+    const auth = context.auth;
+    if (!auth)
+        throw new HttpsError('unauthenticated', 'Please sign in.');
+    const uid = auth.uid;
+    const roles = await getCallerRoles(uid);
+    if (!roles.includes('INTERN'))
+        throw new HttpsError('permission-denied', 'Intern only.');
+    return { uid, roles };
 }
 async function assertHrAdminOrSupervisor(context) {
     const auth = context.auth;
@@ -269,7 +329,10 @@ async function recalculateAllowanceClaimInternal(db, internId, monthKey) {
     }
     const attendanceRef = db.collection('users').doc(internId).collection('attendance');
     const [attSnap, leaveSnap, corrSnap] = await Promise.all([
-        attendanceRef.where('date', '>=', toDateKey(periodStart)).where('date', '<=', toDateKey(periodEnd)).get(),
+        attendanceRef
+            .where(admin.firestore.FieldPath.documentId(), '>=', toDateKey(periodStart))
+            .where(admin.firestore.FieldPath.documentId(), '<=', toDateKey(periodEnd))
+            .get(),
         (async () => {
             const prevWindowStart = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() - 31);
             const leaveFromKey = toDateKey(prevWindowStart);
@@ -299,10 +362,6 @@ async function recalculateAllowanceClaimInternal(db, internId, monthKey) {
         if (!hasClockIn)
             return;
         const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
-        if (mode === 'WFH')
-            wfh += 1;
-        else
-            wfo += 1;
         const clockInAt = coerceToDate(raw?.clockInAt);
         const clockOutAt = coerceToDate(raw?.clockOutAt);
         if (!clockInAt || !clockOutAt)
@@ -315,6 +374,10 @@ async function recalculateAllowanceClaimInternal(db, internId, monthKey) {
         const payableHours = Math.min(8, Math.max(0, totalHours - 1));
         if (payableHours <= 0)
             return;
+        if (mode === 'WFH')
+            wfh += 1;
+        else
+            wfo += 1;
         const dayRate = mode === 'WFH' ? allowanceRules.wfhRate : allowanceRules.wfoRate;
         const hourRate = dayRate / 8;
         monthlyGross += hourRate * payableHours;

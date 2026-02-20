@@ -66,7 +66,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   ];
 
   const [docList, setDocList] = useState<DocumentStatus[]>(() => buildInitialDocuments());
-  const [summary] = useState(() => tr('intern_profile.summary_text'));
+  const summary = String(user?.professionalSummary ?? '').trim();
+  const summaryPlaceholder = tr('intern_profile.summary_placeholder');
+  const coreSkills = Array.isArray(user?.coreSkills) ? user.coreSkills.filter((x) => typeof x === 'string' && x.trim()) : [];
+  const goal = String((user as any)?.professionalGoal ?? '').trim();
+  const languageSkills = Array.isArray((user as any)?.languageSkills) ? ((user as any).languageSkills as any[]) : [];
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null);
@@ -84,6 +88,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
     internPeriod: '',
     bankName: '',
     bankAccountNumber: '',
+    professionalSummary: '',
+    coreSkillsText: '',
+    professionalGoal: '',
+    languageSkillsText: '',
   });
 
   useEffect(() => {
@@ -97,6 +105,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
       internPeriod: user.internPeriod || '',
       bankName: user.bankName || '',
       bankAccountNumber: user.bankAccountNumber || '',
+      professionalSummary: user.professionalSummary || '',
+      coreSkillsText: Array.isArray((user as any).coreSkills) ? String((user as any).coreSkills.join(', ')) : '',
+      professionalGoal: typeof (user as any).professionalGoal === 'string' ? (user as any).professionalGoal : '',
+      languageSkillsText: Array.isArray((user as any).languageSkills)
+        ? (user as any).languageSkills
+            .map((x: any) => {
+              const name = typeof x?.name === 'string' ? x.name : '';
+              const level = typeof x?.level === 'string' ? x.level : '';
+              return [name, level].filter(Boolean).join(':');
+            })
+            .filter(Boolean)
+            .join(', ')
+        : '',
     });
   }, [user]);
 
@@ -164,6 +185,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
 
   const handleSaveProfile = async () => {
     if (!user) return;
+    const coreSkillsParsed = editForm.coreSkillsText
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const languageSkillsParsed = editForm.languageSkillsText
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map((pair) => {
+        const [name, ...rest] = pair.split(':').map((x) => x.trim());
+        const level = rest.join(':').trim();
+        return { name: name || '', level: level || '' };
+      })
+      .filter((x) => x.name);
     await updateDoc(doc(firestoreDb, 'users', user.id), {
       name: editForm.name,
       phone: editForm.phone,
@@ -173,6 +208,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
       internPeriod: editForm.internPeriod,
       bankName: editForm.bankName,
       bankAccountNumber: editForm.bankAccountNumber,
+      professionalSummary: editForm.professionalSummary,
+      coreSkills: coreSkillsParsed,
+      professionalGoal: editForm.professionalGoal,
+      languageSkills: languageSkillsParsed,
     });
     setIsEditing(false);
   };
@@ -302,26 +341,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
             </div>
           </div>
 
-          <div className="col-span-12 lg:col-span-6 space-y-8">
-              <div className="space-y-8 animate-in fade-in duration-500 slide-in-from-bottom-2">
-                <div className="bg-[#0B0F19] rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden">
-                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between mb-8 gap-6">
-                      <div>
-                        <h3 className="text-xl font-black tracking-tight">{tr('intern_profile.progress.title')}</h3>
-                        <p className="text-slate-400 text-xs font-bold mt-1">{tr('intern_profile.progress.completed_of_total', { done: uploadedCount, total: docList.length } as any)}</p>
-                      </div>
-                   </div>
-                   <div className="relative h-2.5 w-full bg-slate-800 rounded-full overflow-hidden mb-6">
-                      <div className="h-full bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.6)] transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
-                   </div>
-                   <div className="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                      <span>{tr('intern_profile.progress.initiated')}</span>
-                      <span className="text-blue-400">{tr('intern_profile.progress.percent_completed', { percent: progressPercent } as any)}</span>
-                      <span>{tr('intern_profile.progress.verified')}</span>
-                   </div>
-                </div>
-
-                <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
+          <div className="col-span-12 lg:col-span-6 h-full flex flex-col">
+              <div className="h-full flex flex-col animate-in fade-in duration-500 slide-in-from-bottom-2">
+                <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm flex-1 h-full">
                    <div className="flex items-center justify-between mb-10">
                       <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
                         <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
@@ -330,35 +352,78 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
                       <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{tr('intern_profile.actions.edit')}</button>
                    </div>
                    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-12 italic opacity-80">
-                     "{summary}"
+                     {summary ? `"${summary}"` : summaryPlaceholder}
                    </p>
-                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                      <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                   {(
+                     !summary &&
+                     coreSkills.length === 0 &&
+                     !goal &&
+                     (!Array.isArray(languageSkills) || languageSkills.length === 0)
+                   ) && (
+                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
                          <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.core_skills')}</h5>
                          <div className="flex flex-wrap gap-2">
-                            {['UI Design', 'Figma', 'React'].map(s => (
-                              <span key={s} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-blue-600 shadow-sm">{s}</span>
-                            ))}
+                           {['Example: UI Design', 'Example: Figma', 'Example: React'].map((s) => (
+                             <span key={s} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-blue-600 shadow-sm">
+                               {s}
+                             </span>
+                           ))}
                          </div>
-                      </div>
-                      <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                       </div>
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
                          <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.goal')}</h5>
-                         <p className="text-[11px] font-bold text-slate-600 leading-relaxed">{tr('intern_profile.summary.goal_text')}</p>
-                      </div>
-                      <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                         <p className="text-[11px] font-bold text-slate-600 leading-relaxed">Example: {tr('intern_profile.summary.goal_text')}</p>
+                       </div>
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
                          <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.languages')}</h5>
                          <div className="space-y-3">
-                            <div className="flex justify-between text-[11px] font-bold">
-                               <span className="text-slate-800">{tr('intern_profile.languages.english')}</span>
-                               <span className="text-blue-500">{tr('intern_profile.languages.advanced')}</span>
-                            </div>
-                            <div className="flex justify-between text-[11px] font-bold">
-                               <span className="text-slate-800">{tr('intern_profile.languages.spanish')}</span>
-                               <span className="text-blue-500">{tr('intern_profile.languages.native')}</span>
-                            </div>
+                           <div className="flex justify-between text-[11px] font-bold">
+                             <span className="text-slate-800">Example: {tr('intern_profile.languages.english')}</span>
+                             <span className="text-blue-500">{tr('intern_profile.languages.advanced')}</span>
+                           </div>
+                           <div className="flex justify-between text-[11px] font-bold">
+                             <span className="text-slate-800">Example: {tr('intern_profile.languages.spanish')}</span>
+                             <span className="text-blue-500">{tr('intern_profile.languages.native')}</span>
+                           </div>
                          </div>
-                      </div>
-                   </div>
+                       </div>
+                     </div>
+                   )}
+
+                   {(coreSkills.length > 0 || goal || (Array.isArray(languageSkills) && languageSkills.length > 0)) && (
+                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.core_skills')}</h5>
+                         <div className="flex flex-wrap gap-2">
+                           {(coreSkills.length > 0 ? coreSkills : ['-']).map((s) => (
+                             <span key={s} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-blue-600 shadow-sm">
+                               {s}
+                             </span>
+                           ))}
+                         </div>
+                       </div>
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.goal')}</h5>
+                         <p className="text-[11px] font-bold text-slate-600 leading-relaxed">{goal || '-'}</p>
+                       </div>
+                       <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                         <h5 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">{tr('intern_profile.summary.languages')}</h5>
+                         <div className="space-y-3">
+                           {(Array.isArray(languageSkills) && languageSkills.length > 0 ? languageSkills : [{ name: '-', level: '' }]).map((x: any, idx: number) => {
+                             const name = typeof x?.name === 'string' ? x.name : '-';
+                             const level = typeof x?.level === 'string' ? x.level : '';
+                             return (
+                               <div key={`${name}-${idx}`} className="flex justify-between text-[11px] font-bold">
+                                 <span className="text-slate-800">{name}</span>
+                                 <span className="text-blue-500">{level}</span>
+                               </div>
+                             );
+                           })}
+                         </div>
+                       </div>
+                     </div>
+                   )}
                 </div>
 
               </div>
@@ -403,6 +468,10 @@ const EditProfileModal: React.FC<{
     internPeriod: string;
     bankName: string;
     bankAccountNumber: string;
+    professionalSummary: string;
+    coreSkillsText: string;
+    professionalGoal: string;
+    languageSkillsText: string;
   };
   onChange: (next: {
     name: string;
@@ -413,6 +482,10 @@ const EditProfileModal: React.FC<{
     internPeriod: string;
     bankName: string;
     bankAccountNumber: string;
+    professionalSummary: string;
+    coreSkillsText: string;
+    professionalGoal: string;
+    languageSkillsText: string;
   }) => void;
   onClose: () => void;
   onSave: () => void;
@@ -443,6 +516,41 @@ const EditProfileModal: React.FC<{
               <Field label={tr('intern_profile.edit_modal.fields.intern_period')} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.bank')} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.bank_account_number')} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
+            </div>
+            <div className="mt-5">
+              <label className="space-y-2 block">
+                <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_profile.summary.title')}</div>
+                <textarea
+                  value={form.professionalSummary}
+                  onChange={(e) => onChange({ ...form, professionalSummary: e.target.value })}
+                  placeholder={tr('intern_profile.summary_placeholder')}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[140px]"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field
+                label={tr('intern_profile.summary.core_skills')}
+                value={form.coreSkillsText}
+                onChange={(v) => onChange({ ...form, coreSkillsText: v })}
+              />
+              <Field
+                label={tr('intern_profile.summary.languages')}
+                value={form.languageSkillsText}
+                onChange={(v) => onChange({ ...form, languageSkillsText: v })}
+              />
+            </div>
+
+            <div className="mt-5">
+              <label className="space-y-2 block">
+                <div className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_profile.summary.goal')}</div>
+                <textarea
+                  value={form.professionalGoal}
+                  onChange={(e) => onChange({ ...form, professionalGoal: e.target.value })}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[120px]"
+                />
+              </label>
             </div>
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">

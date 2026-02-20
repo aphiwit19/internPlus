@@ -10,7 +10,6 @@ import { useAppContext } from './AppContext';
 import { isPageId, pageIdToPath, RoleSlug, slugToRole } from './routeUtils';
 
 import InternDashboard from '@/pages/intern/InternDashboard';
-import OnboardingPage from '@/pages/intern/OnboardingPage';
 import ProfilePage from '@/pages/intern/ProfilePage';
 import DocumentsPage from '@/pages/intern/DocumentsPage.tsx';
 import TrainingPage from '@/pages/intern/TrainingPage';
@@ -125,8 +124,6 @@ export default function RolePage() {
     switch (resolvedPageId) {
       case 'dashboard':
         return <InternDashboard user={user} onNavigate={onNavigate} lang={lang} />;
-      case 'onboarding':
-        return <OnboardingPage onNavigate={onNavigate} lang={lang} />;
       case 'profile':
         return <ProfilePage lang={lang} />;
       case 'documents':

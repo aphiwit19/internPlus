@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Clock, 
   Calendar, 
@@ -29,9 +28,10 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { ref as storageRef, uploadBytes } from 'firebase/storage';
 
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseStorage, firebaseFunctions } from '@/firebase';
 import { useTranslation } from 'react-i18next';
 
 type WorkMode = 'WFH' | 'WFO';
@@ -44,6 +44,8 @@ interface AttendanceRecord {
   status: 'PRESENT' | 'LATE' | 'ABSENT';
   workMode: WorkMode;
   workDuration?: string;
+  clockInAtMs?: number;
+  clockOutAtMs?: number;
 }
 
 interface AttendancePageProps {
@@ -54,6 +56,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const { t } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+
+  const lastAutoRecalcKeyRef = useRef<string>('');
 
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [isClockedIn, setIsClockedIn] = useState(false);
@@ -206,6 +210,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
             const mode: WorkMode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
             const clockIn = formatTime(raw?.clockInAt) ?? '--';
             const clockOut = formatTime(raw?.clockOutAt);
+            const clockInAtMs = typeof raw?.clockInAt?.toMillis === 'function' ? raw.clockInAt.toMillis() : undefined;
+            const clockOutAtMs = typeof raw?.clockOutAt?.toMillis === 'function' ? raw.clockOutAt.toMillis() : undefined;
             const status = raw?.clockInAt ? computeStatus(raw.clockInAt) : 'ABSENT';
             const duration = raw?.clockInAt && raw?.clockOutAt ? computeDuration(raw.clockInAt, raw.clockOutAt) : undefined;
             return {
@@ -216,6 +222,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
               status,
               workMode: mode,
               workDuration: duration,
+              clockInAtMs,
+              clockOutAtMs,
             } satisfies AttendanceRecord;
           })
           .filter((it) => Boolean(it.date));
@@ -231,6 +239,21 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
         } else {
           setIsClockedIn(false);
           setClockInTime(null);
+        }
+
+        if (user) {
+          const hasClockIn = typeof today?.clockInAtMs === 'number';
+          const hasClockOut = typeof today?.clockOutAtMs === 'number';
+          if (today && hasClockIn && hasClockOut) {
+            const key = `${today.date}_${today.clockInAtMs}_${today.clockOutAtMs}`;
+            if (lastAutoRecalcKeyRef.current !== key) {
+              lastAutoRecalcKeyRef.current = key;
+              const monthKey = today.date.slice(0, 7);
+              void httpsCallable(firebaseFunctions, 'recalculateMyAllowance')({ monthKey }).catch((e) => {
+                console.error('recalculateMyAllowance failed', e);
+              });
+            }
+          }
         }
       },
       (err) => {
@@ -347,10 +370,10 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
         return;
       }
       setExcelFile(null);
-      setExcelNotice('Excel uploaded. Waiting for approval.');
+      setExcelNotice(tr('intern_attendance.excel.notice_uploaded_waiting'));
     } catch (e) {
       const err = e as { code?: string; message?: string };
-      setExcelError(`${String(err?.code ?? '')} ${String(err?.message ?? 'Failed to upload Excel')}`.trim());
+      setExcelError(`${String(err?.code ?? '')} ${String(err?.message ?? tr('intern_attendance.excel.errors.upload_failed'))}`.trim());
     } finally {
       setIsUploadingExcel(false);
     }
@@ -430,6 +453,14 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
           return;
         }
         await updateDoc(ref, { clockOutAt: serverTimestamp(), updatedAt: serverTimestamp() });
+
+        try {
+          const monthKey = todayKey.slice(0, 7);
+          await httpsCallable(firebaseFunctions, 'recalculateMyAllowance')({ monthKey });
+        } catch (e) {
+          const err = e as { message?: string };
+          console.error('recalculateMyAllowance failed', err);
+        }
       }
     } catch (e) {
       setActionError((e as { message?: string })?.message ?? tr('intern_attendance.errors.generic'));
@@ -586,8 +617,15 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     try {
       setIsSubmittingManual(true);
 
-      const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
-      const existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      let existingRaw: any = null;
+      try {
+        const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+        existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        if (String(err?.code ?? '') !== 'permission-denied') throw e;
+        existingRaw = null;
+      }
       if (existingRaw && existingRaw.status && existingRaw.status !== 'PENDING') {
         setActionError('This request has already been processed.');
         return;
@@ -605,40 +643,60 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
       for (const file of manualFiles) {
         const safeName = file.name;
         const storagePath = `users/${user.id}/documents/timeCorrections/${dateKey}/${Date.now()}_${safeName}`;
-        await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        try {
+          await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        } catch (e) {
+          const err = e as { code?: string; message?: string };
+          const projectId = (firestoreDb.app.options as any)?.projectId;
+          console.error('timeCorrection:storageUploadFailed', { storagePath, projectId, authUid: user.id, err });
+          setActionError(
+            `Storage upload failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim(),
+          );
+          return;
+        }
         newAttachments.push({ fileName: safeName, storagePath });
       }
 
-      await setDoc(
-        doc(firestoreDb, 'timeCorrections', id),
-        {
-          internId: user.id,
-          internName: (user as any)?.name ?? 'Unknown',
-          supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
-          date: dateKey,
-          workMode: manualWorkMode,
-          reason: note,
-          requestedClockIn,
-          requestedClockOut,
-          ...((keptAttachments.length > 0 || newAttachments.length > 0)
-            ? { attachments: [...keptAttachments, ...newAttachments] }
-            : {}),
-          status: 'PENDING',
-          createdAt: existingRaw?.createdAt ?? serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      try {
+        await setDoc(
+          doc(firestoreDb, 'timeCorrections', id),
+          {
+            internId: user.id,
+            internName: (user as any)?.name ?? 'Unknown',
+            supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
+            date: dateKey,
+            workMode: manualWorkMode,
+            reason: note,
+            requestedClockIn,
+            requestedClockOut,
+            ...((keptAttachments.length > 0 || newAttachments.length > 0)
+              ? { attachments: [...keptAttachments, ...newAttachments] }
+              : {}),
+            status: 'PENDING',
+            createdAt: existingRaw?.createdAt ?? serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        const projectId = (firestoreDb.app.options as any)?.projectId;
+        console.error('timeCorrection:firestoreWriteFailed', { docId: id, projectId, authUid: user.id, err });
+        setActionError(
+          `Firestore write failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim(),
+        );
+        return;
+      }
 
       setManualFiles([]);
-      setActionNotice('Request submitted. Waiting for approval.');
+      setActionNotice(tr('intern_attendance.retroactive.notice_submitted_waiting'));
       setIsManualCorrectionOpen(false);
       setManualDate('');
       setManualClockIn('');
       setManualClockOut('');
       setManualNote('');
     } catch (e) {
-      setActionError((e as { message?: string })?.message ?? 'Failed to submit correction request');
+      setActionError((e as { message?: string })?.message ?? tr('intern_attendance.retroactive.errors.submit_failed'));
     } finally {
       setIsSubmittingManual(false);
     }
@@ -677,8 +735,15 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
       setIsSubmittingCorrection(true);
       const id = `${user.id}_${record.date}`;
 
-      const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
-      const existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      let existingRaw: any = null;
+      try {
+        const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+        existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        if (String(err?.code ?? '') !== 'permission-denied') throw e;
+        existingRaw = null;
+      }
       if (existingRaw && existingRaw.status && existingRaw.status !== 'PENDING') {
         setActionError('This request has already been processed.');
         return;
@@ -688,34 +753,54 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
       for (const file of correctionFiles) {
         const safeName = file.name;
         const storagePath = `users/${user.id}/documents/timeCorrections/${record.date}/${Date.now()}_${safeName}`;
-        await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        try {
+          await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        } catch (e) {
+          const err = e as { code?: string; message?: string };
+          const projectId = (firestoreDb.app.options as any)?.projectId;
+          console.error('timeCorrection:storageUploadFailed', { storagePath, projectId, authUid: user.id, err });
+          setActionError(
+            `Storage upload failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim(),
+          );
+          return;
+        }
         attachments.push({ fileName: safeName, storagePath });
       }
 
-      await setDoc(
-        doc(firestoreDb, 'timeCorrections', id),
-        {
-          internId: user.id,
-          internName: (user as any)?.name ?? 'Unknown',
-          supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
-          date: record.date,
-          workMode: record.workMode,
-          reason,
-          ...(requestedClockIn ? { requestedClockIn } : {}),
-          ...(requestedClockOut ? { requestedClockOut } : {}),
-          ...(attachments.length > 0 ? { attachments } : {}),
-          status: 'PENDING',
-          createdAt: existingRaw?.createdAt ?? serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      try {
+        await setDoc(
+          doc(firestoreDb, 'timeCorrections', id),
+          {
+            internId: user.id,
+            internName: (user as any)?.name ?? 'Unknown',
+            supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
+            date: record.date,
+            workMode: record.workMode,
+            reason,
+            ...(requestedClockIn ? { requestedClockIn } : {}),
+            ...(requestedClockOut ? { requestedClockOut } : {}),
+            ...(attachments.length > 0 ? { attachments } : {}),
+            status: 'PENDING',
+            createdAt: existingRaw?.createdAt ?? serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        const projectId = (firestoreDb.app.options as any)?.projectId;
+        console.error('timeCorrection:firestoreWriteFailed', { docId: id, projectId, authUid: user.id, err });
+        setActionError(
+          `Firestore write failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim(),
+        );
+        return;
+      }
       setCorrectionReason('');
       setCorrectionClockIn('');
       setCorrectionClockOut('');
       setCorrectionFiles([]);
     } catch (e) {
-      setActionError((e as { message?: string })?.message ?? 'Failed to submit correction request');
+      setActionError((e as { message?: string })?.message ?? tr('intern_attendance.correction.errors.submit_failed'));
     } finally {
       setIsSubmittingCorrection(false);
     }
@@ -750,7 +835,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                 <div className="p-8 space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label className="space-y-2 block">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-in (HH:MM)</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.clock_in')}</div>
                       <input
                         value={correctionClockIn}
                         onChange={(e) => setCorrectionClockIn(e.target.value)}
@@ -759,7 +844,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                       />
                     </label>
                     <label className="space-y-2 block">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-out (HH:MM)</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.clock_out')}</div>
                       <input
                         value={correctionClockOut}
                         onChange={(e) => setCorrectionClockOut(e.target.value)}
@@ -779,7 +864,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   </label>
 
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach document (optional)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.attachments_optional')}</div>
                     <input
                       type="file"
                       multiple
@@ -802,14 +887,14 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                       disabled={isSubmittingCorrection}
                       className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
                     >
-                      Cancel
+                      {tr('intern_attendance.retroactive.actions.cancel')}
                     </button>
                     <button
                       onClick={() => void handleSubmitCorrection()}
                       disabled={isSubmittingCorrection || !correctionReason.trim()}
                       className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
                     >
-                      Submit
+                      {tr('intern_attendance.correction.actions.submit')}
                     </button>
                   </div>
                 </div>
@@ -828,7 +913,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
               <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Request Retroactive Entry</h3>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('intern_attendance.retroactive.title')}</h3>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
                       {manualDate || '--'}
                     </div>
@@ -844,7 +929,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                 <div className="p-8 space-y-5">
                   {manualDate && correctionsByDate[manualDate]?.status ? (
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      Status: {correctionsByDate[manualDate]?.status}
+                      {tr('intern_attendance.retroactive.status_label')}: {correctionsByDate[manualDate]?.status}
                     </div>
                   ) : null}
 
@@ -855,7 +940,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   ) : null}
 
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.date')}</div>
                     <input
                       type="date"
                       value={manualDate}
@@ -865,7 +950,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   </label>
 
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Work mode</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.work_mode')}</div>
                     <select
                       value={manualWorkMode}
                       onChange={(e) => setManualWorkMode(e.target.value === 'WFH' ? 'WFH' : 'WFO')}
@@ -898,7 +983,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   </div>
 
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (required)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.note_required')}</div>
                     <textarea
                       value={manualNote}
                       onChange={(e) => setManualNote(e.target.value)}
@@ -907,7 +992,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   </label>
 
                   <label className="space-y-2 block">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach document (optional)</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.retroactive.fields.attachments_optional')}</div>
                     <input
                       type="file"
                       multiple
@@ -928,7 +1013,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                       disabled={isSubmittingManual}
                       className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
                     >
-                      Cancel
+                      {tr('intern_attendance.retroactive.actions.cancel')}
                     </button>
                     <button
                       onClick={() => void handleSubmitManualCorrection()}
@@ -939,7 +1024,9 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                       }
                       className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
                     >
-                      {manualDate && correctionsByDate[manualDate]?.status === 'PENDING' ? 'Update' : 'Submit'}
+                      {manualDate && correctionsByDate[manualDate]?.status === 'PENDING'
+                        ? tr('intern_attendance.retroactive.actions.update')
+                        : tr('intern_attendance.retroactive.actions.submit')}
                     </button>
                   </div>
                 </div>
@@ -967,7 +1054,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                 onClick={() => void handleOpenManualCorrection()}
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm transition-all bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
               >
-                <Info size={16} /> Request Retroactive Entry
+                <Info size={16} /> {tr('intern_attendance.retroactive.open_button')}
               </button>
               <button
                 onClick={() => { if (!isClockedIn) void handleClockToggle(); }}
@@ -1010,8 +1097,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
         <div className="mb-8 bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between gap-6 mb-4">
             <div>
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
-              <h3 className="text-lg font-black text-slate-900 mt-1">Upload attendance Excel</h3>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.excel.section_label')}</div>
+              <h3 className="text-lg font-black text-slate-900 mt-1">{tr('intern_attendance.excel.title')}</h3>
             </div>
           </div>
 
@@ -1043,13 +1130,13 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
               disabled={isUploadingExcel || !excelFile}
               className="px-7 py-4 rounded-[1.5rem] bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-60"
             >
-              {isUploadingExcel ? 'Uploading...' : 'Upload'}
+              {isUploadingExcel ? tr('intern_attendance.excel.actions.uploading') : tr('intern_attendance.excel.actions.upload')}
             </button>
           </div>
 
           {excelUploads.length > 0 ? (
             <div className="mt-5 pt-5 border-t border-slate-100">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recent uploads</div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('intern_attendance.excel.recent_uploads')}</div>
               <div className="mt-3 space-y-2">
                 {excelUploads.map((x) => (
                   <div key={x.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-start justify-between gap-4">
@@ -1062,7 +1149,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                       ) : null}
                       {x.reviewedByName ? (
                         <div className="text-[10px] font-bold text-slate-500 mt-2">
-                          Reviewed by: {x.reviewedByName}{x.reviewedByRole ? ` (${x.reviewedByRole})` : ''}
+                          {tr('intern_attendance.excel.reviewed_by')}: {x.reviewedByName}{x.reviewedByRole ? ` (${x.reviewedByRole})` : ''}
                         </div>
                       ) : null}
                     </div>

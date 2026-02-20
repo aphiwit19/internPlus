@@ -23,7 +23,6 @@ export function pageIdToPath(role: UserRole, pageId: PageId): string {
 export function isPageId(value: string): value is PageId {
   return (
     value === 'dashboard' ||
-    value === 'onboarding' ||
     value === 'profile' ||
     value === 'documents' ||
     value === 'training' ||

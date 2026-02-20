@@ -15,6 +15,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -81,6 +82,8 @@ const AttendanceTab: React.FC = () => {
   const tr = (key: string) => String(t(key));
   const { user } = useAppContext();
   const PAGE_SIZE = 5;
+  const EXCEL_REQUESTS_PAGE_SIZE = 3;
+  const CORRECTIONS_PAGE_SIZE = 3;
 
   const [interns, setInterns] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
   const [latestByIntern, setLatestByIntern] = useState<Record<string, AttendanceRow>>({});
@@ -96,6 +99,8 @@ const AttendanceTab: React.FC = () => {
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [excelRequestsPage, setExcelRequestsPage] = useState(1);
+  const [correctionsPage, setCorrectionsPage] = useState(1);
 
   const formatTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -344,6 +349,42 @@ const AttendanceTab: React.FC = () => {
     [currentPage, rows],
   );
 
+  const excelRequestsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(excelImports.length / EXCEL_REQUESTS_PAGE_SIZE)),
+    [excelImports.length],
+  );
+
+  useEffect(() => {
+    if (excelRequestsPage > excelRequestsTotalPages) setExcelRequestsPage(excelRequestsTotalPages);
+  }, [excelRequestsPage, excelRequestsTotalPages]);
+
+  useEffect(() => {
+    setExcelRequestsPage(1);
+  }, [excelImports.length]);
+
+  const pagedExcelImports = useMemo(
+    () => excelImports.slice((excelRequestsPage - 1) * EXCEL_REQUESTS_PAGE_SIZE, excelRequestsPage * EXCEL_REQUESTS_PAGE_SIZE),
+    [excelImports, excelRequestsPage],
+  );
+
+  const correctionsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(corrections.length / CORRECTIONS_PAGE_SIZE)),
+    [corrections.length],
+  );
+
+  useEffect(() => {
+    if (correctionsPage > correctionsTotalPages) setCorrectionsPage(correctionsTotalPages);
+  }, [correctionsPage, correctionsTotalPages]);
+
+  useEffect(() => {
+    setCorrectionsPage(1);
+  }, [corrections.length]);
+
+  const pagedCorrections = useMemo(
+    () => corrections.slice((correctionsPage - 1) * CORRECTIONS_PAGE_SIZE, correctionsPage * CORRECTIONS_PAGE_SIZE),
+    [corrections, correctionsPage],
+  );
+
   const toLocalDateFromKey = (dateKey: string): Date | null => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
     const [y, m, d] = dateKey.split('-').map((x) => Number(x));
@@ -394,25 +435,6 @@ const AttendanceTab: React.FC = () => {
           return;
         }
 
-        try {
-          const attSnap = await getDocs(
-            query(
-              collection(firestoreDb, 'users', decisionTarget.internId, 'attendance'),
-              where('date', '==', decisionTarget.date),
-              limit(1),
-            ),
-          );
-          if (!attSnap.empty) {
-            const raw = attSnap.docs[0].data() as any;
-            if (raw?.clockInAt && raw?.clockOutAt) {
-              setDecisionError('Attendance already exists for this date. Approval is blocked.');
-              return;
-            }
-          }
-        } catch {
-          setDecisionError('Failed to validate existing attendance.');
-          return;
-        }
         const clockInAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockIn);
         const clockOutAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockOut);
         if (!clockInAt || !clockOutAt || clockOutAt.getTime() <= clockInAt.getTime()) return;
@@ -423,12 +445,27 @@ const AttendanceTab: React.FC = () => {
           ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
           updatedAt: serverTimestamp(),
         });
-        await updateDoc(doc(firestoreDb, 'users', decisionTarget.internId, 'attendance', decisionTarget.date), {
-          clockInAt,
-          clockOutAt,
-          workMode: decisionTarget.workMode,
-          updatedAt: serverTimestamp(),
-        });
+
+        await setDoc(
+          doc(firestoreDb, 'users', decisionTarget.internId, 'attendance', decisionTarget.date),
+          {
+            date: decisionTarget.date,
+            clockInAt,
+            clockOutAt,
+            workMode: decisionTarget.workMode,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        try {
+          const recalcFn = httpsCallable(firebaseFunctions, 'recalculateAllowanceClaim');
+          await recalcFn({ internId: decisionTarget.internId, monthKey });
+          const syncFn = httpsCallable(firebaseFunctions, 'syncAllowanceWallet');
+          await syncFn({ internId: decisionTarget.internId });
+        } catch (e) {
+          console.error('timeCorrection:postApproveSyncFailed', e);
+        }
       } else {
         await updateDoc(doc(firestoreDb, 'timeCorrections', decisionTarget.id), {
           status: 'REJECTED',
@@ -625,7 +662,7 @@ const AttendanceTab: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {excelImports.map((req) => (
+            {pagedExcelImports.map((req) => (
               <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -692,6 +729,45 @@ const AttendanceTab: React.FC = () => {
             ))}
           </div>
         )}
+
+        {excelImports.length > EXCEL_REQUESTS_PAGE_SIZE ? (
+          <div className="pt-6 flex justify-center">
+            <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setExcelRequestsPage((p) => Math.max(1, p - 1))}
+                disabled={excelRequestsPage === 1}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              {Array.from({ length: excelRequestsTotalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setExcelRequestsPage(page)}
+                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                    page === excelRequestsPage
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setExcelRequestsPage((p) => Math.min(excelRequestsTotalPages, p + 1))}
+                disabled={excelRequestsPage === excelRequestsTotalPages}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
@@ -714,7 +790,7 @@ const AttendanceTab: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {corrections.map((req) => (
+            {pagedCorrections.map((req) => (
               <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -795,6 +871,45 @@ const AttendanceTab: React.FC = () => {
             ))}
           </div>
         )}
+
+        {corrections.length > CORRECTIONS_PAGE_SIZE ? (
+          <div className="pt-6 flex justify-center">
+            <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCorrectionsPage((p) => Math.max(1, p - 1))}
+                disabled={correctionsPage === 1}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              {Array.from({ length: correctionsTotalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCorrectionsPage(page)}
+                  className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                    page === correctionsPage
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setCorrectionsPage((p) => Math.min(correctionsTotalPages, p + 1))}
+                disabled={correctionsPage === correctionsTotalPages}
+                className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

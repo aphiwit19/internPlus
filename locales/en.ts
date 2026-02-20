@@ -673,6 +673,50 @@ const en = {
       clock_in: 'Clock In Now',
       clock_out: 'Clock Out Now',
     },
+    retroactive: {
+      open_button: 'Request Retroactive Entry',
+      title: 'Request Retroactive Entry',
+      status_label: 'Status',
+      notice_submitted_waiting: 'Request submitted. Waiting for approval.',
+      actions: {
+        cancel: 'Cancel',
+        submit: 'Submit',
+        update: 'Update',
+      },
+      fields: {
+        date: 'Date',
+        work_mode: 'Work mode',
+        clock_in: 'Clock-in (HH:MM)',
+        clock_out: 'Clock-out (HH:MM)',
+        note_required: 'Note (required)',
+        attachments_optional: 'Attach document (optional)',
+      },
+      errors: {
+        submit_failed: 'Failed to submit correction request',
+      },
+    },
+    excel: {
+      section_label: 'EXCEL IMPORT',
+      title: 'Upload attendance Excel',
+      recent_uploads: 'Recent uploads',
+      reviewed_by: 'Reviewed by',
+      notice_uploaded_waiting: 'Excel uploaded. Waiting for approval.',
+      actions: {
+        upload: 'Upload',
+        uploading: 'Uploading...',
+      },
+      errors: {
+        upload_failed: 'Failed to upload Excel',
+      },
+    },
+    correction: {
+      actions: {
+        submit: 'Submit',
+      },
+      errors: {
+        submit_failed: 'Failed to submit correction request',
+      },
+    },
     filters: {
       title: 'Time Report Filter',
       date_range: 'Date Range',
@@ -720,8 +764,8 @@ const en = {
     breadcrumb: 'SETTINGS > ACCOUNT',
     title: 'My Profile & Identity',
     subtitle: 'Review your professional details and secure document storage.',
-    summary_text:
-      'Dedicated Junior UI/UX Designer with a focus on creating intuitive digital experiences. Currently undergoing intensive training in the Product Design department at internPlus, focusing on user-centered methodologies and scalable design systems.',
+    summary_text: 'Example: Junior UI/UX Designer focused on creating intuitive digital experiences.',
+    summary_placeholder: 'Example: Junior UI/UX Designer focused on creating intuitive digital experiences.',
     labels: {
       position: 'POSITION',
       period: 'PERIOD',

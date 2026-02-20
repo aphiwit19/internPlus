@@ -54,6 +54,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [allowanceRules, setAllowanceRules] = useState({
+    payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
     wfoRate: 100,
     wfhRate: 50,
     applyTax: true,
@@ -70,6 +71,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
         const a = data?.allowance;
         if (!a) return;
         setAllowanceRules((prev) => ({
+          payoutFreq: a.payoutFreq === 'END_PROGRAM' ? 'END_PROGRAM' : 'MONTHLY',
           wfoRate: typeof a.wfoRate === 'number' ? a.wfoRate : prev.wfoRate,
           wfhRate: typeof a.wfhRate === 'number' ? a.wfhRate : prev.wfhRate,
           applyTax: typeof a.applyTax === 'boolean' ? a.applyTax : prev.applyTax,
@@ -135,18 +137,75 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           return;
         }
 
-        const bankByInternId = new Map<string, { bankName?: string; bankAccountNumber?: string }>();
+        const userByInternId = new Map<
+          string,
+          { bankName?: string; bankAccountNumber?: string; internName?: string; avatar?: string }
+        >();
         const idChunks = chunkArray(internIds, 10);
 
         for (const chunk of idChunks) {
           const userSnap = await getDocs(query(collection(firestoreDb, 'users'), where(documentId(), 'in', chunk)));
           userSnap.forEach((d) => {
             const raw = d.data() as any;
-            bankByInternId.set(d.id, {
+            userByInternId.set(d.id, {
               bankName: typeof raw?.bankName === 'string' ? raw.bankName : undefined,
               bankAccountNumber: typeof raw?.bankAccountNumber === 'string' ? raw.bankAccountNumber : undefined,
+              internName: typeof raw?.name === 'string' ? raw.name : undefined,
+              avatar: normalizeAvatarUrl(raw?.avatar),
             });
           });
+        }
+
+        if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+          const allRows: AllowanceClaim[] = [];
+          for (const chunk of idChunks) {
+            const walletSnap = await getDocs(
+              query(collection(firestoreDb, 'CurrentWallet'), where(documentId(), 'in', chunk)),
+            );
+            walletSnap.forEach((d) => {
+              const internId = d.id;
+              const raw = d.data() as any;
+              const u = userByInternId.get(internId);
+              const totalAmount = typeof raw?.totalAmount === 'number' ? raw.totalAmount : 0;
+              const totalCalculatedAmount =
+                typeof raw?.totalCalculatedAmount === 'number'
+                  ? raw.totalCalculatedAmount
+                  : typeof raw?.totalAmount === 'number'
+                    ? raw.totalAmount
+                    : 0;
+              const totalPaidAmount = typeof raw?.totalPaidAmount === 'number' ? raw.totalPaidAmount : 0;
+              const totalPendingAmount = typeof raw?.totalPendingAmount === 'number' ? raw.totalPendingAmount : 0;
+              const breakdown = {
+                wfo: typeof raw?.totalBreakdown?.wfo === 'number' ? raw.totalBreakdown.wfo : 0,
+                wfh: typeof raw?.totalBreakdown?.wfh === 'number' ? raw.totalBreakdown.wfh : 0,
+                leaves: typeof raw?.totalBreakdown?.leaves === 'number' ? raw.totalBreakdown.leaves : 0,
+              };
+              const status: AllowanceClaim['status'] =
+                totalAmount > 0 && totalPaidAmount >= totalAmount
+                  ? 'PAID'
+                  : totalPendingAmount > 0
+                    ? 'PENDING'
+                    : 'PENDING';
+
+              allRows.push({
+                id: internId,
+                internId,
+                internName: u?.internName ?? 'Unknown',
+                avatar: u?.avatar ?? '',
+                bankName: u?.bankName,
+                bankAccountNumber: u?.bankAccountNumber,
+                amount: totalAmount,
+                calculatedAmount: totalCalculatedAmount,
+                monthKey: selectedMonthKey,
+                period: 'End Program',
+                breakdown,
+                status,
+              });
+            });
+          }
+          allRows.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+          if (!cancelled) setClaims(allRows);
+          return;
         }
 
         const allClaims: AllowanceClaim[] = [];
@@ -167,7 +226,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
             const adminAdjustedAtMs =
               typeof raw?.adminAdjustedAt?.toMillis === 'function' ? raw.adminAdjustedAt.toMillis() : undefined;
-            const bank = bankByInternId.get(internId);
+            const u = userByInternId.get(internId);
 
             const breakdown = {
               wfo: typeof raw?.breakdown?.wfo === 'number' ? raw.breakdown.wfo : 0,
@@ -208,8 +267,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               internId,
               internName: typeof raw?.internName === 'string' ? raw.internName : 'Unknown',
               avatar: normalizeAvatarUrl(raw?.avatar),
-              bankName: bank?.bankName,
-              bankAccountNumber: bank?.bankAccountNumber,
+              bankName: u?.bankName,
+              bankAccountNumber: u?.bankAccountNumber,
               monthKey: typeof raw?.monthKey === 'string' ? raw.monthKey : selectedMonthKey,
               amount,
               calculatedAmount: computedNet,
@@ -250,7 +309,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
     return () => {
       cancelled = true;
     };
-  }, [allowanceRules.applyTax, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, assignedInternIds, selectedMonthKey]);
+  }, [allowanceRules.applyTax, allowanceRules.payoutFreq, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, assignedInternIds, selectedMonthKey]);
 
   const handleOpenEdit = (claim: AllowanceClaim) => {
     if (!assignedInternIds.includes(claim.internId)) return;
@@ -385,7 +444,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           selectedMonthKey={selectedMonthKey}
           onSelectMonthKey={setSelectedMonthKey}
           readOnly
-          allowEditInReadOnly
+          allowEditInReadOnly={allowanceRules.payoutFreq !== 'END_PROGRAM'}
           onRowClick={handleOpenEdit}
         />
 

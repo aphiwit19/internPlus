@@ -681,7 +681,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return Number.isNaN(dt.getTime()) ? null : dt;
   };
 
-  const TIME_CORRECTIONS_PAGE_SIZE = 5;
+  const TIME_CORRECTIONS_PAGE_SIZE = 3;
   const timeCorrectionsTotalPages = useMemo(
     () => Math.max(1, Math.ceil(pendingTimeCorrections.length / TIME_CORRECTIONS_PAGE_SIZE)),
     [pendingTimeCorrections.length],
@@ -700,7 +700,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return pendingTimeCorrections.slice(start, start + TIME_CORRECTIONS_PAGE_SIZE);
   }, [pendingTimeCorrections, timeCorrectionsPage]);
 
-  const EXCEL_IMPORTS_PAGE_SIZE = 5;
+  const EXCEL_IMPORTS_PAGE_SIZE = 3;
   const excelImportsTotalPages = useMemo(
     () => Math.max(1, Math.ceil(pendingExcelImports.length / EXCEL_IMPORTS_PAGE_SIZE)),
     [pendingExcelImports.length],
@@ -772,20 +772,6 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         return;
       }
 
-      try {
-        const attSnap = await getDoc(doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date));
-        if (attSnap.exists()) {
-          const raw = attSnap.data() as any;
-          if (raw?.clockInAt && raw?.clockOutAt) {
-            setDecisionError('Attendance already exists for this date. Approval is blocked.');
-            return;
-          }
-        }
-      } catch {
-        setDecisionError('Failed to validate existing attendance.');
-        return;
-      }
-
       const clockInAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockIn);
       const clockOutAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockOut);
       if (!clockInAt || !clockOutAt) return;
@@ -799,12 +785,28 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           ...(decisionNote.trim() ? { supervisorDecisionNote: decisionNote.trim() } : {}),
           updatedAt: serverTimestamp(),
         });
-        await updateDoc(doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date), {
-          clockInAt,
-          clockOutAt,
-          workMode: decisionCorrection.workMode === 'WFH' ? 'WFH' : 'WFO',
-          updatedAt: serverTimestamp(),
-        });
+
+        await setDoc(
+          doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date),
+          {
+            date: decisionCorrection.date,
+            clockInAt,
+            clockOutAt,
+            workMode: decisionCorrection.workMode === 'WFH' ? 'WFH' : 'WFO',
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+
+        try {
+          const monthKey = decisionCorrection.date.slice(0, 7);
+          const recalcFn = httpsCallable(firebaseFunctions, 'recalculateAllowanceClaim');
+          await recalcFn({ internId: decisionCorrection.internId, monthKey });
+          const syncFn = httpsCallable(firebaseFunctions, 'syncAllowanceWallet');
+          await syncFn({ internId: decisionCorrection.internId });
+        } catch (e) {
+          console.error('timeCorrection:postApproveSyncFailed', e);
+        }
         setDecisionCorrection(null);
         setDecisionMode(null);
         setDecisionNote('');
@@ -4018,7 +4020,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                           ) : (
                             <div className="space-y-3">
-                              {pendingTimeCorrections.slice(0, 5).map((req) => (
+                              {pendingTimeCorrections.slice(0, 3).map((req) => (
                                 <div key={req.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0">
@@ -4040,7 +4042,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                                   ) : null}
                                 </div>
                               ))}
-                              {pendingTimeCorrections.length > 5 ? (
+                              {pendingTimeCorrections.length > 3 ? (
                                 <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                   Click to view all
                                 </div>
@@ -4078,7 +4080,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {pendingExcelImports.slice(0, 5).map((req) => (
+                            {pendingExcelImports.slice(0, 3).map((req) => (
                               <div key={req.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
@@ -4089,7 +4091,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                                 </div>
                               </div>
                             ))}
-                            {pendingExcelImports.length > 5 ? (
+                            {pendingExcelImports.length > 3 ? (
                               <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Click to view all</div>
                             ) : null}
                           </div>
@@ -4363,6 +4365,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     {timeCorrectionsTotalPages > 1 ? (
                       <div className="pt-2 flex justify-center">
                         <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setTimeCorrectionsPage((p) => Math.max(1, p - 1))}
+                            disabled={timeCorrectionsPage === 1}
+                            className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+
                           {Array.from({ length: timeCorrectionsTotalPages }, (_, idx) => idx + 1).map((p) => (
                             <button
                               key={p}
@@ -4378,6 +4389,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               {p}
                             </button>
                           ))}
+
+                          <button
+                            type="button"
+                            onClick={() => setTimeCorrectionsPage((p) => Math.min(timeCorrectionsTotalPages, p + 1))}
+                            disabled={timeCorrectionsPage === timeCorrectionsTotalPages}
+                            className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          >
+                            <ChevronRight size={18} />
+                          </button>
                         </div>
                       </div>
                     ) : null}
@@ -4473,6 +4493,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                     {excelImportsTotalPages > 1 ? (
                       <div className="pt-2 flex justify-center">
                         <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setExcelImportsPage((p) => Math.max(1, p - 1))}
+                            disabled={excelImportsPage === 1}
+                            className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+
                           {Array.from({ length: excelImportsTotalPages }, (_, idx) => idx + 1).map((p) => (
                             <button
                               key={p}
@@ -4488,6 +4517,15 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               {p}
                             </button>
                           ))}
+
+                          <button
+                            type="button"
+                            onClick={() => setExcelImportsPage((p) => Math.min(excelImportsTotalPages, p + 1))}
+                            disabled={excelImportsPage === excelImportsTotalPages}
+                            className="w-10 h-10 rounded-xl border border-slate-100 bg-white text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                          >
+                            <ChevronRight size={18} />
+                          </button>
                         </div>
                       </div>
                     ) : null}

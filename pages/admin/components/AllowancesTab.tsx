@@ -297,14 +297,14 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                   <td className="py-6">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded-lg text-[9px] font-black" title="Office Days">
-                        <Building2 size={10} /> {claim.breakdown?.wfo ?? 0}
+                        <Building2 size={10} /> WFO {claim.breakdown?.wfo ?? 0}
                       </div>
                       <div className="flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-1 rounded-lg text-[9px] font-black" title="Remote Days">
-                        <Home size={10} /> {claim.breakdown?.wfh ?? 0}
+                        <Home size={10} /> WFH {claim.breakdown?.wfh ?? 0}
                       </div>
                       {(claim.breakdown?.leaves ?? 0) > 0 && (
                         <div className="flex items-center gap-1 bg-rose-50 text-rose-500 px-2 py-1 rounded-lg text-[9px] font-black" title="Unpaid Leave Days">
-                          <UserX size={10} /> {claim.breakdown?.leaves ?? 0}
+                          <UserX size={10} /> LEAVE {claim.breakdown?.leaves ?? 0}
                         </div>
                       )}
                     </div>

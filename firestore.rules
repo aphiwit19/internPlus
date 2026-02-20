@@ -18,15 +18,19 @@ service cloud.firestore {
     function myRoles() {
       return signedIn()
         ? (
-            myUserDocData().roles != null
+            myUserDocData().roles is list
               ? myUserDocData().roles
               : (
-                  myUserDocData().role != null
-                    ? [myUserDocData().role]
+                  myUserDocData().roles is string
+                    ? [myUserDocData().roles]
                     : (
-                        myUserDocData().isDualRole == true
-                          ? ['SUPERVISOR', 'HR_ADMIN']
-                          : []
+                        myUserDocData().role is string
+                          ? [myUserDocData().role]
+                          : (
+                              myUserDocData().isDualRole == true
+                                ? ['SUPERVISOR', 'HR_ADMIN']
+                                : []
+                            )
                       )
                 )
           )
@@ -170,6 +174,7 @@ service cloud.firestore {
       allow update, delete: if isHrAdmin() || (
         signedIn() && (
           resource.data.internId == request.auth.uid ||
+          request.resource.data.internId == request.auth.uid ||
           resource.data.supervisorId == request.auth.uid ||
           (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
         )
