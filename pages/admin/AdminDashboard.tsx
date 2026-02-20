@@ -203,7 +203,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
   const handleOpenAdminAllowanceEdit = (claim: AllowanceClaim) => {
     if (activeTab !== 'allowances') return;
-    if (claim.status !== 'PENDING') return;
+    if (claim.status === 'PAID') return;
     if (claim.isPayoutLocked) return;
     setEditingAllowanceClaim(claim);
     setEditAllowanceAmount(String(claim.amount ?? 0));
@@ -212,7 +212,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
   const handleSaveAdminAllowanceEdit = async () => {
     if (!editingAllowanceClaim) return;
-    if (editingAllowanceClaim.status !== 'PENDING') return;
+    if (editingAllowanceClaim.status === 'PAID') return;
     if (editingAllowanceClaim.isPayoutLocked) return;
 
     const nextAmount = Number(editAllowanceAmount);
