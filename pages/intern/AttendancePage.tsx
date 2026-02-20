@@ -16,6 +16,7 @@ import {
 import { Language } from '@/types';
 import { useAppContext } from '@/app/AppContext';
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -68,6 +69,22 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const [pendingFilterStatus, setPendingFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
   const [pendingFilterWorkMode, setPendingFilterWorkMode] = useState<'ALL' | WorkMode>('ALL');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [excelUploads, setExcelUploads] = useState<
+    Array<{
+      id: string;
+      fileName: string;
+      status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'FAILED';
+      submittedAtMs?: number;
+      reviewedByName?: string;
+      reviewedByRole?: string;
+    }>
+  >([]);
+  const [isUploadingExcel, setIsUploadingExcel] = useState(false);
+  const [excelError, setExcelError] = useState<string | null>(null);
+  const [excelNotice, setExcelNotice] = useState<string | null>(null);
 
   const [correctionRecord, setCorrectionRecord] = useState<AttendanceRecord | null>(null);
   const [correctionReason, setCorrectionReason] = useState('');
@@ -75,6 +92,16 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const [correctionClockOut, setCorrectionClockOut] = useState('');
   const [correctionFiles, setCorrectionFiles] = useState<File[]>([]);
   const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
+
+  const [isManualCorrectionOpen, setIsManualCorrectionOpen] = useState(false);
+  const [manualDate, setManualDate] = useState('');
+  const [manualWorkMode, setManualWorkMode] = useState<'WFH' | 'WFO'>('WFO');
+  const [manualClockIn, setManualClockIn] = useState('');
+  const [manualClockOut, setManualClockOut] = useState('');
+  const [manualNote, setManualNote] = useState('');
+  const [manualFiles, setManualFiles] = useState<File[]>([]);
+  const [isSubmittingManual, setIsSubmittingManual] = useState(false);
+  const [manualNotice, setManualNotice] = useState<string | null>(null);
 
   type CorrectionStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
   interface CorrectionInfo {
@@ -217,6 +244,107 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
 
   useEffect(() => {
     if (!user) {
+      setExcelUploads([]);
+      return;
+    }
+
+    const q = query(
+      collection(firestoreDb, 'attendanceExcelImports'),
+      where('internId', '==', user.id),
+      orderBy('submittedAt', 'desc'),
+      limit(5),
+    );
+
+    return onSnapshot(
+      q,
+      (snap) => {
+        const next: typeof excelUploads = [];
+        snap.forEach((d) => {
+          const raw = d.data() as any;
+          const submittedAtMs = typeof raw?.submittedAt?.toMillis === 'function' ? raw.submittedAt.toMillis() : undefined;
+          const status =
+            raw?.status === 'APPLIED' || raw?.status === 'FAILED' || raw?.status === 'APPROVED' || raw?.status === 'REJECTED'
+              ? raw.status
+              : 'PENDING';
+          next.push({
+            id: d.id,
+            fileName: typeof raw?.fileName === 'string' ? raw.fileName : 'Excel',
+            status,
+            submittedAtMs,
+            reviewedByName: typeof raw?.reviewedByName === 'string' ? raw.reviewedByName : undefined,
+            reviewedByRole: typeof raw?.reviewedByRole === 'string' ? raw.reviewedByRole : undefined,
+          });
+        });
+        setExcelUploads(next);
+      },
+      () => setExcelUploads([]),
+    );
+  }, [user]);
+
+  const handleUploadExcel = async () => {
+    if (!user) return;
+    if (!excelFile) return;
+    if (isUploadingExcel) return;
+    setExcelError(null);
+    setExcelNotice(null);
+
+    let supervisorId: string | undefined = typeof (user as any)?.supervisorId === 'string' ? (user as any).supervisorId : undefined;
+    if (!supervisorId) {
+      try {
+        const userSnap = await getDoc(doc(firestoreDb, 'users', user.id));
+        const userData = userSnap.exists() ? (userSnap.data() as any) : null;
+        const fromDoc = typeof userData?.supervisorId === 'string' ? userData.supervisorId : undefined;
+        supervisorId = fromDoc;
+      } catch {
+        // ignore
+      }
+    }
+
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const safeName = excelFile.name;
+    const storagePath = `users/${user.id}/documents/attendanceExcelImports/${monthKey}/${Date.now()}_${safeName}`;
+
+    try {
+      setIsUploadingExcel(true);
+      try {
+        await uploadBytes(storageRef(firebaseStorage, storagePath), excelFile);
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        console.error('excelUpload:storageFailed', { storagePath, err });
+        setExcelError(`Storage upload failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim());
+        return;
+      }
+
+      try {
+        await addDoc(collection(firestoreDb, 'attendanceExcelImports'), {
+          internId: user.id,
+          internName: (user as any)?.name ?? 'Unknown',
+          supervisorId: typeof supervisorId === 'string' ? supervisorId : null,
+          fileName: safeName,
+          storagePath,
+          status: 'PENDING',
+          submittedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        console.error('excelUpload:firestoreCreateFailed', { storagePath, err });
+        setExcelError(`Firestore create failed: ${String(err?.code ?? '')} ${String(err?.message ?? 'Missing or insufficient permissions.')}`.trim());
+        return;
+      }
+      setExcelFile(null);
+      setExcelNotice('Excel uploaded. Waiting for approval.');
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      setExcelError(`${String(err?.code ?? '')} ${String(err?.message ?? 'Failed to upload Excel')}`.trim());
+    } finally {
+      setIsUploadingExcel(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) {
       setCorrectionsByDate({});
       return;
     }
@@ -322,6 +450,17 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   };
 
+  const normalizeTimeValue = (value: string): string | null => {
+    const v = value.trim();
+    if (!v) return null;
+    const m = v.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(h) || !Number.isFinite(mm) || h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+
   const canRequestCorrection = (r: AttendanceRecord): boolean => {
     if (!user) return false;
     const hasClockIn = r.clockIn !== '--';
@@ -342,6 +481,156 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     setCorrectionFiles([]);
   };
 
+  const handleOpenManualCorrection = async () => {
+    if (!user) return;
+    setActionError(null);
+    setActionNotice(null);
+    setManualNotice(null);
+    const todayKey = toLocalDateKey(new Date());
+    setIsManualCorrectionOpen(true);
+    setManualDate(todayKey);
+    setManualWorkMode('WFO');
+    setManualClockIn('');
+    setManualClockOut('');
+    setManualNote('');
+    setManualFiles([]);
+
+    try {
+      const id = `${user.id}_${todayKey}`;
+      const snap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+      if (!snap.exists()) return;
+      const raw = snap.data() as any;
+      if (raw?.status !== 'PENDING') return;
+      if (typeof raw?.requestedClockIn === 'string') setManualClockIn(raw.requestedClockIn);
+      if (typeof raw?.requestedClockOut === 'string') setManualClockOut(raw.requestedClockOut);
+      if (typeof raw?.reason === 'string') setManualNote(raw.reason);
+      setManualWorkMode(raw?.workMode === 'WFH' ? 'WFH' : 'WFO');
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      if (!user) return;
+      if (!isManualCorrectionOpen) return;
+      if (!manualDate.trim()) return;
+      setManualNotice(null);
+      try {
+        const id = `${user.id}_${manualDate}`;
+        const snap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+        if (!snap.exists()) return;
+        const raw = snap.data() as any;
+        if (raw?.status !== 'PENDING') return;
+        if (typeof raw?.requestedClockIn === 'string') setManualClockIn(raw.requestedClockIn);
+        else setManualClockIn('');
+        if (typeof raw?.requestedClockOut === 'string') setManualClockOut(raw.requestedClockOut);
+        else setManualClockOut('');
+        if (typeof raw?.reason === 'string') setManualNote(raw.reason);
+        else setManualNote('');
+        setManualWorkMode(raw?.workMode === 'WFH' ? 'WFH' : 'WFO');
+      } catch {
+        // ignore
+      }
+    };
+
+    void run();
+  }, [isManualCorrectionOpen, manualDate, user]);
+
+  const handleSubmitManualCorrection = async () => {
+    if (!user) return;
+    setActionError(null);
+    setActionNotice(null);
+    setManualNotice(null);
+
+    const dateKey = manualDate.trim();
+    const ds = daysSince(dateKey);
+    if (!dateKey || ds == null || ds < 0) return;
+
+    const note = manualNote.trim();
+    if (!note) return;
+
+    const requestedClockIn = normalizeTimeValue(manualClockIn);
+    const requestedClockOut = normalizeTimeValue(manualClockOut);
+    if (!requestedClockIn || !requestedClockOut) return;
+
+    if (manualWorkMode !== 'WFH' && manualWorkMode !== 'WFO') return;
+
+    let supervisorId: string | undefined = typeof (user as any)?.supervisorId === 'string' ? (user as any).supervisorId : undefined;
+    if (!supervisorId) {
+      try {
+        const userSnap = await getDoc(doc(firestoreDb, 'users', user.id));
+        const userData = userSnap.exists() ? (userSnap.data() as any) : null;
+        const fromDoc = typeof userData?.supervisorId === 'string' ? userData.supervisorId : undefined;
+        supervisorId = fromDoc;
+      } catch {
+        // ignore
+      }
+    }
+
+    const id = `${user.id}_${dateKey}`;
+
+    try {
+      setIsSubmittingManual(true);
+
+      const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+      const existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      if (existingRaw && existingRaw.status && existingRaw.status !== 'PENDING') {
+        setActionError('This request has already been processed.');
+        return;
+      }
+
+      const prevAttachments = Array.isArray(existingRaw?.attachments) ? existingRaw.attachments : [];
+      const keptAttachments = prevAttachments.flatMap((a: any) => {
+        const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
+        const storagePath = typeof a?.storagePath === 'string' ? a.storagePath : '';
+        if (!fileName || !storagePath) return [];
+        return [{ fileName, storagePath }];
+      });
+
+      const newAttachments: Array<{ fileName: string; storagePath: string }> = [];
+      for (const file of manualFiles) {
+        const safeName = file.name;
+        const storagePath = `users/${user.id}/documents/timeCorrections/${dateKey}/${Date.now()}_${safeName}`;
+        await uploadBytes(storageRef(firebaseStorage, storagePath), file);
+        newAttachments.push({ fileName: safeName, storagePath });
+      }
+
+      await setDoc(
+        doc(firestoreDb, 'timeCorrections', id),
+        {
+          internId: user.id,
+          internName: (user as any)?.name ?? 'Unknown',
+          supervisorId: typeof supervisorId === 'string' ? supervisorId : undefined,
+          date: dateKey,
+          workMode: manualWorkMode,
+          reason: note,
+          requestedClockIn,
+          requestedClockOut,
+          ...((keptAttachments.length > 0 || newAttachments.length > 0)
+            ? { attachments: [...keptAttachments, ...newAttachments] }
+            : {}),
+          status: 'PENDING',
+          createdAt: existingRaw?.createdAt ?? serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      setManualFiles([]);
+      setActionNotice('Request submitted. Waiting for approval.');
+      setIsManualCorrectionOpen(false);
+      setManualDate('');
+      setManualClockIn('');
+      setManualClockOut('');
+      setManualNote('');
+    } catch (e) {
+      setActionError((e as { message?: string })?.message ?? 'Failed to submit correction request');
+    } finally {
+      setIsSubmittingManual(false);
+    }
+  };
+
   const handleSubmitCorrection = async () => {
     if (!user) return;
     if (!correctionRecord) return;
@@ -351,8 +640,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     const hasIn = correctionRecord.clockIn !== '--';
     const hasOut = Boolean(correctionRecord.clockOut);
 
-    const requestedClockIn = correctionClockIn.trim();
-    const requestedClockOut = correctionClockOut.trim();
+    const requestedClockIn = normalizeTimeValue(correctionClockIn);
+    const requestedClockOut = normalizeTimeValue(correctionClockOut);
     if (!hasIn && !requestedClockIn) return;
     if (!hasOut && !requestedClockOut) return;
 
@@ -375,6 +664,13 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
       setIsSubmittingCorrection(true);
       const id = `${user.id}_${record.date}`;
 
+      const existingSnap = await getDoc(doc(firestoreDb, 'timeCorrections', id));
+      const existingRaw = existingSnap.exists() ? (existingSnap.data() as any) : null;
+      if (existingRaw && existingRaw.status && existingRaw.status !== 'PENDING') {
+        setActionError('This request has already been processed.');
+        return;
+      }
+
       const attachments: Array<{ fileName: string; storagePath: string }> = [];
       for (const file of correctionFiles) {
         const safeName = file.name;
@@ -396,7 +692,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
           ...(requestedClockOut ? { requestedClockOut } : {}),
           ...(attachments.length > 0 ? { attachments } : {}),
           status: 'PENDING',
-          createdAt: serverTimestamp(),
+          createdAt: existingRaw?.createdAt ?? serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -509,6 +805,136 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
           </>
         )}
 
+        {isManualCorrectionOpen ? (
+          <>
+            <div
+              className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => (isSubmittingManual ? void 0 : setIsManualCorrectionOpen(false))}
+            />
+            <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Request Retroactive Entry</h3>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                      {manualDate || '--'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => (isSubmittingManual ? void 0 : setIsManualCorrectionOpen(false))}
+                    className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                    disabled={isSubmittingManual}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="p-8 space-y-5">
+                  {manualDate && correctionsByDate[manualDate]?.status ? (
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Status: {correctionsByDate[manualDate]?.status}
+                    </div>
+                  ) : null}
+
+                  {manualNotice ? (
+                    <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                      {manualNotice}
+                    </div>
+                  ) : null}
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Date</div>
+                    <input
+                      type="date"
+                      value={manualDate}
+                      onChange={(e) => setManualDate(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    />
+                  </label>
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Work mode</div>
+                    <select
+                      value={manualWorkMode}
+                      onChange={(e) => setManualWorkMode(e.target.value === 'WFH' ? 'WFH' : 'WFO')}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    >
+                      <option value="WFO">WFO</option>
+                      <option value="WFH">WFH</option>
+                    </select>
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="space-y-2 block">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-in (HH:MM)</div>
+                      <input
+                        value={manualClockIn}
+                        onChange={(e) => setManualClockIn(e.target.value)}
+                        placeholder="08:30"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                      />
+                    </label>
+                    <label className="space-y-2 block">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-out (HH:MM)</div>
+                      <input
+                        value={manualClockOut}
+                        onChange={(e) => setManualClockOut(e.target.value)}
+                        placeholder="17:30"
+                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (required)</div>
+                    <textarea
+                      value={manualNote}
+                      onChange={(e) => setManualNote(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[120px]"
+                    />
+                  </label>
+
+                  <label className="space-y-2 block">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach document (optional)</div>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        setManualFiles(files);
+                      }}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                    />
+                    {manualFiles.length > 0 ? (
+                      <div className="text-[11px] font-bold text-slate-500 break-words">{manualFiles.map((f) => f.name).join(', ')}</div>
+                    ) : null}
+                  </label>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setIsManualCorrectionOpen(false)}
+                      disabled={isSubmittingManual}
+                      className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => void handleSubmitManualCorrection()}
+                      disabled={
+                        isSubmittingManual ||
+                        !manualNote.trim() ||
+                        (manualDate && (correctionsByDate[manualDate]?.status === 'APPROVED' || correctionsByDate[manualDate]?.status === 'REJECTED'))
+                      }
+                      className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
+                    >
+                      {manualDate && correctionsByDate[manualDate]?.status === 'PENDING' ? 'Update' : 'Submit'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 md:mb-12">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">{tr('intern_attendance.title')}</h1>
@@ -523,6 +949,13 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
               </div>
             )}
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleOpenManualCorrection()}
+                className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm transition-all bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                <Info size={16} /> Request Retroactive Entry
+              </button>
               <button
                 onClick={() => { if (!isClockedIn) void handleClockToggle(); }}
                 disabled={isClockedIn}
@@ -554,6 +987,94 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
             {actionError}
           </div>
         )}
+
+        {actionNotice && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl px-5 py-4 text-sm font-bold">
+            {actionNotice}
+          </div>
+        )}
+
+        <div className="mb-8 bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between gap-6 mb-4">
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
+              <h3 className="text-lg font-black text-slate-900 mt-1">Upload attendance Excel</h3>
+            </div>
+          </div>
+
+          {excelError ? (
+            <div className="mb-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+              {excelError}
+            </div>
+          ) : null}
+
+          {excelNotice ? (
+            <div className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl px-5 py-4 text-sm font-bold">
+              {excelNotice}
+            </div>
+          ) : null}
+
+          <div className="flex flex-col md:flex-row md:items-center gap-3">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => {
+                const f = (e.target.files && e.target.files[0]) ? e.target.files[0] : null;
+                setExcelFile(f);
+              }}
+              className="flex-1 w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void handleUploadExcel()}
+              disabled={isUploadingExcel || !excelFile}
+              className="px-7 py-4 rounded-[1.5rem] bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-60"
+            >
+              {isUploadingExcel ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+
+          {excelUploads.length > 0 ? (
+            <div className="mt-5 pt-5 border-t border-slate-100">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recent uploads</div>
+              <div className="mt-3 space-y-2">
+                {excelUploads.map((x) => (
+                  <div key={x.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-black text-slate-900 truncate">{x.fileName}</div>
+                      {typeof x.submittedAtMs === 'number' ? (
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                          {new Date(x.submittedAtMs).toLocaleString()}
+                        </div>
+                      ) : null}
+                      {x.reviewedByName ? (
+                        <div className="text-[10px] font-bold text-slate-500 mt-2">
+                          Reviewed by: {x.reviewedByName}{x.reviewedByRole ? ` (${x.reviewedByRole})` : ''}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest ${
+                        x.status === 'APPLIED'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : x.status === 'FAILED'
+                            ? 'bg-rose-50 text-rose-700 border-rose-100'
+                            : x.status === 'REJECTED'
+                              ? 'bg-rose-50 text-rose-700 border-rose-100'
+                              : x.status === 'APPROVED'
+                                ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                : 'bg-amber-50 text-amber-700 border-amber-100'
+                      }`}
+                      >
+                        {x.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
           <div className="lg:col-span-4 xl:col-span-3 space-y-6">

@@ -3,20 +3,24 @@ import { useTranslation } from 'react-i18next';
 
 import { Building2, ChevronLeft, ChevronRight, CircleAlert, Home, X } from 'lucide-react';
 
+import { httpsCallable } from 'firebase/functions';
+
 import {
   collection,
   doc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
 } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
 import { normalizeAvatarUrl } from '@/app/avatar';
 import { useAppContext } from '@/app/AppContext';
 
@@ -55,7 +59,21 @@ type CorrectionDoc = {
   requestedClockIn?: string;
   requestedClockOut?: string;
   supervisorDecisionNote?: string;
+  workMode: 'WFH' | 'WFO';
   attachments: Array<{ fileName: string; storagePath: string }>;
+};
+
+type ExcelImportDoc = {
+  id: string;
+  internId: string;
+  internName: string;
+  fileName: string;
+  storagePath: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'FAILED';
+  submittedAtMs?: number;
+  reviewedAtMs?: number;
+  reviewedByName?: string;
+  reviewedByRole?: string;
 };
 
 const AttendanceTab: React.FC = () => {
@@ -67,11 +85,15 @@ const AttendanceTab: React.FC = () => {
   const [interns, setInterns] = useState<Array<{ id: string; name: string; avatar: string }>>([]);
   const [latestByIntern, setLatestByIntern] = useState<Record<string, AttendanceRow>>({});
   const [corrections, setCorrections] = useState<CorrectionDoc[]>([]);
+  const [excelImports, setExcelImports] = useState<ExcelImportDoc[]>([]);
+  const [excelReviewError, setExcelReviewError] = useState<string | null>(null);
+  const [excelReviewBusyId, setExcelReviewBusyId] = useState<string | null>(null);
 
   const [decisionTarget, setDecisionTarget] = useState<CorrectionDoc | null>(null);
   const [decisionMode, setDecisionMode] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
   const [isSavingDecision, setIsSavingDecision] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -131,6 +153,7 @@ const AttendanceTab: React.FC = () => {
         const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
         const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
         const supervisorDecisionNote = typeof raw?.supervisorDecisionNote === 'string' ? raw.supervisorDecisionNote : undefined;
+        const workMode: 'WFH' | 'WFO' = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
         const attachments = Array.isArray(raw?.attachments)
           ? (raw.attachments as any[]).flatMap((a) => {
               const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
@@ -140,12 +163,90 @@ const AttendanceTab: React.FC = () => {
             })
           : [];
         if (!internId || !date) return;
-        list.push({ id: d.id, internId, internName, date, reason, status, requestedClockIn, requestedClockOut, supervisorDecisionNote, attachments });
+        list.push({ id: d.id, internId, internName, date, reason, status, requestedClockIn, requestedClockOut, supervisorDecisionNote, workMode, attachments });
       });
       list.sort((a, b) => b.date.localeCompare(a.date));
       setCorrections(list);
     }, () => setCorrections([]));
   }, []);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'attendanceExcelImports'), orderBy('submittedAt', 'desc'), limit(50));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const list: ExcelImportDoc[] = [];
+        snap.forEach((d) => {
+          const raw = d.data() as any;
+          const internId = typeof raw?.internId === 'string' ? raw.internId : '';
+          const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+          const fileName = typeof raw?.fileName === 'string' ? raw.fileName : 'Excel';
+          const storagePath = typeof raw?.storagePath === 'string' ? raw.storagePath : '';
+          if (!internId || !storagePath) return;
+
+          const status: ExcelImportDoc['status'] =
+            raw?.status === 'APPLIED' || raw?.status === 'FAILED' || raw?.status === 'APPROVED' || raw?.status === 'REJECTED'
+              ? raw.status
+              : 'PENDING';
+
+          const submittedAtMs = typeof raw?.submittedAt?.toMillis === 'function' ? raw.submittedAt.toMillis() : undefined;
+          const reviewedAtMs = typeof raw?.reviewedAt?.toMillis === 'function' ? raw.reviewedAt.toMillis() : undefined;
+          const reviewedByName = typeof raw?.reviewedByName === 'string' ? raw.reviewedByName : undefined;
+          const reviewedByRole = typeof raw?.reviewedByRole === 'string' ? raw.reviewedByRole : undefined;
+
+          list.push({ id: d.id, internId, internName, fileName, storagePath, status, submittedAtMs, reviewedAtMs, reviewedByName, reviewedByRole });
+        });
+        setExcelImports(list);
+      },
+      () => setExcelImports([]),
+    );
+  }, []);
+
+  const handleOpenExcelImport = async (path: string) => {
+    try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, path));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleReviewExcelImport = async (req: ExcelImportDoc, decision: 'APPROVE' | 'REJECT') => {
+    if (!user?.id) return;
+    if (excelReviewBusyId) return;
+    setExcelReviewError(null);
+
+    try {
+      setExcelReviewBusyId(req.id);
+      const ref = doc(firestoreDb, 'attendanceExcelImports', req.id);
+      await runTransaction(firestoreDb, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Request not found');
+        const raw = snap.data() as any;
+        const status = raw?.status;
+        if (status !== 'PENDING') throw new Error('This request has already been reviewed.');
+
+        tx.update(ref, {
+          status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          reviewAction: decision,
+          reviewedById: user.id,
+          reviewedByName: (user as any)?.name ?? 'Admin',
+          reviewedByRole: 'HR_ADMIN',
+          reviewedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      if (decision === 'APPROVE') {
+        const fn = httpsCallable(firebaseFunctions, 'applyAttendanceExcelImport');
+        await fn({ importId: req.id });
+      }
+    } catch (e) {
+      setExcelReviewError((e as { message?: string })?.message ?? 'Failed to update request');
+    } finally {
+      setExcelReviewBusyId(null);
+    }
+  };
 
   useEffect(() => {
     setLatestByIntern({});
@@ -273,6 +374,45 @@ const AttendanceTab: React.FC = () => {
       setIsSavingDecision(true);
       if (decisionMode === 'APPROVE') {
         if (!decisionTarget.requestedClockIn || !decisionTarget.requestedClockOut) return;
+        const monthKey = decisionTarget.date.slice(0, 7);
+        try {
+          const paidSnap = await getDocs(
+            query(
+              collection(firestoreDb, 'allowanceClaims'),
+              where('internId', '==', decisionTarget.internId),
+              where('monthKey', '==', monthKey),
+              where('status', '==', 'PAID'),
+              limit(1),
+            ),
+          );
+          if (!paidSnap.empty) {
+            setDecisionError('This month has already been paid. Approval is blocked.');
+            return;
+          }
+        } catch {
+          setDecisionError('Failed to validate payout status.');
+          return;
+        }
+
+        try {
+          const attSnap = await getDocs(
+            query(
+              collection(firestoreDb, 'users', decisionTarget.internId, 'attendance'),
+              where('date', '==', decisionTarget.date),
+              limit(1),
+            ),
+          );
+          if (!attSnap.empty) {
+            const raw = attSnap.docs[0].data() as any;
+            if (raw?.clockInAt && raw?.clockOutAt) {
+              setDecisionError('Attendance already exists for this date. Approval is blocked.');
+              return;
+            }
+          }
+        } catch {
+          setDecisionError('Failed to validate existing attendance.');
+          return;
+        }
         const clockInAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockIn);
         const clockOutAt = buildTimestamp(decisionTarget.date, decisionTarget.requestedClockOut);
         if (!clockInAt || !clockOutAt || clockOutAt.getTime() <= clockInAt.getTime()) return;
@@ -286,6 +426,7 @@ const AttendanceTab: React.FC = () => {
         await updateDoc(doc(firestoreDb, 'users', decisionTarget.internId, 'attendance', decisionTarget.date), {
           clockInAt,
           clockOutAt,
+          workMode: decisionTarget.workMode,
           updatedAt: serverTimestamp(),
         });
       } else {
@@ -300,6 +441,7 @@ const AttendanceTab: React.FC = () => {
       setDecisionTarget(null);
       setDecisionMode(null);
       setDecisionNote('');
+      setDecisionError(null);
     } catch {
       // ignore
     } finally {
@@ -348,12 +490,18 @@ const AttendanceTab: React.FC = () => {
                     ) : null}
                   </div>
                 ) : null}
+
+                {decisionError ? (
+                  <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                    {decisionError}
+                  </div>
+                ) : null}
                 <label className="space-y-2 block">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Note (optional)</div>
                   <textarea value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all min-h-[100px]" />
                 </label>
                 <div className="flex justify-end gap-3 pt-2">
-                  <button onClick={() => (isSavingDecision ? void 0 : (setDecisionTarget(null), setDecisionMode(null)))} disabled={isSavingDecision} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60">Cancel</button>
+                  <button onClick={() => (isSavingDecision ? void 0 : (setDecisionTarget(null), setDecisionMode(null), setDecisionError(null)))} disabled={isSavingDecision} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-60">Cancel</button>
                   <button
                     onClick={() => void handleConfirmDecision()}
                     disabled={isSavingDecision || (decisionMode === 'APPROVE' && (!decisionTarget.requestedClockIn || !decisionTarget.requestedClockOut))}
@@ -452,6 +600,96 @@ const AttendanceTab: React.FC = () => {
                 <ChevronRight size={18} />
               </button>
             </div>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-4 mb-10">
+          <div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Requests</h3>
+          </div>
+          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{excelImports.length}</div>
+        </div>
+
+        {excelReviewError ? (
+          <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+            {excelReviewError}
+          </div>
+        ) : null}
+
+        {excelImports.length === 0 ? (
+          <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No Excel import requests</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {excelImports.map((req) => (
+              <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.internId}</div>
+                    <button
+                      type="button"
+                      className="mt-4 text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                      onClick={() => void handleOpenExcelImport(req.storagePath)}
+                    >
+                      {req.fileName}
+                    </button>
+                    {typeof req.submittedAtMs === 'number' ? (
+                      <div className="mt-2 text-[10px] font-bold text-slate-500">Submitted: {new Date(req.submittedAtMs).toLocaleString()}</div>
+                    ) : null}
+                    {req.reviewedByName ? (
+                      <div className="mt-1 text-[10px] font-bold text-slate-500">
+                        Reviewed by: {req.reviewedByName}{req.reviewedByRole ? ` (${req.reviewedByRole})` : ''}
+                        {typeof req.reviewedAtMs === 'number' ? ` • ${new Date(req.reviewedAtMs).toLocaleString()}` : ''}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                    <span
+                      className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${
+                        req.status === 'APPLIED'
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                          : req.status === 'FAILED'
+                            ? 'bg-rose-100 text-rose-700 border-rose-200'
+                            : req.status === 'REJECTED'
+                              ? 'bg-rose-100 text-rose-700 border-rose-200'
+                              : req.status === 'APPROVED'
+                                ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                : 'bg-amber-50 text-amber-600 border-amber-100'
+                      }`}
+                    >
+                      {req.status}
+                    </span>
+
+                    {req.status === 'PENDING' ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleReviewExcelImport(req, 'REJECT')}
+                          disabled={excelReviewBusyId === req.id}
+                          className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleReviewExcelImport(req, 'APPROVE')}
+                          disabled={excelReviewBusyId === req.id}
+                          className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60"
+                        >
+                          Approve
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>

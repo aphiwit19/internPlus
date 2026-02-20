@@ -15,7 +15,7 @@ import {
 import { Language } from '@/types';
 import { useTranslation } from 'react-i18next';
 
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { firestoreDb } from '@/firebase';
 import { useAppContext } from '@/app/AppContext';
 
@@ -27,6 +27,13 @@ type AllowanceClaimRow = {
   status: 'PENDING' | 'APPROVED' | 'PAID';
   paymentDate?: string;
   breakdown?: { wfo?: number; wfh?: number; leaves?: number };
+};
+
+type AllowanceWalletDoc = {
+  totalAmount: number;
+  totalPendingAmount: number;
+  totalPaidAmount: number;
+  statusSummary?: string;
 };
 
 interface AllowancePageProps {
@@ -41,12 +48,31 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang: _lang }) => {
   const [claims, setClaims] = useState<AllowanceClaimRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>('');
+  const [payoutFreq, setPayoutFreq] = useState<'MONTHLY' | 'END_PROGRAM'>('MONTHLY');
+  const [wallet, setWallet] = useState<AllowanceWalletDoc | null>(null);
+
+  useEffect(() => {
+    const ref = doc(firestoreDb, 'config', 'systemSettings');
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) return;
+        const raw = snap.data() as any;
+        const freq = raw?.allowance?.payoutFreq === 'END_PROGRAM' ? 'END_PROGRAM' : 'MONTHLY';
+        setPayoutFreq(freq);
+      },
+      () => {
+        // ignore
+      },
+    );
+  }, []);
 
   useEffect(() => {
     if (!user?.id) {
       setClaims([]);
       setIsLoading(false);
       setSelectedMonthKey('');
+      setWallet(null);
       return;
     }
     setIsLoading(true);
@@ -86,6 +112,33 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang: _lang }) => {
     );
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setWallet(null);
+      return;
+    }
+    const ref = doc(firestoreDb, 'CurrentWallet', user.id);
+    return onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setWallet(null);
+          return;
+        }
+        const raw = snap.data() as any;
+        setWallet({
+          totalAmount: typeof raw?.totalAmount === 'number' ? raw.totalAmount : 0,
+          totalPendingAmount: typeof raw?.totalPendingAmount === 'number' ? raw.totalPendingAmount : 0,
+          totalPaidAmount: typeof raw?.totalPaidAmount === 'number' ? raw.totalPaidAmount : 0,
+          statusSummary: typeof raw?.statusSummary === 'string' ? raw.statusSummary : undefined,
+        });
+      },
+      () => {
+        setWallet(null);
+      },
+    );
+  }, [user?.id]);
+
   const monthOptions = useMemo(() => {
     const set = new Set<string>();
     for (const c of claims) {
@@ -94,22 +147,49 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang: _lang }) => {
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [claims]);
 
+  useEffect(() => {
+    if (payoutFreq !== 'END_PROGRAM') return;
+    if (selectedMonthKey) return;
+    const latest = monthOptions[0] ?? '';
+    if (latest) setSelectedMonthKey(latest);
+  }, [monthOptions, payoutFreq, selectedMonthKey]);
+
   const filteredClaims = useMemo(() => {
+    if (payoutFreq === 'END_PROGRAM') {
+      const mk = selectedMonthKey || monthOptions[0] || '';
+      if (!mk) return [];
+      return claims.filter((c) => c.monthKey === mk);
+    }
     if (!selectedMonthKey) return claims;
     return claims.filter((c) => c.monthKey === selectedMonthKey);
-  }, [claims, selectedMonthKey]);
+  }, [claims, monthOptions, payoutFreq, selectedMonthKey]);
+
+  const walletClaims = useMemo(() => {
+    if (payoutFreq !== 'END_PROGRAM') return filteredClaims;
+    // END_PROGRAM: Current Wallet should reflect total across all months.
+    // Ledger remains per-month via filteredClaims.
+    return claims;
+  }, [claims, filteredClaims, payoutFreq]);
 
   const totals = useMemo(() => {
+    // Prefer authoritative wallet totals from Firestore when available.
+    if (wallet) {
+      return {
+        earned: wallet.totalAmount,
+        pending: wallet.totalPendingAmount,
+        paid: wallet.totalPaidAmount,
+      };
+    }
     let earned = 0;
     let pending = 0;
     let paid = 0;
-    for (const c of filteredClaims) {
+    for (const c of walletClaims) {
       earned += c.amount;
       if (c.status === 'PAID') paid += c.amount;
       if (c.status === 'PENDING' || c.status === 'APPROVED') pending += c.amount;
     }
     return { earned, pending, paid };
-  }, [filteredClaims]);
+  }, [wallet, walletClaims]);
 
   const formatNumber = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -160,7 +240,7 @@ const AllowancePage: React.FC<AllowancePageProps> = ({ lang: _lang }) => {
                       onChange={(e) => setSelectedMonthKey(e.target.value)}
                       className="bg-slate-50 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-500 uppercase border border-slate-100"
                     >
-                      <option value="">{tr('intern_allowance.filters.all')}</option>
+                      {payoutFreq !== 'END_PROGRAM' && <option value="">{tr('intern_allowance.filters.all')}</option>}
                       {monthOptions.map((m) => (
                         <option key={m} value={m}>
                           {m}

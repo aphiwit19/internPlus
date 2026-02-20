@@ -2,6 +2,7 @@ import admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2/options';
 import { PDFDocument } from 'pdf-lib';
+import * as XLSX from 'xlsx';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,6 +16,20 @@ if (admin.apps.length === 0) {
     storageBucket: projectId ? `${projectId}.firebasestorage.app` : undefined,
   });
 }
+
+export const syncAllowanceWallet = onCall({ cors: true }, async (request) => {
+  await assertHrAdminOrSupervisor(request);
+  const internId = String((request.data as any)?.internId ?? '').trim();
+  if (!internId) throw new HttpsError('invalid-argument', 'Missing internId');
+  const db = admin.firestore();
+  try {
+    return await syncAllowanceWalletInternal(db, internId);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('syncAllowanceWallet:error', { internId, err });
+    throw new HttpsError('internal', message);
+  }
+});
 
 const THIS_FILE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +132,799 @@ async function assertHrAdminOrSupervisor(context: Parameters<typeof onCall>[0] e
   }
   return { uid, roles };
 }
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function monthKeyFromDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function toDateKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function clampDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function daysInclusive(startIso: string, endIso: string): Date[] {
+  const s = new Date(`${startIso}T00:00:00.000Z`);
+  const e = new Date(`${endIso}T00:00:00.000Z`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return [];
+  const out: Date[] = [];
+  const cur = new Date(s.getTime());
+  while (cur.getTime() <= e.getTime()) {
+    out.push(new Date(cur.getTime()));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function coerceToDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+
+  const maybeTs = value as { toDate?: () => Date };
+  if (typeof maybeTs?.toDate === 'function') {
+    const d = maybeTs.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const maybeObj = value as { seconds?: unknown; nanoseconds?: unknown };
+  if (typeof maybeObj?.seconds === 'number') {
+    const nanos = typeof maybeObj.nanoseconds === 'number' ? maybeObj.nanoseconds : 0;
+    const ms = maybeObj.seconds * 1000 + Math.floor(nanos / 1_000_000);
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  return null;
+}
+
+type AllowanceRules = {
+  payoutFreq: 'MONTHLY' | 'END_PROGRAM';
+  wfoRate: number;
+  wfhRate: number;
+  applyTax: boolean;
+  taxPercent: number;
+};
+
+type WalletStatusSummary = 'EMPTY' | 'ALL_PAID' | 'HAS_PENDING';
+
+function isClaimStatus(value: unknown): value is 'PENDING' | 'APPROVED' | 'PAID' {
+  return value === 'PENDING' || value === 'APPROVED' || value === 'PAID';
+}
+
+async function syncAllowanceWalletInternal(db: admin.firestore.Firestore, internId: string) {
+  const userSnap = await db.collection('users').doc(internId).get();
+  const userRaw = userSnap.exists ? (userSnap.data() as any) : null;
+  const internName = typeof userRaw?.name === 'string' ? userRaw.name : 'Unknown';
+
+  const allowanceRules = await loadAllowanceRules(db);
+
+  const claimsSnap = await db.collection('allowanceClaims').where('internId', '==', internId).get();
+
+  let totalAmount = 0;
+  let totalPendingAmount = 0;
+  let totalPaidAmount = 0;
+  let totalCalculatedAmount = 0;
+  let totalWfo = 0;
+  let totalWfh = 0;
+  let totalLeaves = 0;
+  let hasPending = false;
+  let hasAny = false;
+
+  // Store totals as a standalone document (no subcollection) per user's request.
+  const totalsRef = db.collection('CurrentWallet').doc(internId);
+  // Keep month breakdown docs in a separate structure.
+  const walletMonthsParentRef = db.collection('allowanceWallets').doc(internId);
+  const batch = db.batch();
+
+  for (const d of claimsSnap.docs) {
+    const raw = d.data() as any;
+    const monthKey = typeof raw?.monthKey === 'string' ? raw.monthKey : undefined;
+    if (!monthKey) continue;
+
+    const amount = typeof raw?.amount === 'number' ? raw.amount : 0;
+    const calculatedAmount = typeof raw?.calculatedAmount === 'number' ? raw.calculatedAmount : amount;
+    const status: 'PENDING' | 'APPROVED' | 'PAID' = isClaimStatus(raw?.status) ? raw.status : 'PENDING';
+    const breakdown = (raw?.breakdown ?? {}) as any;
+    const wfo = typeof breakdown?.wfo === 'number' ? breakdown.wfo : 0;
+    const wfh = typeof breakdown?.wfh === 'number' ? breakdown.wfh : 0;
+    const leaves = typeof breakdown?.leaves === 'number' ? breakdown.leaves : 0;
+    const periodLabel = typeof raw?.period === 'string' ? raw.period : monthKey;
+    const plannedPayoutDate = typeof raw?.plannedPayoutDate === 'string' ? raw.plannedPayoutDate : undefined;
+    const paymentDate = typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined;
+    const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
+
+    const hasAdjustment = typeof raw?.adminAdjustedAmount === 'number' || typeof raw?.supervisorAdjustedAmount === 'number';
+
+    hasAny = true;
+    totalAmount += amount;
+    totalCalculatedAmount += calculatedAmount;
+    totalWfo += wfo;
+    totalWfh += wfh;
+    totalLeaves += leaves;
+    if (status === 'PAID') totalPaidAmount += amount;
+    else {
+      totalPendingAmount += amount;
+      hasPending = true;
+    }
+
+    const monthRef = walletMonthsParentRef.collection('months').doc(monthKey);
+    const monthPayload: Record<string, unknown> = {
+      internId,
+      internName,
+      monthKey,
+      periodLabel,
+      amount,
+      calculatedAmount,
+      breakdown: { wfo, wfh, leaves },
+      status,
+      hasAdjustment,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (plannedPayoutDate) (monthPayload as any).plannedPayoutDate = plannedPayoutDate;
+    if (paymentDate) (monthPayload as any).paymentDate = paymentDate;
+    if (typeof paidAtMs === 'number') (monthPayload as any).paidAtMs = paidAtMs;
+
+    batch.set(monthRef, monthPayload, { merge: true });
+  }
+
+  const statusSummary: WalletStatusSummary = !hasAny ? 'EMPTY' : hasPending ? 'HAS_PENDING' : 'ALL_PAID';
+
+  const walletPayload: Record<string, unknown> = {
+    internId,
+    internName,
+    payoutFreq: allowanceRules.payoutFreq,
+    totalAmount,
+    totalCalculatedAmount,
+    totalPendingAmount,
+    totalPaidAmount,
+    totalBreakdown: {
+      wfo: totalWfo,
+      wfh: totalWfh,
+      leaves: totalLeaves,
+    },
+    statusSummary,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedByRole: 'SYSTEM',
+  };
+
+  batch.set(totalsRef, walletPayload, { merge: true });
+  await batch.commit();
+
+  return {
+    ok: true,
+    internId,
+    totalAmount,
+    totalPendingAmount,
+    totalPaidAmount,
+    statusSummary,
+    monthsSynced: claimsSnap.size,
+  };
+}
+
+async function loadAllowanceRules(db: admin.firestore.Firestore): Promise<AllowanceRules> {
+  const snap = await db.collection('config').doc('systemSettings').get();
+  const raw = snap.exists ? (snap.data() as any) : null;
+  const a = raw?.allowance ?? {};
+  return {
+    payoutFreq: a?.payoutFreq === 'END_PROGRAM' ? 'END_PROGRAM' : 'MONTHLY',
+    wfoRate: typeof a?.wfoRate === 'number' ? a.wfoRate : 100,
+    wfhRate: typeof a?.wfhRate === 'number' ? a.wfhRate : 50,
+    applyTax: typeof a?.applyTax === 'boolean' ? a.applyTax : true,
+    taxPercent: typeof a?.taxPercent === 'number' ? a.taxPercent : 3,
+  };
+}
+
+async function recalculateAllowanceClaimInternal(
+  db: admin.firestore.Firestore,
+  internId: string,
+  monthKey: string,
+): Promise<{ skipped: boolean; reason?: string; claimId: string; calculatedAmount: number; amount: number; breakdown: { wfo: number; wfh: number; leaves: number } } > {
+  const parts = monthKey.split('-');
+  const year = Number(parts[0]);
+  const monthIdx = Number(parts[1]) - 1;
+  const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+  const safeMonthIdx = Number.isFinite(monthIdx) && monthIdx >= 0 && monthIdx <= 11 ? monthIdx : new Date().getMonth();
+
+  const monthStart = new Date(safeYear, safeMonthIdx, 1);
+  const monthEnd = new Date(safeYear, safeMonthIdx + 1, 0);
+
+  const payPeriodSnap = await db.collection('payPeriods').doc(monthKey).get();
+  const payPeriodData = payPeriodSnap.exists ? (payPeriodSnap.data() as any) : null;
+  const periodStartIso = typeof payPeriodData?.periodStart === 'string' ? payPeriodData.periodStart : null;
+  const periodEndIso = typeof payPeriodData?.periodEnd === 'string' ? payPeriodData.periodEnd : null;
+  const plannedPayoutDate = typeof payPeriodData?.plannedPayoutDate === 'string' ? payPeriodData.plannedPayoutDate : undefined;
+
+  const toUtcDate = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00.000Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const configuredStart = periodStartIso ? toUtcDate(periodStartIso) : null;
+  const configuredEnd = periodEndIso ? toUtcDate(periodEndIso) : null;
+  const periodStart = clampDay(configuredStart ?? monthStart);
+  const periodEnd = clampDay(configuredEnd ?? monthEnd);
+  const periodLabel = periodStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+  const allowanceRules = await loadAllowanceRules(db);
+
+  const userSnap = await db.collection('users').doc(internId).get();
+  const userRaw = userSnap.exists ? (userSnap.data() as any) : null;
+  const internName = typeof userRaw?.name === 'string' ? userRaw.name : 'Unknown';
+  const avatar = typeof userRaw?.avatar === 'string' ? userRaw.avatar : '';
+  const lifecycleStatus = typeof userRaw?.lifecycleStatus === 'string' ? userRaw.lifecycleStatus : '';
+  const isCompleted = lifecycleStatus === 'COMPLETED';
+
+  const claimId = `${internId}_${monthKey}`;
+  const claimRef = db.collection('allowanceClaims').doc(claimId);
+  const claimSnap = await claimRef.get();
+  const claimRaw = claimSnap.exists ? (claimSnap.data() as any) : null;
+  const status: 'PENDING' | 'APPROVED' | 'PAID' =
+    claimRaw?.status === 'PAID' || claimRaw?.status === 'APPROVED' || claimRaw?.status === 'PENDING' ? claimRaw.status : 'PENDING';
+
+  if (status === 'PAID') {
+    return {
+      skipped: true,
+      reason: 'PAID',
+      claimId,
+      calculatedAmount: typeof claimRaw?.calculatedAmount === 'number' ? claimRaw.calculatedAmount : (typeof claimRaw?.amount === 'number' ? claimRaw.amount : 0),
+      amount: typeof claimRaw?.amount === 'number' ? claimRaw.amount : 0,
+      breakdown: {
+        wfo: typeof claimRaw?.breakdown?.wfo === 'number' ? claimRaw.breakdown.wfo : 0,
+        wfh: typeof claimRaw?.breakdown?.wfh === 'number' ? claimRaw.breakdown.wfh : 0,
+        leaves: typeof claimRaw?.breakdown?.leaves === 'number' ? claimRaw.breakdown.leaves : 0,
+      },
+    };
+  }
+
+  const attendanceRef = db.collection('users').doc(internId).collection('attendance');
+  const [attSnap, leaveSnap, corrSnap] = await Promise.all([
+    attendanceRef.where('date', '>=', toDateKey(periodStart)).where('date', '<=', toDateKey(periodEnd)).get(),
+    (async () => {
+      const prevWindowStart = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() - 31);
+      const leaveFromKey = toDateKey(prevWindowStart);
+      const leaveToKey = toDateKey(periodEnd);
+      // Intentionally avoid composite indexes by only filtering by internId + status.
+      // We will filter by date range overlap in-memory.
+      return {
+        snap: await db
+          .collection('leaveRequests')
+          .where('internId', '==', internId)
+          .where('status', '==', 'APPROVED')
+          .get(),
+        leaveFromKey,
+        leaveToKey,
+      };
+    })(),
+    db.collection('timeCorrections').where('internId', '==', internId).where('status', '==', 'PENDING').get(),
+  ]);
+
+  let wfo = 0;
+  let wfh = 0;
+  let monthlyGross = 0;
+
+  attSnap.forEach((d) => {
+    const raw = d.data() as any;
+    const dateKey = typeof raw?.date === 'string' ? raw.date : d.id;
+    void dateKey;
+    const hasClockIn = Boolean(raw?.clockInAt);
+    if (!hasClockIn) return;
+    const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
+    if (mode === 'WFH') wfh += 1;
+    else wfo += 1;
+
+    const clockInAt = coerceToDate(raw?.clockInAt);
+    const clockOutAt = coerceToDate(raw?.clockOutAt);
+    if (!clockInAt || !clockOutAt) return;
+    const startMs = clockInAt.getTime();
+    const endMs = clockOutAt.getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+
+    const totalHours = (endMs - startMs) / (1000 * 60 * 60);
+    const payableHours = Math.min(8, Math.max(0, totalHours - 1));
+    if (payableHours <= 0) return;
+
+    const dayRate = mode === 'WFH' ? allowanceRules.wfhRate : allowanceRules.wfoRate;
+    const hourRate = dayRate / 8;
+    monthlyGross += hourRate * payableHours;
+  });
+
+  const leaveDaysSet = new Set<string>();
+  const leaveSnapDocs = (leaveSnap as any)?.snap?.docs ? (leaveSnap as any).snap.docs : (leaveSnap as any)?.docs;
+  const leaveFromKey = (leaveSnap as any)?.leaveFromKey as string | undefined;
+  const leaveToKey = (leaveSnap as any)?.leaveToKey as string | undefined;
+  (leaveSnapDocs ?? []).forEach((d: any) => {
+    const raw = typeof d?.data === 'function' ? (d.data() as any) : (d as any);
+    const startDate = typeof raw?.startDate === 'string' ? raw.startDate : null;
+    const endDate = typeof raw?.endDate === 'string' ? raw.endDate : null;
+    if (!startDate || !endDate) return;
+    // Quick overlap filter for performance.
+    if (leaveFromKey && endDate < leaveFromKey) return;
+    if (leaveToKey && startDate > leaveToKey) return;
+
+    for (const day of daysInclusive(startDate, endDate)) {
+      const localDay = clampDay(new Date(day.getTime()));
+      if (localDay.getTime() < periodStart.getTime()) continue;
+      if (localDay.getTime() > periodEnd.getTime()) continue;
+      leaveDaysSet.add(toDateKey(localDay));
+    }
+  });
+  const leaves = leaveDaysSet.size;
+
+  const calculatedAmount = allowanceRules.applyTax
+    ? Math.max(0, Math.round(monthlyGross * (1 - allowanceRules.taxPercent / 100)))
+    : Math.max(0, Math.round(monthlyGross));
+
+  const supervisorAdjustedAmount = typeof claimRaw?.supervisorAdjustedAmount === 'number' ? claimRaw.supervisorAdjustedAmount : undefined;
+  const adminAdjustedAmount = typeof claimRaw?.adminAdjustedAmount === 'number' ? claimRaw.adminAdjustedAmount : undefined;
+
+  const finalAmount =
+    typeof adminAdjustedAmount === 'number'
+      ? adminAdjustedAmount
+      : typeof supervisorAdjustedAmount === 'number'
+        ? supervisorAdjustedAmount
+        : calculatedAmount;
+
+  const shouldPreserveExistingAmount =
+    typeof adminAdjustedAmount === 'number' || typeof supervisorAdjustedAmount === 'number';
+  const amountToStore =
+    shouldPreserveExistingAmount && typeof claimRaw?.amount === 'number' ? claimRaw.amount : finalAmount;
+
+  const lockedByEndProgram = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
+  const lockedByPendingCorrection = !corrSnap.empty;
+  const isPayoutLocked = lockedByEndProgram || lockedByPendingCorrection;
+  const lockReason = lockedByPendingCorrection
+    ? `Has ${corrSnap.size} pending time correction request(s). Payout locked until resolved.`
+    : undefined;
+
+  const payload: Record<string, unknown> = {
+    internId,
+    internName,
+    avatar,
+    monthKey,
+    calculatedAmount,
+    breakdown: { wfo, wfh, leaves },
+    period: periodLabel,
+    status,
+    amount: amountToStore,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedByRole: 'SYSTEM',
+  };
+
+  if (typeof plannedPayoutDate === 'string' && plannedPayoutDate) {
+    (payload as any).plannedPayoutDate = plannedPayoutDate;
+  }
+
+  if (isPayoutLocked) {
+    (payload as any).isPayoutLocked = true;
+    if (lockReason) (payload as any).lockReason = lockReason;
+  } else {
+    // Explicitly clear lock fields when unlocked to keep UI consistent.
+    (payload as any).isPayoutLocked = false;
+    (payload as any).lockReason = null;
+  }
+
+  if (!claimSnap.exists) {
+    (payload as any).createdAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await claimRef.set(payload, { merge: true });
+
+  // Keep aggregated wallet in sync for END_PROGRAM view.
+  try {
+    await syncAllowanceWalletInternal(db, internId);
+  } catch (e) {
+    console.error('syncAllowanceWalletInternal:error', { internId, monthKey, e });
+  }
+
+  return {
+    skipped: false,
+    claimId,
+    calculatedAmount,
+    amount: amountToStore,
+    breakdown: { wfo, wfh, leaves },
+  };
+}
+
+export const recalculateAllowanceClaim = onCall({ cors: true }, async (request) => {
+  await assertHrAdminOrSupervisor(request);
+  const internId = String((request.data as any)?.internId ?? '').trim();
+  const monthKey = String((request.data as any)?.monthKey ?? '').trim();
+  if (!internId) throw new HttpsError('invalid-argument', 'Missing internId');
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) throw new HttpsError('invalid-argument', 'Invalid monthKey');
+
+  const db = admin.firestore();
+  try {
+    return await recalculateAllowanceClaimInternal(db, internId, monthKey);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('recalculateAllowanceClaim:error', { internId, monthKey, err });
+    throw new HttpsError('internal', message);
+  }
+});
+
+function dateKeyToParts(dateKey: string): { y: number; m: number; d: number } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+  const [yy, mm, dd] = dateKey.split('-').map((x) => Number(x));
+  if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null;
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return { y: yy, m: mm, d: dd };
+}
+
+function dateInBangkok(y: number, m: number, d: number, hh: number, mm: number, ss = 0): Date {
+  // Interpret given wall-clock time as Asia/Bangkok (+07:00) and convert to a UTC Date.
+  const utcMs = Date.UTC(y, m - 1, d, hh - 7, mm, ss, 0);
+  return new Date(utcMs);
+}
+
+function normalizeWorkMode(value: unknown): 'WFO' | 'WFH' | 'LEAVE' | null {
+  const s = String(value ?? '').trim().toUpperCase();
+  if (!s) return null;
+  if (s === 'WFH') return 'WFH';
+  if (s === 'WFO') return 'WFO';
+  if (s === 'OFFICE') return 'WFO';
+  if (s === 'LEAVE') return 'LEAVE';
+  return null;
+}
+
+const THAI_MONTHS: Record<string, number> = {
+  'ม.ค.': 1,
+  'ก.พ.': 2,
+  'มี.ค.': 3,
+  'เม.ย.': 4,
+  'พ.ค.': 5,
+  'มิ.ย.': 6,
+  'ก.ค.': 7,
+  'ส.ค.': 8,
+  'ก.ย.': 9,
+  'ต.ค.': 10,
+  'พ.ย.': 11,
+  'ธ.ค.': 12,
+};
+
+function parseThaiOrIsoDate(value: unknown): string | null {
+  if (!value) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Excel date serial.
+    const d = XLSX.SSF.parse_date_code(value);
+    if (!d) return null;
+    const y = Number(d.y);
+    const m = String(Number(d.m)).padStart(2, '0');
+    const dd = String(Number(d.d)).padStart(2, '0');
+    if (!y || !m || !dd) return null;
+    return `${y}-${m}-${dd}`;
+  }
+
+  const s = String(value).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  const m = s.match(/^(\d{1,2})[-/](.+?)[-/](\d{2,4})$/);
+  if (m) {
+    const day = Number(m[1]);
+    const monthToken = String(m[2]).trim();
+    const yearToken = Number(m[3]);
+    const month = THAI_MONTHS[monthToken] ?? null;
+    if (!month || !Number.isFinite(day) || !Number.isFinite(yearToken)) return null;
+    const y = yearToken < 100 ? 2000 + yearToken : yearToken;
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  }
+
+  return null;
+}
+
+function parseTimeToHM(value: unknown): { h: number; m: number; s: number } | null {
+  if (value == null) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { h: value.getHours(), m: value.getMinutes(), s: value.getSeconds() };
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Excel time fraction of a day.
+    const totalSeconds = Math.round(value * 24 * 60 * 60);
+    const h = Math.floor(totalSeconds / 3600) % 24;
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return { h, m, s };
+  }
+
+  const s = String(value).trim();
+  if (!s) return null;
+  const match = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const sec = match[3] ? Number(match[3]) : 0;
+  if (!Number.isFinite(h) || !Number.isFinite(m) || !Number.isFinite(sec)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59 || sec < 0 || sec > 59) return null;
+  return { h, m, s: sec };
+}
+
+type ParsedExcelRow = {
+  dateKey: string;
+  timeIn: { h: number; m: number; s: number };
+  timeOut: { h: number; m: number; s: number };
+  workMode: 'WFO' | 'WFH';
+  email?: string;
+};
+
+function pickCell(row: Record<string, unknown>, names: string[]): unknown {
+  for (const n of names) {
+    const v = (row as any)[n];
+    if (v != null && String(v).trim() !== '') return v;
+  }
+  return undefined;
+}
+
+function parseExcelRows(rows: Array<Record<string, unknown>>): { parsed: ParsedExcelRow[]; emailFromFile: string | null; skippedInvalidRows: number } {
+  const parsed: ParsedExcelRow[] = [];
+  let emailFromFile: string | null = null;
+  let skippedInvalidRows = 0;
+
+  for (const r of rows) {
+    const dateRaw = pickCell(r, ['Date', 'date', 'DATE', 'วันที่']);
+    const timeInRaw = pickCell(r, ['Time In', 'TimeIn', 'time in', 'TIME IN', 'เข้างาน', 'เข้า']);
+    const timeOutRaw = pickCell(r, ['Time Out', 'TimeOut', 'time out', 'TIME OUT', 'ออกงาน', 'ออก']);
+    const modeRaw = pickCell(r, ['Work mode', 'Work Mode', 'work mode', 'Mode', 'โหมด', 'รูปแบบการทำงาน']);
+    const emailRaw = pickCell(r, ['Email', 'email', 'EMAIL', 'E-mail', 'อีเมล']);
+
+    const dateKey = parseThaiOrIsoDate(dateRaw);
+    const timeIn = parseTimeToHM(timeInRaw);
+    const timeOut = parseTimeToHM(timeOutRaw);
+    const normalizedMode = normalizeWorkMode(modeRaw);
+
+    const email = emailRaw ? String(emailRaw).trim() : '';
+    if (!emailFromFile && email) emailFromFile = email;
+
+    if (!dateKey || !timeIn || !timeOut || !normalizedMode) {
+      skippedInvalidRows += 1;
+      continue;
+    }
+    if (normalizedMode === 'LEAVE') {
+      // Not an attendance day for allowance.
+      continue;
+    }
+
+    parsed.push({
+      dateKey,
+      timeIn,
+      timeOut,
+      workMode: normalizedMode,
+      ...(email ? { email } : {}),
+    });
+  }
+
+  return { parsed, emailFromFile, skippedInvalidRows };
+}
+
+async function isPaidMonth(db: admin.firestore.Firestore, internId: string, monthKey: string): Promise<boolean> {
+  const snap = await db
+    .collection('allowanceClaims')
+    .where('internId', '==', internId)
+    .where('monthKey', '==', monthKey)
+    .where('status', '==', 'PAID')
+    .limit(1)
+    .get();
+  return !snap.empty;
+}
+
+async function hasCompleteAttendance(db: admin.firestore.Firestore, internId: string, dateKey: string): Promise<boolean> {
+  const snap = await db.collection('users').doc(internId).collection('attendance').doc(dateKey).get();
+  if (!snap.exists) return false;
+  const raw = snap.data() as any;
+  return Boolean(raw?.clockInAt && raw?.clockOutAt);
+}
+
+async function assertCanApplyExcelImport(
+  db: admin.firestore.Firestore,
+  caller: { uid: string; roles: string[] },
+  importDoc: { internId: string; supervisorId?: string | null },
+) {
+  if (caller.roles.includes('HR_ADMIN')) return;
+  // Supervisor only.
+  const supId = importDoc.supervisorId ?? null;
+  if (supId !== caller.uid) {
+    throw new HttpsError('permission-denied', 'Supervisor can only apply imports for assigned interns.');
+  }
+}
+
+export const applyAttendanceExcelImport = onCall({ cors: true }, async (request) => {
+  const caller = await assertHrAdminOrSupervisor(request);
+
+  const importId = String((request.data as any)?.importId ?? '').trim();
+  if (!importId) throw new HttpsError('invalid-argument', 'Missing importId');
+
+  const db = admin.firestore();
+  const bucket = admin.storage().bucket();
+
+  const importRef = db.collection('attendanceExcelImports').doc(importId);
+  const importSnap = await importRef.get();
+  if (!importSnap.exists) throw new HttpsError('not-found', 'Import request not found');
+
+  const importRaw = importSnap.data() as any;
+  const internId = typeof importRaw?.internId === 'string' ? importRaw.internId : '';
+  const storagePath = typeof importRaw?.storagePath === 'string' ? importRaw.storagePath : '';
+  const status = typeof importRaw?.status === 'string' ? importRaw.status : '';
+  const supervisorId = typeof importRaw?.supervisorId === 'string' ? importRaw.supervisorId : null;
+  if (!internId || !storagePath) throw new HttpsError('failed-precondition', 'Invalid import request data');
+
+  await assertCanApplyExcelImport(db, caller, { internId, supervisorId });
+
+  if (status === 'APPLIED') {
+    return { ok: true, skipped: true, reason: 'Already applied' };
+  }
+  if (status !== 'APPROVED' && status !== 'PENDING') {
+    throw new HttpsError('failed-precondition', 'Request must be approved before applying');
+  }
+
+  const errors: string[] = [];
+
+  try {
+    const file = bucket.file(storagePath);
+    const [buf] = await file.download();
+    const workbook = XLSX.read(buf, { type: 'buffer', cellDates: true });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) throw new Error('Excel has no sheets');
+    const ws = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+
+    const { parsed, emailFromFile, skippedInvalidRows } = parseExcelRows(rows);
+
+    const skippedPaidMonthsSet = new Set<string>();
+    const touchedMonthsSet = new Set<string>();
+    let skippedPaidDays = 0;
+    let skippedExistingAttendanceDays = 0;
+    let appliedDays = 0;
+
+    const paidCache = new Map<string, boolean>();
+
+    const commitChunk = async (writes: Array<() => void>) => {
+      if (writes.length === 0) return;
+      const batch = db.batch();
+      for (const fn of writes) fn.call(null);
+      await batch.commit();
+    };
+
+    let batch = db.batch();
+    let ops = 0;
+    const flush = async () => {
+      if (ops === 0) return;
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    };
+
+    for (const entry of parsed) {
+      const parts = dateKeyToParts(entry.dateKey);
+      if (!parts) {
+        // should not happen if parser is correct
+        continue;
+      }
+
+      const monthKey = entry.dateKey.slice(0, 7);
+      touchedMonthsSet.add(monthKey);
+      let isPaid = paidCache.get(monthKey);
+      if (typeof isPaid !== 'boolean') {
+        isPaid = await isPaidMonth(db, internId, monthKey);
+        paidCache.set(monthKey, isPaid);
+      }
+      if (isPaid) {
+        skippedPaidMonthsSet.add(monthKey);
+        skippedPaidDays += 1;
+        continue;
+      }
+
+      const alreadyComplete = await hasCompleteAttendance(db, internId, entry.dateKey);
+      if (alreadyComplete) {
+        skippedExistingAttendanceDays += 1;
+        continue;
+      }
+
+      const clockInAt = admin.firestore.Timestamp.fromDate(
+        dateInBangkok(parts.y, parts.m, parts.d, entry.timeIn.h, entry.timeIn.m, entry.timeIn.s),
+      );
+      const clockOutAt = admin.firestore.Timestamp.fromDate(
+        dateInBangkok(parts.y, parts.m, parts.d, entry.timeOut.h, entry.timeOut.m, entry.timeOut.s),
+      );
+
+      if (clockOutAt.toMillis() <= clockInAt.toMillis()) {
+        continue;
+      }
+
+      const attRef = db.collection('users').doc(internId).collection('attendance').doc(entry.dateKey);
+      batch.set(
+        attRef,
+        {
+          date: entry.dateKey,
+          clockInAt,
+          clockOutAt,
+          workMode: entry.workMode,
+          source: 'EXCEL_IMPORT',
+          importId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      ops += 1;
+      appliedDays += 1;
+      if (ops >= 400) await flush();
+    }
+
+    await flush();
+
+    // Recalculate allowance claims immediately for months affected by this import.
+    for (const mk of Array.from(touchedMonthsSet.values())) {
+      try {
+        await recalculateAllowanceClaimInternal(db, internId, mk);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Failed to recalculate allowance';
+        errors.push(`recalculateAllowanceClaim(${mk}): ${msg}`);
+      }
+    }
+
+    await importRef.update({
+      status: 'APPLIED',
+      emailFromFile: emailFromFile ?? (importRaw?.emailFromFile ?? null),
+      skippedPaidMonths: Array.from(skippedPaidMonthsSet.values()).sort(),
+      resultSummary: {
+        appliedDays,
+        skippedPaidDays,
+        skippedExistingAttendanceDays,
+        skippedInvalidRows,
+      },
+      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+      appliedById: caller.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...(errors.length > 0 ? { errors } : { errors: admin.firestore.FieldValue.delete() }),
+    });
+
+    return {
+      ok: true,
+      appliedDays,
+      skippedPaidDays,
+      skippedExistingAttendanceDays,
+      skippedInvalidRows,
+      skippedPaidMonths: Array.from(skippedPaidMonthsSet.values()).sort(),
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('applyAttendanceExcelImport:error', { importId, err });
+    try {
+      await importRef.update({
+        status: 'FAILED',
+        errors: admin.firestore.FieldValue.arrayUnion(message),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.error('applyAttendanceExcelImport:updateFailed', { importId, e });
+    }
+    throw new HttpsError('internal', message);
+  }
+});
 
 function escapeXml(value: string): string {
   return value

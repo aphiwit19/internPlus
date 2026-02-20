@@ -552,8 +552,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           const today = new Date();
           const todayMs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-          const pendingCorrWithin7 = new Set<string>();
-          const pendingCorrOver7 = new Set<string>();
+          const pendingCorrDates = new Set<string>();
           if (corrSnap) {
             corrSnap.forEach((d) => {
               const raw = d.data() as any;
@@ -563,11 +562,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(dy)) return;
               const corrDayMs = new Date(y, m - 1, dy).getTime();
               const diffDays = Math.floor((todayMs - corrDayMs) / (1000 * 60 * 60 * 24));
-              if (diffDays <= 7) {
-                pendingCorrWithin7.add(dateKey);
-              } else {
-                pendingCorrOver7.add(dateKey);
-              }
+              if (diffDays < 0) return;
+              pendingCorrDates.add(dateKey);
             });
           }
 
@@ -580,7 +576,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               const dateKey = typeof raw?.date === 'string' ? raw.date : d.id;
               const hasClockIn = Boolean(raw?.clockInAt);
               if (!hasClockIn) return;
-              if (pendingCorrOver7.has(dateKey)) return;
               const mode = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
               if (mode === 'WFH') wfh += 1;
               else wfo += 1;
@@ -647,10 +642,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           const isCompleted = intern.lifecycleStatus === 'COMPLETED';
           const lockedByEndProgram = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
-          const lockedByPendingCorrection = pendingCorrWithin7.size > 0;
+          const lockedByPendingCorrection = pendingCorrDates.size > 0;
           const isPayoutLocked = lockedByEndProgram || lockedByPendingCorrection;
           const lockReason = lockedByPendingCorrection
-            ? `Has ${pendingCorrWithin7.size} pending time correction request(s). Payout locked until resolved.`
+            ? `Has ${pendingCorrDates.size} pending time correction request(s). Payout locked until resolved.`
             : undefined;
 
           next.push({

@@ -72,6 +72,12 @@ service cloud.firestore {
       }
     }
 
+    match /CurrentWallet/{internId} {
+      allow read: if isHrAdmin() || isSelf(internId) || isAssignedSupervisorOf(internId);
+      // Client writes are restricted to HR admin. Cloud Functions use Admin SDK.
+      allow create, update, delete: if isHrAdmin();
+    }
+
     match /config/{docId} {
       allow read: if signedIn();
       allow write: if isHrAdmin();
@@ -100,6 +106,17 @@ service cloud.firestore {
       allow read: if isHrAdmin() || (signedIn() && resource.data.internId == request.auth.uid) || (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId));
       allow create: if isHrAdmin() || (signedIn() && request.resource.data.internId == request.auth.uid);
       allow update, delete: if isHrAdmin() || (signedIn() && resource.data.internId == request.auth.uid) || (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId));
+    }
+
+    match /allowanceWallets/{internId} {
+      allow read: if isHrAdmin() || isSelf(internId) || isAssignedSupervisorOf(internId);
+      // Client writes are restricted to HR admin. Cloud Functions use Admin SDK.
+      allow create, update, delete: if isHrAdmin();
+
+      match /months/{monthKey} {
+        allow read: if isHrAdmin() || isSelf(internId) || isAssignedSupervisorOf(internId);
+        allow create, update, delete: if isHrAdmin();
+      }
     }
 
     match /certificateTemplates/{templateId} {
@@ -156,6 +173,35 @@ service cloud.firestore {
           resource.data.supervisorId == request.auth.uid ||
           (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
         )
+      );
+    }
+
+    match /attendanceExcelImports/{importId} {
+      allow read: if isHrAdmin() || (
+        signedIn() && (
+          resource.data.internId == request.auth.uid ||
+          (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
+        )
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.internId == request.auth.uid &&
+        request.resource.data.status == 'PENDING' &&
+        !(request.resource.data.keys().hasAny([
+          'reviewAction',
+          'reviewedById',
+          'reviewedByName',
+          'reviewedByRole',
+          'reviewedAt',
+          'appliedAt',
+          'appliedById',
+          'resultSummary',
+          'skippedPaidMonths',
+          'errors'
+        ]));
+
+      allow update, delete: if isHrAdmin() || (
+        signedIn() && (resource.data.internId is string && isAssignedSupervisorOf(resource.data.internId))
       );
     }
 

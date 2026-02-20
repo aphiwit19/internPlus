@@ -125,7 +125,9 @@ import {
 import { 
   arrayUnion, 
   collection, 
+  deleteField, 
   doc, 
+  runTransaction, 
   getDoc, 
   getDocs, 
   limit, 
@@ -137,6 +139,8 @@ import {
   updateDoc, 
   where 
 } from 'firebase/firestore';
+
+import { httpsCallable } from 'firebase/functions';
 
 import { getDownloadURL, ref as storageRef } from 'firebase/storage';
 
@@ -160,7 +164,7 @@ import DocumentsTab from '@/pages/supervisor/components/DocumentsTab';
 
 import AssignmentsTab from '@/pages/admin/components/AssignmentsTab';
 
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseFunctions, firebaseStorage } from '@/firebase';
 
 
 
@@ -423,6 +427,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       reason: string;
       requestedClockIn?: string;
       requestedClockOut?: string;
+      workMode?: 'WFH' | 'WFO';
       attachments: Array<{ fileName: string; storagePath: string }>
     }>
   >([]);
@@ -433,9 +438,27 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
   const [decisionMode, setDecisionMode] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
   const [isSavingDecision, setIsSavingDecision] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   const [isTimeCorrectionsOpen, setIsTimeCorrectionsOpen] = useState(false);
   const [timeCorrectionsPage, setTimeCorrectionsPage] = useState(1);
+
+  const [pendingExcelImports, setPendingExcelImports] = useState<
+    Array<{
+      id: string;
+      internId: string;
+      internName: string;
+      fileName: string;
+      storagePath: string;
+      submittedAtMs?: number;
+    }>
+  >([]);
+
+  type ExcelImportItem = (typeof pendingExcelImports)[number];
+  const [isExcelImportsOpen, setIsExcelImportsOpen] = useState(false);
+  const [excelImportsPage, setExcelImportsPage] = useState(1);
+  const [excelReviewError, setExcelReviewError] = useState<string | null>(null);
+  const [excelReviewBusyId, setExcelReviewBusyId] = useState<string | null>(null);
 
 
 
@@ -557,6 +580,99 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
   }, [interns]);
 
+  useEffect(() => {
+    const assignedIds = interns.map((x) => x.id).filter(Boolean);
+    if (assignedIds.length === 0) {
+      setPendingExcelImports([]);
+      setExcelReviewError(null);
+      return () => void 0;
+    }
+
+    const chunkArray = <T,>(items: T[], size: number): T[][] => {
+      if (size <= 0) return [items];
+      const out: T[][] = [];
+      for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+      return out;
+    };
+
+    const ref = collection(firestoreDb, 'attendanceExcelImports');
+    const idChunks = chunkArray(assignedIds, 10);
+    const byChunkKey = new Map<string, ExcelImportItem[]>();
+
+    const unsubs = idChunks.map((chunk) => {
+      const chunkKey = chunk.join('|');
+      const q = query(ref, where('status', '==', 'PENDING'), where('internId', 'in', chunk));
+      return onSnapshot(
+        q,
+        (snap) => {
+          setExcelReviewError(null);
+          const items: ExcelImportItem[] = [];
+          snap.forEach((d) => {
+            const raw = d.data() as any;
+            const internId = typeof raw?.internId === 'string' ? raw.internId : '';
+            const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+            const fileName = typeof raw?.fileName === 'string' ? raw.fileName : 'Excel';
+            const storagePath = typeof raw?.storagePath === 'string' ? raw.storagePath : '';
+            const submittedAtMs = typeof raw?.submittedAt?.toMillis === 'function' ? raw.submittedAt.toMillis() : undefined;
+            if (!internId || !storagePath) return;
+            items.push({ id: d.id, internId, internName, fileName, storagePath, submittedAtMs });
+          });
+          byChunkKey.set(chunkKey, items);
+          const merged = Array.from(byChunkKey.values()).flat();
+          merged.sort((a, b) => String(b.submittedAtMs ?? 0).localeCompare(String(a.submittedAtMs ?? 0)));
+          setPendingExcelImports(merged);
+        },
+        (err) => {
+          const e = err as { code?: string; message?: string };
+          setExcelReviewError(`${String(e?.code ?? 'unknown')}: ${String(e?.message ?? 'Failed to load Excel import requests')}`);
+          byChunkKey.set(chunkKey, []);
+          const merged = Array.from(byChunkKey.values()).flat();
+          merged.sort((a, b) => String(b.submittedAtMs ?? 0).localeCompare(String(a.submittedAtMs ?? 0)));
+          setPendingExcelImports(merged);
+        },
+      );
+    });
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [interns]);
+
+  const handleReviewExcelImport = async (req: ExcelImportItem, decision: 'APPROVE' | 'REJECT') => {
+    if (!user?.id) return;
+    if (excelReviewBusyId) return;
+    setExcelReviewError(null);
+
+    try {
+      setExcelReviewBusyId(req.id);
+      const ref = doc(firestoreDb, 'attendanceExcelImports', req.id);
+      await runTransaction(firestoreDb, async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('Request not found');
+        const raw = snap.data() as any;
+        if (raw?.status !== 'PENDING') throw new Error('This request has already been reviewed.');
+        tx.update(ref, {
+          status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+          reviewAction: decision,
+          reviewedById: user.id,
+          reviewedByName: (user as any)?.name ?? 'Supervisor',
+          reviewedByRole: 'SUPERVISOR',
+          reviewedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      if (decision === 'APPROVE') {
+        const fn = httpsCallable(firebaseFunctions, 'applyAttendanceExcelImport');
+        await fn({ importId: req.id });
+      }
+    } catch (e) {
+      setExcelReviewError((e as { message?: string })?.message ?? 'Failed to update request');
+    } finally {
+      setExcelReviewBusyId(null);
+    }
+  };
+
   const toLocalDateFromKey = (dateKey: string): Date | null => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
     const [y, m, d] = dateKey.split('-').map((x) => Number(x));
@@ -584,6 +700,25 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     return pendingTimeCorrections.slice(start, start + TIME_CORRECTIONS_PAGE_SIZE);
   }, [pendingTimeCorrections, timeCorrectionsPage]);
 
+  const EXCEL_IMPORTS_PAGE_SIZE = 5;
+  const excelImportsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(pendingExcelImports.length / EXCEL_IMPORTS_PAGE_SIZE)),
+    [pendingExcelImports.length],
+  );
+
+  useEffect(() => {
+    if (excelImportsPage > excelImportsTotalPages) setExcelImportsPage(excelImportsTotalPages);
+  }, [excelImportsPage, excelImportsTotalPages]);
+
+  useEffect(() => {
+    setExcelImportsPage(1);
+  }, [pendingExcelImports.length, isExcelImportsOpen]);
+
+  const pagedExcelImports = useMemo(() => {
+    const start = (excelImportsPage - 1) * EXCEL_IMPORTS_PAGE_SIZE;
+    return pendingExcelImports.slice(start, start + EXCEL_IMPORTS_PAGE_SIZE);
+  }, [pendingExcelImports, excelImportsPage]);
+
   const parseHHMM = (value: string): { h: number; m: number } | null => {
     const m = value.trim().match(/^(\d{1,2}):(\d{2})$/);
     if (!m) return null;
@@ -606,6 +741,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
     setDecisionCorrection(req);
     setDecisionMode(mode);
     setDecisionNote('');
+    setDecisionError(null);
   };
 
   const handleConfirmDecision = async () => {
@@ -614,6 +750,42 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
     if (decisionMode === 'APPROVE') {
       if (!decisionCorrection.requestedClockIn || !decisionCorrection.requestedClockOut) return;
+      setDecisionError(null);
+
+      const monthKey = decisionCorrection.date.slice(0, 7);
+      try {
+        const paidSnap = await getDocs(
+          query(
+            collection(firestoreDb, 'allowanceClaims'),
+            where('internId', '==', decisionCorrection.internId),
+            where('monthKey', '==', monthKey),
+            where('status', '==', 'PAID'),
+            limit(1),
+          ),
+        );
+        if (!paidSnap.empty) {
+          setDecisionError('This month has already been paid. Approval is blocked.');
+          return;
+        }
+      } catch {
+        setDecisionError('Failed to validate payout status.');
+        return;
+      }
+
+      try {
+        const attSnap = await getDoc(doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date));
+        if (attSnap.exists()) {
+          const raw = attSnap.data() as any;
+          if (raw?.clockInAt && raw?.clockOutAt) {
+            setDecisionError('Attendance already exists for this date. Approval is blocked.');
+            return;
+          }
+        }
+      } catch {
+        setDecisionError('Failed to validate existing attendance.');
+        return;
+      }
+
       const clockInAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockIn);
       const clockOutAt = buildTimestampForDate(decisionCorrection.date, decisionCorrection.requestedClockOut);
       if (!clockInAt || !clockOutAt) return;
@@ -630,11 +802,13 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         await updateDoc(doc(firestoreDb, 'users', decisionCorrection.internId, 'attendance', decisionCorrection.date), {
           clockInAt,
           clockOutAt,
+          workMode: decisionCorrection.workMode === 'WFH' ? 'WFH' : 'WFO',
           updatedAt: serverTimestamp(),
         });
         setDecisionCorrection(null);
         setDecisionMode(null);
         setDecisionNote('');
+        setDecisionError(null);
       } catch {
         // ignore
       } finally {
@@ -655,6 +829,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
       setDecisionCorrection(null);
       setDecisionMode(null);
       setDecisionNote('');
+      setDecisionError(null);
     } catch {
       // ignore
     } finally {
@@ -769,6 +944,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             const reason = typeof raw?.reason === 'string' ? raw.reason : '';
             const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
             const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
+            const workMode: 'WFH' | 'WFO' = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
             const attachments = Array.isArray(raw?.attachments)
               ? (raw.attachments as any[]).flatMap((a) => {
                   const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
@@ -778,7 +954,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 })
               : [];
             if (!internId || !date) return;
-            items.push({ id: d.id, internId, internName, date, reason, requestedClockIn, requestedClockOut, attachments });
+            items.push({ id: d.id, internId, internName, date, reason, requestedClockIn, requestedClockOut, workMode, attachments });
           });
           byChunkKey.set(chunkKey, items);
           const merged = Array.from(byChunkKey.values()).flat();
@@ -3809,7 +3985,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                          type="button"
                          onClick={() => setIsTimeCorrectionsOpen(true)}
                          className="w-full text-left bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm hover:border-rose-200 hover:shadow-xl transition-all"
-                       >
+                      >
 
                           <div className="flex items-center justify-between mb-8">
 
@@ -3874,10 +4050,57 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                        </button>
 
+                      <button
+                        type="button"
+                        onClick={() => setIsExcelImportsOpen(true)}
+                        className="w-full text-left bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm hover:border-blue-200 hover:shadow-xl transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-8">
+                          <div className="flex items-start gap-3">
+                            {pendingExcelImports.length > 0 ? (
+                              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 mt-1">
+                                <Files size={18} />
+                              </div>
+                            ) : null}
+
+                            <div>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
+                              <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                            </div>
+                          </div>
+
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{pendingExcelImports.length}</div>
+                        </div>
+
+                        {pendingExcelImports.length === 0 ? (
+                          <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed text-center">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {pendingExcelImports.slice(0, 5).map((req) => (
+                              <div key={req.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="text-[11px] font-black text-slate-900 truncate">{req.internName}</div>
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 truncate">{req.fileName}</div>
+                                  </div>
+                                  <ChevronRight size={18} className="text-slate-200 flex-shrink-0" />
+                                </div>
+                              </div>
+                            ))}
+                            {pendingExcelImports.length > 5 ? (
+                              <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Click to view all</div>
+                            ) : null}
+                          </div>
+                        )}
+                      </button>
+
                        <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm">
 
                           <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">{t('supervisor_dashboard.dashboard.total_interns')}</h3>
 
+                          <p className="text-slate-400 text-sm font-medium mt-4 italic">{t('supervisor_dashboard.dashboard.my_interns_subtitle')}</p>
                           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-10">{t('supervisor_dashboard.dashboard.assigned_to_you')}</p>
 
 
@@ -4166,6 +4389,116 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
         </>
       ) : null}
 
+      {isExcelImportsOpen ? (
+        <>
+          <div
+            className="fixed inset-0 z-[180] bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setIsExcelImportsOpen(false)}
+          />
+          <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                </div>
+                <button
+                  onClick={() => setIsExcelImportsOpen(false)}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-4">
+                {excelReviewError ? (
+                  <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                    {excelReviewError}
+                  </div>
+                ) : null}
+
+                {pendingExcelImports.length === 0 ? (
+                  <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      {pagedExcelImports.map((req) => (
+                        <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.internId}</div>
+                              <button
+                                type="button"
+                                className="mt-4 text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                onClick={() => void handleOpenStoragePath(req.storagePath)}
+                              >
+                                {req.fileName}
+                              </button>
+                              {typeof req.submittedAtMs === 'number' ? (
+                                <div className="mt-2 text-[10px] font-bold text-slate-500">Submitted: {new Date(req.submittedAtMs).toLocaleString()}</div>
+                              ) : null}
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                              <div className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100 text-[9px] font-black uppercase tracking-widest">
+                                PENDING
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleReviewExcelImport(req, 'REJECT')}
+                                  disabled={excelReviewBusyId === req.id}
+                                  className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all disabled:opacity-60"
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleReviewExcelImport(req, 'APPROVE')}
+                                  disabled={excelReviewBusyId === req.id}
+                                  className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60"
+                                >
+                                  Approve
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {excelImportsTotalPages > 1 ? (
+                      <div className="pt-2 flex justify-center">
+                        <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
+                          {Array.from({ length: excelImportsTotalPages }, (_, idx) => idx + 1).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setExcelImportsPage(p)}
+                              className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
+                                p === excelImportsPage
+                                  ? 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-700 border-slate-100 hover:border-slate-200'
+                              }`}
+                              aria-current={p === excelImportsPage ? 'page' : undefined}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {decisionCorrection && decisionMode ? (
         <>
           <div
@@ -4195,12 +4528,18 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                 {decisionMode === 'APPROVE' ? (
                   <div className="p-5 bg-slate-50 border border-slate-200 rounded-[1.5rem]">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Requested</div>
-                    <div className="mt-2 text-sm font-black text-slate-900">
+                    <div className="mt-3 text-sm font-black text-slate-900">
                       {(decisionCorrection.requestedClockIn || '--') + ' — ' + (decisionCorrection.requestedClockOut || '--')}
                     </div>
                     {!decisionCorrection.requestedClockIn || !decisionCorrection.requestedClockOut ? (
                       <div className="mt-2 text-[11px] font-bold text-rose-600">Clock-in and Clock-out are required to approve.</div>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {decisionError ? (
+                  <div className="bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                    {decisionError}
                   </div>
                 ) : null}
 
