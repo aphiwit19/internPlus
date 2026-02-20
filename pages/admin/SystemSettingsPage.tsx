@@ -519,7 +519,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [offboardingRequests, setOffboardingRequests] = useState<any[]>([]);
 
   // Add state to store users by type
-  const [offboardingUsers, setOffboardingUsers] = useState<any[]>([]);
+  const [completedUsers, setCompletedUsers] = useState<any[]>([]);
   const [withdrawalUsers, setWithdrawalUsers] = useState<any[]>([]);
 
   // Track last visit to Access Control tab
@@ -592,6 +592,34 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   }, []);
 
   useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'COMPLETED'));
+    return onSnapshot(q, (snap) => {
+      const users = snap.docs.map((d) => {
+        const data = d.data() as {
+          name?: string;
+          avatar?: string;
+          email?: string;
+          postProgramAccessLevel?: PostProgramAccessLevel;
+          postProgramRetentionPeriod?: string;
+          offboardingRequestedAt?: any;
+          completionReportedAt?: any;
+        };
+        return {
+          id: d.id,
+          name: data.name || 'Unknown',
+          avatar: normalizeAvatarUrl(data.avatar),
+          email: data.email,
+          postProgramAccessLevel: data.postProgramAccessLevel,
+          postProgramRetentionPeriod: data.postProgramRetentionPeriod,
+          offboardingRequestedAt: data.offboardingRequestedAt,
+          completionReportedAt: data.completionReportedAt,
+        };
+      });
+      setCompletedUsers(users);
+    });
+  }, []);
+
+  useEffect(() => {
     const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'OFFBOARDING_REQUESTED'));
     return onSnapshot(q, (snap) => {
       setOffboardingRequests(
@@ -631,7 +659,6 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           postProgramAccessLevel?: PostProgramAccessLevel;
           postProgramRetentionPeriod?: string;
           roles?: UserRole[];
-          offboardingRequestedAt?: any;
           withdrawalRequestedAt?: any;
         };
         return {
@@ -644,21 +671,17 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           postProgramAccessLevel: data.postProgramAccessLevel,
           postProgramRetentionPeriod: data.postProgramRetentionPeriod,
           roles: data.roles || [],
-          offboardingRequestedAt: data.offboardingRequestedAt,
           withdrawalRequestedAt: data.withdrawalRequestedAt,
         };
       });
       setWithdrawnUsers(users);
       
       // Separate users by type
-      const offboarding = users.filter(u => u.offboardingRequestedAt);
       const withdrawal = users.filter(u => u.withdrawalRequestedAt);
       
       console.log('🔍 Debug - Withdrawn Users:', users);
-      console.log('🟢 Offboarding Users:', offboarding);
       console.log('🔴 Withdrawal Users:', withdrawal);
       
-      setOffboardingUsers(offboarding);
       setWithdrawalUsers(withdrawal);
     });
   }, []);
@@ -977,20 +1000,22 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           });
         } else if (op.type === 'APPLY_OFFBOARDING') {
           batch.update(userRef, {
-            lifecycleStatus: 'WITHDRAWN',
+            lifecycleStatus: 'COMPLETED',
             postProgramAccessLevel: op.accessLevel,
             postProgramRetentionPeriod: op.retentionPeriod,
             offboardingRequestedAt: serverTimestamp(),
+            completionReportedAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
         } else if (op.type === 'UPDATE_POST_PROGRAM') {
           // Check if this is an offboarding user by checking if they have offboardingTasks
           if (op.offboardingTasks) {
             batch.update(userRef, {
-              lifecycleStatus: 'WITHDRAWN',
+              lifecycleStatus: 'COMPLETED',
               ...(op.accessLevel ? { postProgramAccessLevel: op.accessLevel } : {}),
               ...(op.retentionPeriod ? { postProgramRetentionPeriod: op.retentionPeriod } : {}),
               offboardingRequestedAt: serverTimestamp(),
+              completionReportedAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
           } else {
@@ -1819,32 +1844,26 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                           </div>
                        </div>
 
-                       <div className="pt-10 border-t border-slate-100">
+                         <div className="pt-10 border-t border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.manageWithdrawnUsers}</div>
                           
-                          {/* OFFBOARDING USERS */}
+                          {/* COMPLETED USERS */}
                           <div className="mb-8">
                             <div className="flex items-center justify-between gap-4 mb-4">
                               <div className="flex items-center gap-2">
                                 <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                                <h4 className="text-sm font-bold text-slate-700">{t.offboardingUsersLabel}</h4>
-                                <span className="text-xs text-slate-400">({offboardingUsers.length} {t.usersCount})</span>
+                                <h4 className="text-sm font-bold text-slate-700">{lang === 'EN' ? 'COMPLETED USERS' : 'ผู้ใช้ COMPLETED'}</h4>
+                                <span className="text-xs text-slate-400">({completedUsers.length} {t.usersCount})</span>
                               </div>
-                              <Link
-                                to="/admin/withdrawn-offboarding-users"
-                                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all whitespace-nowrap"
-                              >
-                                {lang === 'EN' ? 'View all' : 'ดูทั้งหมด'}
-                              </Link>
                             </div>
                             <div className="space-y-3">
-                              {offboardingUsers.length === 0 ? (
+                              {completedUsers.length === 0 ? (
                                 <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
                                   <Users size={24} className="text-slate-200" />
-                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t.noOffboardingUsers}</p>
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No completed users' : 'ไม่มีผู้ใช้ completed'}</p>
                                 </div>
                               ) : (
-                                offboardingUsers.slice(0, 3).map((u) => {
+                                completedUsers.slice(0, 3).map((u) => {
                                   const dirty = withdrawnDirty[u.id] === true;
                                   const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
                                   const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
@@ -1856,7 +1875,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                           <div className="min-w-0">
                                             <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
                                             <div className="flex items-center gap-2">
-                                              <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase rounded-full">OFFBOARDING</span>
+                                              <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase rounded-full">COMPLETED</span>
                                               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
                                                 {t.completedProcess}
                                               </div>

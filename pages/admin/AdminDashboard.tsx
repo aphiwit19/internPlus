@@ -486,6 +486,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
         const appendClaimForIntern = async (intern: InternRecord) => {
           if (cancelled) return;
 
+          if (intern.lifecycleStatus === 'WITHDRAWN') return;
+
           const coerceToDate = (value: unknown): Date | null => {
             if (!value) return null;
             if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -643,7 +645,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
           const amountToStore =
             shouldPreserveExistingAmount && typeof existing?.amount === 'number' ? existing.amount : finalAmount;
 
-          const isCompleted = intern.lifecycleStatus === 'COMPLETED' || intern.lifecycleStatus === 'COMPLETED_REPORTED';
+          const isCompleted = intern.lifecycleStatus === 'COMPLETED';
           const lockedByEndProgram = allowanceRules.payoutFreq === 'END_PROGRAM' && !isCompleted;
           const lockedByPendingCorrection = pendingCorrWithin7.size > 0;
           const isPayoutLocked = lockedByEndProgram || lockedByPendingCorrection;
