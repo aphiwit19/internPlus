@@ -254,7 +254,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
   const handleOpenEdit = (claim: AllowanceClaim) => {
     if (!assignedInternIds.includes(claim.internId)) return;
-    if (claim.status !== 'PENDING') return;
+    if (claim.status === 'PAID') return;
     if (claim.isPayoutLocked) return;
     if (typeof claim.adminAdjustedAmount === 'number') return;
     setEditingClaim(claim);
@@ -265,7 +265,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const handleSaveEdit = async () => {
     if (!editingClaim) return;
     if (!assignedInternIds.includes(editingClaim.internId)) return;
-    if (editingClaim.status !== 'PENDING') return;
+    if (editingClaim.status === 'PAID') return;
     if (editingClaim.isPayoutLocked) return;
     if (typeof editingClaim.adminAdjustedAmount === 'number') return;
 
@@ -385,6 +385,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           selectedMonthKey={selectedMonthKey}
           onSelectMonthKey={setSelectedMonthKey}
           readOnly
+          allowEditInReadOnly
           onRowClick={handleOpenEdit}
         />
 

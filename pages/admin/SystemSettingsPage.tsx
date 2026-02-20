@@ -59,7 +59,7 @@ import { useAppContext } from '@/app/AppContext';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { normalizeAvatarUrl } from '@/app/avatar';
 import { PageId } from '@/pageTypes';
-import { collection, deleteField, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, deleteField, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 import PolicyTrainingManager from '@/pages/admin/components/PolicyTrainingManager';
 
@@ -458,7 +458,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           if (data.access.accessLevel === 'REVOCATION' || data.access.accessLevel === 'LIMITED' || data.access.accessLevel === 'EXTENDED') {
             setAccessLevel(data.access.accessLevel);
           }
-          if (typeof data.access.retentionPeriod === 'string' && data.access.retentionPeriod.trim()) setRetentionPeriod(data.access.retentionPeriod);
+          setRetentionPeriod('1 Month post-offboard');
         }
 
         if (data.evaluationLabels) {
@@ -519,7 +519,6 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [offboardingRequests, setOffboardingRequests] = useState<any[]>([]);
 
   // Add state to store users by type
-  const [completedUsers, setCompletedUsers] = useState<any[]>([]);
   const [withdrawalUsers, setWithdrawalUsers] = useState<any[]>([]);
 
   // Track last visit to Access Control tab
@@ -588,34 +587,6 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           };
         }),
       );
-    });
-  }, []);
-
-  useEffect(() => {
-    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'COMPLETED'));
-    return onSnapshot(q, (snap) => {
-      const users = snap.docs.map((d) => {
-        const data = d.data() as {
-          name?: string;
-          avatar?: string;
-          email?: string;
-          postProgramAccessLevel?: PostProgramAccessLevel;
-          postProgramRetentionPeriod?: string;
-          offboardingRequestedAt?: any;
-          completionReportedAt?: any;
-        };
-        return {
-          id: d.id,
-          name: data.name || 'Unknown',
-          avatar: normalizeAvatarUrl(data.avatar),
-          email: data.email,
-          postProgramAccessLevel: data.postProgramAccessLevel,
-          postProgramRetentionPeriod: data.postProgramRetentionPeriod,
-          offboardingRequestedAt: data.offboardingRequestedAt,
-          completionReportedAt: data.completionReportedAt,
-        };
-      });
-      setCompletedUsers(users);
     });
   }, []);
 
@@ -939,7 +910,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
           },
           access: {
             accessLevel,
-            retentionPeriod,
+            retentionPeriod: '1 Month post-offboard',
           },
           evaluationLabels: evaluationLabelsByLang,
           updatedAt: serverTimestamp(),
@@ -1043,6 +1014,33 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       }
 
       await batch.commit();
+
+      {
+        const legacyRetention = '6 Months post-offboard';
+        const nextRetention = '1 Month post-offboard';
+        const snap = await getDocs(
+          query(collection(firestoreDb, 'users'), where('postProgramRetentionPeriod', '==', legacyRetention)),
+        );
+
+        let migrateBatch = writeBatch(firestoreDb);
+        let opCount = 0;
+        for (const d of snap.docs) {
+          migrateBatch.update(doc(firestoreDb, 'users', d.id), {
+            postProgramRetentionPeriod: nextRetention,
+            updatedAt: serverTimestamp(),
+          });
+          opCount += 1;
+          if (opCount >= 450) {
+            await migrateBatch.commit();
+            migrateBatch = writeBatch(firestoreDb);
+            opCount = 0;
+          }
+        }
+        if (opCount > 0) {
+          await migrateBatch.commit();
+        }
+      }
+
       setPayPeriodError(null);
 
       setDidSaveRecently(true);
@@ -1847,108 +1845,6 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                          <div className="pt-10 border-t border-slate-100">
                           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{t.manageWithdrawnUsers}</div>
                           
-                          {/* COMPLETED USERS */}
-                          <div className="mb-8">
-                            <div className="flex items-center justify-between gap-4 mb-4">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                                <h4 className="text-sm font-bold text-slate-700">{lang === 'EN' ? 'COMPLETED USERS' : 'ผู้ใช้ COMPLETED'}</h4>
-                                <span className="text-xs text-slate-400">({completedUsers.length} {t.usersCount})</span>
-                              </div>
-                            </div>
-                            <div className="space-y-3">
-                              {completedUsers.length === 0 ? (
-                                <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
-                                  <Users size={24} className="text-slate-200" />
-                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{lang === 'EN' ? 'No completed users' : 'ไม่มีผู้ใช้ completed'}</p>
-                                </div>
-                              ) : (
-                                completedUsers.slice(0, 3).map((u) => {
-                                  const dirty = withdrawnDirty[u.id] === true;
-                                  const accessValue = withdrawnAccessOverrides[u.id] ?? u.postProgramAccessLevel ?? 'LIMITED';
-                                  const retentionValue = withdrawnRetentionOverrides[u.id] ?? u.postProgramRetentionPeriod ?? retentionPeriod;
-                                  return (
-                                    <div key={u.id} className="p-5 bg-emerald-50 border border-emerald-100 rounded-2xl flex flex-col gap-4">
-                                      <div className="flex items-start justify-between gap-4">
-                                        <div className="flex items-center gap-4 min-w-0">
-                                          <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
-                                          <div className="min-w-0">
-                                            <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
-                                            <div className="flex items-center gap-2">
-                                              <span className="px-2 py-1 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase rounded-full">COMPLETED</span>
-                                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                                                {t.completedProcess}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <button
-                                          onClick={() => void handleRestoreWithdrawnImmediate(u.id)}
-                                          className="px-4 py-2 bg-white border border-slate-200 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:border-rose-200 transition-all whitespace-nowrap"
-                                        >
-                                          {lang === 'EN' ? 'Restore' : 'คืนค่า'}
-                                        </button>
-                                      </div>
-
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.accessLevelLabel}</div>
-                                          <select
-                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700"
-                                            value={accessValue as PostProgramAccessLevel}
-                                            onChange={(e) => {
-                                              setWithdrawnAccessOverrides((prev) => ({ ...prev, [u.id]: e.target.value as PostProgramAccessLevel }));
-                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
-                                            }}
-                                          >
-                                            <option value="REVOCATION">{t.optRevocation}</option>
-                                            <option value="LIMITED">{t.optLimited}</option>
-                                            <option value="EXTENDED">{t.optExtended}</option>
-                                          </select>
-                                        </div>
-
-                                        <div className="space-y-1">
-                                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{t.retentionLabel}</div>
-                                          <input
-                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-black tracking-widest text-slate-700"
-                                            value={displayRetention(retentionValue)}
-                                            onChange={(e) => {
-                                              setWithdrawnRetentionOverrides((prev) => ({ ...prev, [u.id]: e.target.value }));
-                                              setWithdrawnDirty((prev) => ({ ...prev, [u.id]: true }));
-                                            }}
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {dirty && (
-                                        <div className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-2xl p-4">
-                                          <div className="text-[10px] font-black text-amber-700 uppercase tracking-widest">
-                                            {lang === 'EN' ? 'Unsaved changes' : 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก'}
-                                          </div>
-                                          <div className="flex items-center gap-3">
-                                            <button
-                                              onClick={() => void handleSaveWithdrawnEdit(u.id)}
-                                              className="px-5 py-2 bg-[#111827] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
-                                            >
-                                              {lang === 'EN' ? 'Save' : 'บันทึก'}
-                                            </button>
-                                            <button
-                                              onClick={() => handleCancelWithdrawnEdit(u.id)}
-                                              className="px-5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
-                                            >
-                                              {lang === 'EN' ? 'Cancel' : 'ยกเลิก'}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-
                           {/* WITHDRAWAL USERS */}
                           <div>
                             <div className="flex items-center justify-between gap-4 mb-4">

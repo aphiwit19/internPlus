@@ -15,6 +15,7 @@ interface AllowancesTabProps {
   selectedMonthKey: string;
   onSelectMonthKey: (next: string) => void;
   readOnly?: boolean;
+  allowEditInReadOnly?: boolean;
   onRowClick?: (claim: AllowanceClaim) => void;
 }
 
@@ -28,6 +29,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
   selectedMonthKey,
   onSelectMonthKey,
   readOnly = false,
+  allowEditInReadOnly = false,
   onRowClick,
 }) => {
   const { t } = useTranslation();
@@ -274,8 +276,8 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                   className={`group hover:bg-slate-50/50 transition-all ${onRowClick ? 'cursor-pointer' : ''}`}
                   onClick={() => {
                     if (!onRowClick) return;
-                    if (readOnly) return;
-                    if (claim.status !== 'PENDING') return;
+                    if (readOnly && !allowEditInReadOnly) return;
+                    if (claim.status === 'PAID') return;
                     if (claim.isPayoutLocked) return;
                     onRowClick(claim);
                   }}
@@ -319,7 +321,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                       }
                     >
                       <div className="flex items-center gap-2">
-                        {!readOnly && onRowClick && claim.status === 'PENDING' && !claim.isPayoutLocked ? (
+                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' && !claim.isPayoutLocked ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -335,7 +337,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                         ) : (
                           <span className="text-sm font-black text-slate-900">{Number(claim.amount ?? 0).toLocaleString()} THB</span>
                         )}
-                        {!readOnly && onRowClick && claim.status === 'PENDING' && !claim.isPayoutLocked ? (
+                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' && !claim.isPayoutLocked ? (
                           <button
                             type="button"
                             onClick={(e) => {

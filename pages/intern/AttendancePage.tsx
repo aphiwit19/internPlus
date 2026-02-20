@@ -330,7 +330,7 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
     if (hasClockIn && hasClockOut) return false;
     const ds = daysSince(r.date);
     if (ds == null) return false;
-    return ds >= 0 && ds <= 7;
+    return ds >= 0;
   };
 
   const handleOpenCorrection = (r: AttendanceRecord) => {
