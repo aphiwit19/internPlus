@@ -67,10 +67,10 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   const [filterDate, setFilterDate] = useState<string>('');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE' | 'ABSENT'>('ALL');
   const [filterWorkMode, setFilterWorkMode] = useState<'ALL' | WorkMode>('ALL');
   const [pendingFilterDate, setPendingFilterDate] = useState<string>('');
-  const [pendingFilterStatus, setPendingFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE'>('ALL');
+  const [pendingFilterStatus, setPendingFilterStatus] = useState<'ALL' | 'PRESENT' | 'LATE' | 'ABSENT'>('ALL');
   const [pendingFilterWorkMode, setPendingFilterWorkMode] = useState<'ALL' | WorkMode>('ALL');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -965,6 +965,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                     <label className="space-y-2 block">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-in (HH:MM)</div>
                       <input
+                        type="time"
+                        step={60}
                         value={manualClockIn}
                         onChange={(e) => setManualClockIn(e.target.value)}
                         placeholder="08:30"
@@ -974,6 +976,8 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                     <label className="space-y-2 block">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Clock-out (HH:MM)</div>
                       <input
+                        type="time"
+                        step={60}
                         value={manualClockOut}
                         onChange={(e) => setManualClockOut(e.target.value)}
                         placeholder="17:30"
@@ -1197,12 +1201,13 @@ const AttendancePage: React.FC<AttendancePageProps> = ({ lang: _lang }) => {
                   <div className="relative">
                     <select
                       value={pendingFilterStatus}
-                      onChange={(e) => setPendingFilterStatus(e.target.value as 'ALL' | 'PRESENT' | 'LATE')}
+                      onChange={(e) => setPendingFilterStatus(e.target.value as 'ALL' | 'PRESENT' | 'LATE' | 'ABSENT')}
                       className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-600 appearance-none outline-none cursor-pointer"
                     >
                       <option value="ALL">{tr('intern_attendance.filters.all_status')}</option>
                       <option value="PRESENT">{tr('intern_attendance.status.present')}</option>
                       <option value="LATE">{tr('intern_attendance.status.late')}</option>
+                      <option value="ABSENT">{tr('intern_attendance.status.absent')}</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
                   </div>

@@ -51,6 +51,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 
+import { toast } from 'sonner';
+
 import { AdminTab } from './components/AdminDashboardTabs';
 import AllowancesTab from './components/AllowancesTab';
 import AttendanceTab from './components/AttendanceTab';
@@ -183,6 +185,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const [allowanceLoadError, setAllowanceLoadError] = useState<string | null>(null);
   const [isBulkAuthorizing, setIsBulkAuthorizing] = useState(false);
   const [isBulkPaying, setIsBulkPaying] = useState(false);
+  const [isBulkAuthorizeModalOpen, setIsBulkAuthorizeModalOpen] = useState(false);
+  const [bulkAuthorizeCount, setBulkAuthorizeCount] = useState(0);
   const [isBulkPayModalOpen, setIsBulkPayModalOpen] = useState(false);
   const [bulkPaidAtInput, setBulkPaidAtInput] = useState('');
 
@@ -258,7 +262,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       setEditAllowanceAmount('');
       setEditAllowanceNote('');
     } catch {
-      alert('Failed to save admin adjustment. Please check permissions and try again.');
+      toast.error('Failed to save admin adjustment. Please check permissions and try again.', { duration: 6000 });
     } finally {
       setIsSavingAllowanceEdit(false);
     }
@@ -268,7 +272,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     if (activeTab !== 'allowances') return;
     const candidates = allowanceClaims.filter((c) => c.status !== 'PAID' && !c.isPayoutLocked);
     if (candidates.length === 0) {
-      alert('No claims available to pay.');
+      toast.info(tr('admin_dashboard.toast_no_claims_to_pay'), { duration: 4000 });
       return;
     }
     setBulkPaidAtInput('');
@@ -285,11 +289,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
     const candidates = allowanceClaims.filter((c) => c.status !== 'PAID' && !c.isPayoutLocked);
     if (candidates.length === 0) {
-      alert('No claims available to pay.');
+      toast.info(tr('admin_dashboard.toast_no_claims_to_pay'), { duration: 4000 });
       return;
     }
-
-    if (!window.confirm(`Pay ${candidates.length} claim(s) for ${selectedMonthKey}?`)) return;
 
     const paymentDate = paidAtDate.toLocaleString('en-US', {
       month: 'short',
@@ -301,17 +303,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
     try {
       setIsBulkPaying(true);
-      const batch = writeBatch(firestoreDb);
-      for (const c of candidates) {
-        batch.update(doc(firestoreDb, 'allowanceClaims', c.id), {
-          status: 'PAID',
-          ...(c.status === 'PENDING' ? { approvedAt: serverTimestamp() } : {}),
-          paymentDate,
-          paidAt: Timestamp.fromDate(paidAtDate),
-          updatedAt: serverTimestamp(),
-        });
+      if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+        const internIds = Array.from(new Set(candidates.map((c) => c.internId).filter(Boolean)));
+        let batch = writeBatch(firestoreDb);
+        let ops = 0;
+        const flush = async () => {
+          if (ops === 0) return;
+          await batch.commit();
+          batch = writeBatch(firestoreDb);
+          ops = 0;
+        };
+
+        for (const internId of internIds) {
+          const snap = await getDocs(
+            query(
+              collection(firestoreDb, 'allowanceClaims'),
+              where('internId', '==', internId),
+              where('status', 'in', ['PENDING', 'APPROVED']),
+            ),
+          );
+          for (const d of snap.docs) {
+            const raw = d.data() as any;
+            const currentStatus = raw?.status;
+            batch.update(doc(firestoreDb, 'allowanceClaims', d.id), {
+              status: 'PAID',
+              ...(currentStatus === 'PENDING' ? { approvedAt: serverTimestamp() } : {}),
+              paymentDate,
+              paidAt: Timestamp.fromDate(paidAtDate),
+              updatedAt: serverTimestamp(),
+            });
+            ops += 1;
+            if (ops >= 450) await flush();
+          }
+        }
+        await flush();
+      } else {
+        const batch = writeBatch(firestoreDb);
+        for (const c of candidates) {
+          batch.update(doc(firestoreDb, 'allowanceClaims', c.id), {
+            status: 'PAID',
+            ...(c.status === 'PENDING' ? { approvedAt: serverTimestamp() } : {}),
+            paymentDate,
+            paidAt: Timestamp.fromDate(paidAtDate),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await batch.commit();
       }
-      await batch.commit();
 
       setAllowanceClaims((prev) =>
         prev.map((c) =>
@@ -322,8 +360,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       );
       setIsBulkPayModalOpen(false);
       setBulkPaidAtInput('');
-    } catch {
-      alert('Failed to bulk pay payouts. Please check Firestore permissions and try again.');
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      toast.error(
+        (
+          `Failed to bulk pay payouts. ${String(err?.code ?? '')} ${String(err?.message ?? '')}`.trim() ||
+          'Failed to bulk pay payouts. Please check Firestore permissions and try again.'
+        ),
+        { duration: 8000 },
+      );
     } finally {
       setIsBulkPaying(false);
     }
@@ -607,14 +652,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       console.error('Failed to assign supervisor', { internId, mentorId: mentor.id }, err);
-      alert(`Failed to assign supervisor: ${message}`);
+      toast.error(`Failed to assign supervisor: ${message}`, { duration: 7000 });
     }
   };
 
   const handleAuthorizeAllowance = async (id: string) => {
     const claim = allowanceClaims.find((c) => c.id === id);
     if (claim?.isPayoutLocked) {
-      alert(claim.lockReason || 'This payout is locked until program completion.');
+      toast.info(claim.lockReason || tr('admin_dashboard.toast_payout_locked'), { duration: 5000 });
       return;
     }
     try {
@@ -625,7 +670,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       });
       setAllowanceClaims((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'APPROVED' } : a)));
     } catch {
-      alert('Failed to authorize payout. Please check Firestore permissions and try again.');
+      toast.error('Failed to authorize payout. Please check Firestore permissions and try again.', { duration: 7000 });
     }
   };
 
@@ -633,13 +678,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     if (activeTab !== 'allowances') return;
     if (isBulkAuthorizing) return;
 
-    const candidates = allowanceClaims.filter((c) => c.status === 'PENDING' && !c.isPayoutLocked);
-    if (candidates.length === 0) {
-      alert('No PENDING claims available to authorize.');
+    if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+      toast.info(tr('admin_dashboard.toast_bulk_authorize_not_available'), { duration: 5000 });
       return;
     }
 
-    if (!window.confirm(`Authorize ${candidates.length} claim(s) for ${selectedMonthKey}?`)) return;
+    const candidates = allowanceClaims.filter((c) => c.status === 'PENDING' && !c.isPayoutLocked);
+    if (candidates.length === 0) {
+      toast.info(tr('admin_dashboard.toast_no_pending_to_authorize'), { duration: 4000 });
+      return;
+    }
+
+    setBulkAuthorizeCount(candidates.length);
+    setIsBulkAuthorizeModalOpen(true);
+  };
+
+  const handleConfirmBulkAuthorize = async () => {
+    if (activeTab !== 'allowances') return;
+    if (isBulkAuthorizing) return;
+
+    if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+      toast.info(tr('admin_dashboard.toast_bulk_authorize_not_available'), { duration: 5000 });
+      return;
+    }
+
+    const candidates = allowanceClaims.filter((c) => c.status === 'PENDING' && !c.isPayoutLocked);
+    if (candidates.length === 0) {
+      toast.info(tr('admin_dashboard.toast_no_pending_to_authorize'), { duration: 4000 });
+      setIsBulkAuthorizeModalOpen(false);
+      setBulkAuthorizeCount(0);
+      return;
+    }
 
     try {
       setIsBulkAuthorizing(true);
@@ -655,8 +724,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       setAllowanceClaims((prev) =>
         prev.map((c) => (c.status === 'PENDING' && !c.isPayoutLocked ? { ...c, status: 'APPROVED' } : c)),
       );
-    } catch {
-      alert('Failed to bulk authorize payouts. Please check Firestore permissions and try again.');
+      setIsBulkAuthorizeModalOpen(false);
+      setBulkAuthorizeCount(0);
+    } catch (e) {
+      const err = e as { code?: string; message?: string };
+      toast.error(
+        (
+          `Failed to bulk authorize payouts. ${String(err?.code ?? '')} ${String(err?.message ?? '')}`.trim() ||
+          'Failed to bulk authorize payouts. Please check Firestore permissions and try again.'
+        ),
+        { duration: 8000 },
+      );
     } finally {
       setIsBulkAuthorizing(false);
     }
@@ -665,7 +743,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const handleProcessPayment = (id: string) => {
     const claim = allowanceClaims.find((c) => c.id === id);
     if (claim?.isPayoutLocked) {
-      alert(claim.lockReason || 'This payout is locked until program completion.');
+      toast.info(claim.lockReason || tr('admin_dashboard.toast_payout_locked'), { duration: 5000 });
       return;
     }
     setPayoutClaimId(id);
@@ -676,7 +754,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     if (!payoutClaimId) return;
     const claim = allowanceClaims.find((c) => c.id === payoutClaimId);
     if (claim?.isPayoutLocked) {
-      alert(claim.lockReason || 'This payout is locked until program completion.');
+      toast.info(claim.lockReason || tr('admin_dashboard.toast_payout_locked'), { duration: 5000 });
       return;
     }
     if (!payoutPaidAtInput) return;
@@ -707,7 +785,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       setPayoutClaimId(null);
       setPayoutPaidAtInput('');
     } catch {
-      alert('Failed to process payout. Please check Firestore permissions and try again.');
+      toast.error('Failed to process payout. Please check Firestore permissions and try again.', { duration: 7000 });
     }
   };
 
@@ -966,6 +1044,52 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                  )}
               </div>
            </div>
+        </div>
+      )}
+
+      {isBulkAuthorizeModalOpen && (
+        <div className="fixed inset-0 z-[124] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl space-y-8 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_dashboard.authorize_all')}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">
+                  {tr('admin_dashboard.confirm_authorize_all', { count: bulkAuthorizeCount, month: selectedMonthKey } as any)}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (isBulkAuthorizing) return;
+                  setIsBulkAuthorizeModalOpen(false);
+                  setBulkAuthorizeCount(0);
+                }}
+                className="text-slate-300 hover:text-slate-900"
+                aria-label="Close"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  if (isBulkAuthorizing) return;
+                  setIsBulkAuthorizeModalOpen(false);
+                  setBulkAuthorizeCount(0);
+                }}
+                className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all"
+              >
+                {tr('admin_dashboard.cancel')}
+              </button>
+              <button
+                onClick={() => void handleConfirmBulkAuthorize()}
+                disabled={bulkAuthorizeCount <= 0 || isBulkAuthorizing}
+                className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-60 disabled:hover:bg-blue-600"
+              >
+                {tr('admin_dashboard.confirm')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

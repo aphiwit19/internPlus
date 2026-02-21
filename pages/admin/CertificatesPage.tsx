@@ -86,33 +86,6 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
   const { user } = useAppContext();
   const navigate = useNavigate();
 
-  const t = useMemo(
-    () =>
-      ({
-        EN: {
-          title: 'Certificates',
-          subtitle: 'Review and issue internship certificates for all interns.',
-          empty: 'No certificate requests yet',
-          requested: 'Requested',
-          issued: 'Issued',
-          upload: 'Upload Signed PDF',
-          download: 'Download',
-          uploading: 'Uploading...',
-        },
-        TH: {
-          title: 'ใบรับรอง',
-          subtitle: 'ตรวจสอบและออกใบรับรองสำหรับนักศึกษาทั้งหมด',
-          empty: 'ยังไม่มีคำขอใบรับรอง',
-          requested: 'ส่งคำขอแล้ว',
-          issued: 'ออกเอกสารแล้ว',
-          upload: 'อัปโหลด PDF ที่เซ็นแล้ว',
-          download: 'ดาวน์โหลด',
-          uploading: 'กำลังอัปโหลด...',
-        },
-      }[lang]),
-    [lang],
-  );
-
   const [requests, setRequests] = useState<Array<CertificateRequestDoc & { id: string }>>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -179,7 +152,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load requests'}`);
+        setLoadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.load_requests')}`);
       },
     );
   }, []);
@@ -194,7 +167,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       },
       (err) => {
         const e = err as { code?: string; message?: string };
-        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to load templates'}`);
+        setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.load_templates')}`);
       },
     );
   }, []);
@@ -238,7 +211,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Upload failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.upload_failed')}`);
     } finally {
       setUploadingId(null);
     }
@@ -254,11 +227,11 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     try {
       const parsed = new URL(url);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        setUploadError(lang === 'TH' ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://' : 'Please enter a link that starts with http:// or https://');
+        setUploadError(tr('admin_certificates_page.errors.invalid_link'));
         return;
       }
     } catch {
-      setUploadError(lang === 'TH' ? 'กรุณากรอกลิ้งค์ที่ขึ้นต้นด้วย http:// หรือ https://' : 'Please enter a link that starts with http:// or https://');
+      setUploadError(tr('admin_certificates_page.errors.invalid_link'));
       return;
     }
 
@@ -277,7 +250,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       setLinkDraft('');
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Save link failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.save_link_failed')}`);
     } finally {
       setSavingLinkId(null);
     }
@@ -298,7 +271,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     if (generatingId) return;
     const templateId = selectedTemplateByType[req.type];
     if (!templateId) {
-      setUploadError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      setUploadError(tr('admin_certificates_page.errors.select_template_first'));
       return;
     }
 
@@ -309,7 +282,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       await fn({ requestId: req.id, templateId });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.generate_failed')}`);
     } finally {
       setGeneratingId(null);
     }
@@ -340,7 +313,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       setPendingCancelRequest(null);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Cancel failed'}`);
+      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.cancel_failed')}`);
     } finally {
       setCancelingId(null);
     }
@@ -384,7 +357,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
     if (isEditSaving) return;
     const templateId = editTemplateId.trim();
     if (!templateId) {
-      setEditError(lang === 'TH' ? 'กรุณาเลือก Template ก่อน' : 'Please select a template first.');
+      setEditError(tr('admin_certificates_page.errors.select_template_first'));
       return;
     }
 
@@ -411,7 +384,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
       closeEdit();
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
-      setEditError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Generate failed'}`);
+      setEditError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('admin_certificates_page.errors.generate_failed')}`);
     } finally {
       setIsEditSaving(false);
     }
@@ -620,17 +593,17 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
         <div className="mb-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{t.title}</h1>
-              <p className="text-slate-500 text-sm font-medium pt-2">{t.subtitle}</p>
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">{tr('admin_certificates_page.title')}</h1>
+              <p className="text-slate-500 text-sm font-medium pt-2">{tr('admin_certificates_page.subtitle')}</p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <div className="px-4 py-2 rounded-2xl bg-white border border-slate-100 text-[11px] font-black uppercase tracking-widest text-slate-600">
-                  {lang === 'TH' ? 'ทั้งหมด' : 'Total'}: {requestStats.total}
+                  {tr('admin_certificates_page.stats.total')}: {requestStats.total}
                 </div>
                 <div className="px-4 py-2 rounded-2xl bg-amber-50 border border-amber-100 text-[11px] font-black uppercase tracking-widest text-amber-700">
-                  {lang === 'TH' ? 'รอดำเนินการ' : 'Requested'}: {requestStats.requested}
+                  {tr('admin_certificates_page.stats.requested')}: {requestStats.requested}
                 </div>
                 <div className="px-4 py-2 rounded-2xl bg-emerald-50 border border-emerald-100 text-[11px] font-black uppercase tracking-widest text-emerald-700">
-                  {lang === 'TH' ? 'ออกแล้ว' : 'Issued'}: {requestStats.issued}
+                  {tr('admin_certificates_page.stats.issued')}: {requestStats.issued}
                 </div>
               </div>
             </div>
@@ -653,7 +626,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                   mode === 'requests' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {lang === 'TH' ? 'คำขอ' : 'Requests'}
+                {tr('admin_certificates_page.modes.requests')}
               </button>
               <button
                 type="button"
@@ -663,7 +636,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 }`}
               >
                 <Settings2 size={16} />
-                {lang === 'TH' ? 'เทมเพลต' : 'Templates'}
+                {tr('admin_certificates_page.modes.templates')}
               </button>
             </div>
           </div>
@@ -674,7 +647,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
             <CertificateTemplatesManager lang={lang} onBack={() => setMode('requests')} initialView="create" />
           ) : interns.length === 0 ? (
             <div className="bg-white rounded-[2rem] p-10 border border-slate-100 shadow-sm text-center">
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{t.empty}</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('admin_certificates_page.empty')}</p>
             </div>
           ) : activeIntern ? (
             <div className="space-y-6">
@@ -684,7 +657,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 className="inline-flex items-center gap-2 text-slate-600 text-sm font-bold hover:text-slate-900"
               >
                 <ChevronLeft size={18} />
-                {lang === 'TH' ? 'กลับไปที่รายชื่อ' : 'Back to list'}
+                {tr('admin_certificates_page.back_to_list')}
               </button>
 
               <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
@@ -692,7 +665,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 <div>
                   <p className="text-lg font-black text-slate-900">{activeIntern.internName}</p>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {(activeIntern.internPosition ?? 'Intern') + ' • ' + (activeIntern.internDepartment ?? 'Unknown')}
+                    {(activeIntern.internPosition ?? tr('admin_certificates_page.fallbacks.intern')) +
+                      ' • ' +
+                      (activeIntern.internDepartment ?? tr('admin_certificates_page.fallbacks.unknown'))}
                   </p>
                 </div>
               </div>
@@ -701,13 +676,13 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 {([
                   {
                     type: 'COMPLETION' as const,
-                    label: 'COMPLETION',
+                    label: tr('admin_certificates_page.types.completion'),
                     icon: <Award size={18} />,
                     iconClass: 'bg-amber-50 text-amber-700',
                   },
                   {
                     type: 'RECOMMENDATION' as const,
-                    label: 'RECOMMENDATION',
+                    label: tr('admin_certificates_page.types.recommendation'),
                     icon: <FileText size={18} />,
                     iconClass: 'bg-indigo-50 text-indigo-700',
                   },
@@ -725,22 +700,22 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-900 truncate">{meta.label}</p>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                              {req?.fileName ?? (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ?? (lang === 'TH' ? 'ยังไม่มีคำขอ' : 'No request yet')}
+                              {req?.fileName ?? (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ?? tr('admin_certificates_page.no_request_yet')}
                             </p>
                           </div>
                         </div>
 
                         {status === 'REQUESTED' ? (
                           <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                            {t.requested}
+                            {tr('admin_certificates_page.badges.requested')}
                           </div>
                         ) : status === 'ISSUED' ? (
                           <div className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest">
-                            {t.issued}
+                            {tr('admin_certificates_page.badges.issued_status')}
                           </div>
                         ) : (
                           <div className="px-4 py-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-100 text-[10px] font-black uppercase tracking-widest">
-                            {lang === 'TH' ? 'ไม่มีคำขอ' : 'NO REQUEST'}
+                            {tr('admin_certificates_page.badges.no_request')}
                           </div>
                         )}
                       </div>
@@ -760,7 +735,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                   }
                                   className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
                                 >
-                                  <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                                  <option value="">{tr('admin_certificates_page.select_template')}</option>
                                   {templatesByType[meta.type].map((tpl) => (
                                     <option key={tpl.id} value={tpl.id}>
                                       {tpl.name || tpl.id}
@@ -775,7 +750,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                   className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                                 >
                                   {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                                  {generatingId === req.id ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Generate' : 'Generate')}
+                                  {generatingId === req.id
+                                    ? tr('admin_certificates_page.actions.generating')
+                                    : tr('admin_certificates_page.actions.generate')}
                                 </button>
 
                                 {req.unlockedAt ? (
@@ -784,7 +761,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                     onClick={() => openEdit(req)}
                                     className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50"
                                   >
-                                    {lang === 'TH' ? 'แก้ไข' : 'Edit'}
+                                    {tr('admin_certificates_page.actions.edit')}
                                   </button>
                                 ) : null}
                               </>
@@ -797,7 +774,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                               className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
                             >
                               {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                              {uploadingId === req.id ? t.uploading : t.upload}
+                              {uploadingId === req.id
+                                ? tr('admin_certificates_page.actions.uploading')
+                                : tr('admin_certificates_page.actions.upload_signed_pdf')}
                             </button>
 
                             {meta.type === 'RECOMMENDATION' || meta.type === 'COMPLETION' ? (
@@ -807,7 +786,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                 disabled={savingLinkId === req.id}
                                 className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
                               >
-                                Attach Link
+                                {tr('admin_certificates_page.actions.attach_link')}
                               </button>
                             ) : null}
                           </div>
@@ -818,7 +797,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                               onClick={() => void handleDownload(req)}
                               disabled={!(req.issuedPdfPath ?? req.storagePath) && !(Array.isArray(req.attachmentLinks) && req.attachmentLinks.length > 0)}
                               className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-50"
-                              title={t.download}
+                              title={tr('admin_certificates_page.actions.download')}
                             >
                               <Download size={18} />
                             </button>
@@ -831,7 +810,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                 className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2"
                               >
                                 {cancelingId === req.id ? <Clock size={16} className="animate-spin" /> : null}
-                                {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                                {tr('admin_certificates_page.actions.cancel')}
                               </button>
                             ) : null}
                           </div>
@@ -844,7 +823,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                             type="text"
                             value={linkDraft}
                             onChange={(e) => setLinkDraft(e.target.value)}
-                            placeholder={lang === 'TH' ? 'วางลิ้งค์ (Drive/URL)' : 'Paste link (Drive/URL)'}
+                            placeholder={tr('admin_certificates_page.placeholders.paste_link')}
                             className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"
                           />
                           <button
@@ -853,7 +832,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                             disabled={savingLinkId === req.id}
                             className="px-5 py-3 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50"
                           >
-                            {savingLinkId === req.id ? 'Saving...' : 'Save'}
+                            {savingLinkId === req.id
+                              ? tr('admin_certificates_page.actions.saving')
+                              : tr('admin_certificates_page.actions.save')}
                           </button>
                           <button
                             type="button"
@@ -863,7 +844,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                             }}
                             className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50"
                           >
-                            Cancel
+                            {tr('admin_certificates_page.actions.cancel')}
                           </button>
                         </div>
                       ) : null}
@@ -890,7 +871,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-black text-slate-900 truncate">{intern.internName}</p>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                          {(intern.internPosition ?? 'Intern') + ' • ' + (intern.internDepartment ?? 'Unknown')}
+                          {(intern.internPosition ?? tr('admin_certificates_page.fallbacks.intern')) +
+                            ' • ' +
+                            (intern.internDepartment ?? tr('admin_certificates_page.fallbacks.unknown'))}
                         </p>
                       </div>
                     </div>
@@ -898,17 +881,17 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {requestedCount > 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[10px] font-black uppercase tracking-widest">
-                          {requestedCount} {lang === 'TH' ? 'รอดำเนินการ' : 'pending'}
+                          {requestedCount} {tr('admin_certificates_page.badges.pending')}
                         </div>
                       ) : null}
                       {issuedCount > 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest">
-                          {issuedCount} {lang === 'TH' ? 'ออกแล้ว' : 'issued'}
+                          {issuedCount} {tr('admin_certificates_page.badges.issued')}
                         </div>
                       ) : null}
                       {requestedCount === 0 && issuedCount === 0 ? (
                         <div className="px-4 py-2 rounded-xl bg-slate-50 text-slate-400 border border-slate-100 text-[10px] font-black uppercase tracking-widest">
-                          {lang === 'TH' ? 'ไม่มีคำขอ' : 'NO REQUEST'}
+                          {tr('admin_certificates_page.badges.no_request')}
                         </div>
                       ) : null}
                     </div>
@@ -966,7 +949,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div className="min-w-0">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      {lang === 'TH' ? 'แก้ไขใบรับรอง' : 'Edit Certificate'}
+                      {tr('admin_certificates_page.edit_modal.kicker')}
                     </div>
                     <div className="text-xl font-black text-slate-900 truncate">{editingRequest.internName}</div>
                   </div>
@@ -988,13 +971,13 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                   ) : null}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label className="space-y-2">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'Template' : 'Template'}</div>
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.template')}</div>
                       <select
                         value={editTemplateId}
                         onChange={(e) => setEditTemplateId(e.target.value)}
                         className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
                       >
-                        <option value="">{lang === 'TH' ? 'เลือก Template' : 'Select template'}</option>
+                        <option value="">{tr('admin_certificates_page.select_template')}</option>
                         {templatesByType.COMPLETION.map((tpl) => (
                           <option key={tpl.id} value={tpl.id}>
                             {tpl.name || tpl.id}
@@ -1005,7 +988,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('issueDate') ? (
                       <label className="space-y-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'วันที่ออก' : 'Issue date'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.issue_date')}</div>
                         <input
                           type="date"
                           value={editIssueDate}
@@ -1017,7 +1000,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('internName') ? (
                       <label className="space-y-2 md:col-span-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ชื่อ' : 'Name'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.name')}</div>
                         <input
                           value={editInternName}
                           onChange={(e) => setEditInternName(e.target.value)}
@@ -1028,7 +1011,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('position') ? (
                       <label className="space-y-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ตำแหน่ง' : 'Position'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.position')}</div>
                         <input
                           value={editInternPosition}
                           onChange={(e) => setEditInternPosition(e.target.value)}
@@ -1039,7 +1022,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('department') ? (
                       <label className="space-y-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'แผนก' : 'Department'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.department')}</div>
                         <input
                           value={editInternDepartment}
                           onChange={(e) => setEditInternDepartment(e.target.value)}
@@ -1050,7 +1033,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('internPeriod') ? (
                       <label className="space-y-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'ช่วงฝึกงาน' : 'Intern period'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.intern_period')}</div>
                         <input
                           value={editInternPeriod}
                           onChange={(e) => setEditInternPeriod(e.target.value)}
@@ -1061,7 +1044,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
 
                     {shouldShowEditField('systemId') ? (
                       <label className="space-y-2">
-                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'TH' ? 'รหัสระบบ' : 'System ID'}</div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_certificates_page.fields.system_id')}</div>
                         <input
                           value={editSystemId}
                           onChange={(e) => setEditSystemId(e.target.value)}
@@ -1078,7 +1061,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       disabled={isEditSaving}
                       className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
                     >
-                      {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                      {tr('admin_certificates_page.actions.cancel')}
                     </button>
                     <button
                       type="button"
@@ -1087,7 +1070,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       className="px-8 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       {isEditSaving ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
-                      {isEditSaving ? (lang === 'TH' ? 'กำลังสร้าง...' : 'Generating...') : (lang === 'TH' ? 'Re-generate' : 'Re-generate')}
+                      {isEditSaving
+                        ? tr('admin_certificates_page.actions.generating')
+                        : tr('admin_certificates_page.actions.regenerate')}
                     </button>
                   </div>
                 </div>
@@ -1101,10 +1086,10 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      {lang === 'TH' ? 'ยืนยันการปลดล็อค' : 'Confirm Unlock'}
+                      {tr('admin_certificates_page.unlock_modal.kicker')}
                     </div>
                     <div className="text-xl font-black text-slate-900">
-                      {lang === 'TH' ? 'ยกเลิกสถานะออกเอกสาร (Issued)' : 'Cancel Issued Status'}
+                      {tr('admin_certificates_page.unlock_modal.title')}
                     </div>
                   </div>
                   <button
@@ -1120,14 +1105,10 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                 <div className="p-8 space-y-4">
                   <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5">
                     <div className="text-sm font-black text-slate-900">
-                      {lang === 'TH'
-                        ? 'คุณต้องการปลดล็อคใบรับรองนี้เพื่อแก้ไขและออกใหม่ใช่ไหม?'
-                        : 'Do you want to unlock this certificate for editing and re-issuance?'}
+                      {tr('admin_certificates_page.unlock_modal.body_title')}
                     </div>
                     <div className="mt-2 text-xs font-bold text-slate-500 leading-relaxed">
-                      {lang === 'TH'
-                        ? 'ระบบจะเปลี่ยนสถานะกลับเป็น REQUESTED เพื่อให้แก้ไขได้ และผู้ใช้งานฝั่ง intern จะเห็นเป็นรอดำเนินการจนกว่าจะ Generate ใหม่'
-                        : 'This will switch the status back to REQUESTED. Interns will see it as pending until you generate again.'}
+                      {tr('admin_certificates_page.unlock_modal.body_detail')}
                     </div>
                   </div>
 
@@ -1138,7 +1119,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       disabled={cancelingId !== null}
                       className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
                     >
-                      {lang === 'TH' ? 'คงไว้เหมือนเดิม' : 'Keep Issued'}
+                      {tr('admin_certificates_page.unlock_modal.keep_issued')}
                     </button>
                     <button
                       type="button"
@@ -1147,7 +1128,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                       className="px-8 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
                     >
                       {cancelingId ? <Clock size={16} className="animate-spin" /> : null}
-                      {lang === 'TH' ? 'ปลดล็อคเพื่อแก้ไข' : 'Unlock & Edit'}
+                      {tr('admin_certificates_page.unlock_modal.unlock_edit')}
                     </button>
                   </div>
                 </div>

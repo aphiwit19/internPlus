@@ -69,10 +69,9 @@ const AdminProfilePage: React.FC<AdminProfilePageProps> = ({ user, lang }) => {
           <div className="col-span-12 lg:col-span-8 space-y-8">
             <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
               <h3 className="text-lg font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ภาพรวมผู้ดูแลระบบ' : 'Admin Overview'}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
                 <StatTile label={lang === 'TH' ? 'บทบาท' : 'Role'} value={String(roleLabel)} />
                 <StatTile label={lang === 'TH' ? 'แผนก' : 'Department'} value={user.department || '-'} />
-                <StatTile label={lang === 'TH' ? 'รหัสระบบ' : 'System ID'} value={user.systemId} />
               </div>
             </div>
 
