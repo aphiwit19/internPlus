@@ -117,7 +117,7 @@ const th = {
     hero_title_line_1: 'อนาคตของ',
     hero_title_highlight: 'การฝึกงานยุคใหม่',
     hero_description: 'ระบบที่รวมทุกอย่างสำหรับนักศึกษา พี่เลี้ยง และผู้ดูแล ช่วยให้งาน onboarding การติดตาม และการออกใบรับรองเป็นเรื่องง่าย',
-    welcome_back: 'ยินดีต้อนรับกลับ',
+    welcome_back: 'ยินดีต้อนรับกลับมา',
     subtitle: 'เข้าสู่ระบบด้วยอีเมลและรหัสผ่านเพื่อดำเนินการต่อ',
     processing: 'กำลังดำเนินการ...',
     email_label: 'อีเมล',
@@ -125,6 +125,20 @@ const th = {
     email_placeholder: 'name@example.com',
     password_placeholder: 'รหัสผ่าน',
     sign_in: 'เข้าสู่ระบบ',
+    forgot_password: 'ลืมรหัสผ่าน?',
+    reset_password: {
+      title: 'รีเซ็ตรหัสผ่าน',
+      subtitle: 'กรอกอีเมลของคุณ แล้วระบบจะส่งลิงก์รีเซ็ตให้',
+      back_to_login: 'กลับไปหน้าเข้าสู่ระบบ',
+      send_button: 'ส่งอีเมลรีเซ็ต',
+      sending: 'กำลังส่ง...',
+      success: 'ส่งอีเมลสำหรับรีเซ็ตรหัสผ่านไปที่ {{email}} แล้ว',
+      errors: {
+        email_required: 'กรุณากรอกอีเมล',
+        too_many: 'มีการลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง',
+        generic: 'ส่งอีเมลรีเซ็ตรหัสผ่านไม่สำเร็จ',
+      },
+    },
     create_account: 'สร้างบัญชี',
   },
   register: {
@@ -816,6 +830,48 @@ const th = {
       assigned_support: 'ผู้ดูแลที่ได้รับมอบหมาย',
       none_assigned: 'ยังไม่มีที่ปรึกษา',
     },
+    security: {
+      title: 'ความปลอดภัย',
+      change_password: {
+        subtitle: 'ต้องยืนยันรหัสผ่านเดิมก่อนจึงจะเปลี่ยนได้',
+        no_password_provider: 'บัญชีนี้ไม่ได้ใช้การเข้าสู่ระบบแบบรหัสผ่าน',
+        button: 'เปลี่ยนรหัสผ่าน',
+      },
+      reset_password: {
+        button: 'ส่งอีเมลรีเซ็ต',
+        success: 'ส่งอีเมลสำหรับรีเซ็ตรหัสผ่านไปที่ {{email}} แล้ว',
+        errors: {
+          user_not_found: 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่',
+          too_many: 'มีการลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง',
+          generic: 'ส่งอีเมลรีเซ็ตรหัสผ่านไม่สำเร็จ',
+        },
+      },
+    },
+    password: {
+      modal: {
+        title: 'เปลี่ยนรหัสผ่าน',
+        fields: {
+          current: 'รหัสผ่านเดิม',
+          next: 'รหัสผ่านใหม่',
+          confirm: 'ยืนยันรหัสผ่านใหม่',
+        },
+        actions: {
+          cancel: 'ยกเลิก',
+          save: 'อัปเดต',
+        },
+      },
+      success: 'เปลี่ยนรหัสผ่านสำเร็จ',
+      errors: {
+        user_not_found: 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่',
+        fill_all: 'กรุณากรอกรหัสผ่านให้ครบ',
+        confirm_mismatch: 'ยืนยันรหัสผ่านใหม่ไม่ตรงกัน',
+        min_6: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร',
+        wrong_current: 'รหัสผ่านเดิมไม่ถูกต้อง',
+        too_many: 'มีการลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง',
+        relogin: 'กรุณาออกจากระบบและเข้าสู่ระบบใหม่ แล้วลองอีกครั้ง',
+        generic: 'เปลี่ยนรหัสผ่านไม่สำเร็จ',
+      },
+    },
     edit_modal: {
       title: 'แก้ไขโปรไฟล์',
       fields: {
@@ -1105,6 +1161,49 @@ const th = {
         line_id: 'ไลน์ไอดี',
       },
     },
+    security: {
+      title: 'ความปลอดภัย',
+      change_password: {
+        title: 'เปลี่ยนรหัสผ่าน',
+        subtitle: 'ต้องยืนยันรหัสผ่านเดิมก่อนจึงจะเปลี่ยนได้',
+        no_password_provider: 'บัญชีนี้ไม่ได้ใช้การเข้าสู่ระบบแบบรหัสผ่าน',
+        button: 'เปลี่ยนรหัสผ่าน',
+      },
+      reset_password: {
+        button: 'ส่งอีเมลรีเซ็ต',
+        success: 'ส่งอีเมลสำหรับรีเซ็ตรหัสผ่านไปที่ {{email}} แล้ว',
+        errors: {
+          user_not_found: 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่',
+          too_many: 'มีการลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง',
+          generic: 'ส่งอีเมลรีเซ็ตรหัสผ่านไม่สำเร็จ',
+        },
+      },
+    },
+    password: {
+      modal: {
+        title: 'เปลี่ยนรหัสผ่าน',
+        fields: {
+          current: 'รหัสผ่านเดิม',
+          next: 'รหัสผ่านใหม่',
+          confirm: 'ยืนยันรหัสผ่านใหม่',
+        },
+        actions: {
+          cancel: 'ยกเลิก',
+          save: 'อัปเดต',
+        },
+      },
+      success: 'เปลี่ยนรหัสผ่านสำเร็จ',
+      errors: {
+        user_not_found: 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่',
+        fill_all: 'กรุณากรอกรหัสผ่านให้ครบ',
+        confirm_mismatch: 'ยืนยันรหัสผ่านใหม่ไม่ตรงกัน',
+        min_6: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร',
+        wrong_current: 'รหัสผ่านเดิมไม่ถูกต้อง',
+        too_many: 'มีการลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง',
+        relogin: 'กรุณาออกจากระบบและเข้าสู่ระบบใหม่ แล้วลองอีกครั้ง',
+        generic: 'เปลี่ยนรหัสผ่านไม่สำเร็จ',
+      },
+    },
   },
   supervisor_university_evaluation: {
     title: 'การประเมินผลจากมหาวิทยาลัย',
@@ -1264,6 +1363,16 @@ const th = {
     col_status: 'สถานะ',
     no_records: 'ไม่พบบันทึกการลงเวลา',
   },
+  supervisor_attendance_history: {
+    button: 'ประวัติ',
+    title: 'ประวัติคำขอ',
+    subtitle: 'คำขออัปโหลด Excel และคำขอแก้ไขเวลา',
+    close: 'ปิดประวัติ',
+    tab_excel: 'อัปโหลด Excel',
+    tab_corrections: 'แก้ไขเวลา',
+    empty_excel: 'ยังไม่มีคำขออัปโหลด Excel',
+    empty_corrections: 'ยังไม่มีคำขอแก้ไขเวลา',
+  },
   supervisor_dashboard: {
     evaluation: {
       executive_summary: 'บทสรุปสำหรับผู้บริหาร',
@@ -1386,6 +1495,13 @@ const th = {
       save: 'บันทึก',
       tip: 'เคล็ดลับ: คลิกที่แถวนักศึกษาเพื่อปรับจำนวนเงิน',
       save_failed: 'บันทึกไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองใหม่อีกครั้ง',
+    },
+    requests: {
+      time_corrections_title: 'แก้ไขเวลา',
+      excel_import_title: 'นำเข้า Excel',
+      pending_requests: 'คำขอที่รอดำเนินการ',
+      no_pending_requests: 'ไม่มีคำขอที่รอดำเนินการ',
+      click_to_view_all: 'คลิกเพื่อดูทั้งหมด',
     },
     pending_actions: {
       title: 'รายการรอดำเนินการ',
@@ -1598,6 +1714,20 @@ const th = {
     col_clock_out: 'ออกงาน',
     col_mode: 'รูปแบบ',
     col_status: 'สถานะ',
+    excel_import_title: 'นำเข้า Excel',
+    excel_import_requests_title: 'คำขอ',
+    time_corrections_title: 'แก้ไขเวลา',
+    time_corrections_all_requests_title: 'คำขอทั้งหมด',
+    empty_excel_pending: 'ยังไม่มีคำขอนำเข้า Excel',
+    empty_corrections_pending: 'ยังไม่มีคำขอแก้ไขเวลา',
+    history_button: 'ประวัติ',
+    history_title: 'ประวัติคำขอ',
+    history_subtitle: 'คำขออัปโหลด Excel และคำขอแก้ไขเวลา',
+    history_close: 'ปิดประวัติ',
+    history_tab_excel: 'อัปโหลด Excel',
+    history_tab_corrections: 'แก้ไขเวลา',
+    history_empty_excel: 'ยังไม่มีคำขออัปโหลด Excel',
+    history_empty_corrections: 'ยังไม่มีคำขอแก้ไขเวลา',
   },
   admin_absences: {
     title: 'ตรวจสอบการลา',
@@ -1698,6 +1828,11 @@ const th = {
     adjusted_amount: 'จำนวนที่ปรับ',
     note: 'หมายเหตุ',
     close: 'ปิด',
+    close_case: 'ปิดเคส',
+    view_active: 'รายการที่ต้องทำ',
+    view_history: 'ประวัติ',
+    close_case_confirm: 'ต้องการปิดเคสการจ่ายของนักศึกษาคนนี้ใช่ไหม? รายชื่อจะถูกซ่อนจากรายการที่ต้องทำ',
+    close_case_failed: 'ปิดเคสการจ่ายไม่สำเร็จ กรุณาตรวจสอบสิทธิ์แล้วลองใหม่',
     payout_overdue: 'เลยกำหนดจ่าย',
     overdue_message: '{{count}} รายการถึงวันจ่ายที่วางแผนไว้แล้วแต่ยังไม่ได้จ่าย',
     search_name: 'ค้นหาชื่อ',
@@ -1726,6 +1861,9 @@ const th = {
     filter_pending: 'รอดำเนินการ',
     filter_approved: 'อนุมัติแล้ว',
     filter_paid: 'จ่ายแล้ว',
+    sync_wallet: 'ซิงค์กระเป๋า',
+    sync_wallet_running: 'กำลังซิงค์...',
+    sync_wallet_error: 'ซิงค์ไม่สำเร็จ',
   },
   intern_withdrawal: {
     title: 'โปรแกรมการถอนตัว',

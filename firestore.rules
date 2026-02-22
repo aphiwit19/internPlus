@@ -82,6 +82,11 @@ service cloud.firestore {
       allow create, update, delete: if isHrAdmin();
     }
 
+    match /walletSyncLocks/{internId} {
+      allow read: if isHrAdmin() || isSelf(internId) || isAssignedSupervisorOf(internId);
+      allow create, update, delete: if false;
+    }
+
     match /config/{docId} {
       allow read: if signedIn();
       allow write: if isHrAdmin();

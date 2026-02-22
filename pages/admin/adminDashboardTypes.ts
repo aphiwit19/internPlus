@@ -33,6 +33,8 @@ export interface AllowanceClaim {
   paidAtMs?: number;
   isPayoutLocked?: boolean;
   lockReason?: string;
+  lifecycleStatus?: string;
+  payoutCaseClosedAtMs?: number;
 }
 
 export interface InternRecord {
@@ -43,6 +45,7 @@ export interface InternRecord {
   dept: string;
   status: 'Active' | 'Onboarding' | 'Completed' | 'WITHDRAWAL_REQUESTED' | 'OFFBOARDING_REQUESTED' | 'WITHDRAWN' | 'COMPLETED_REPORTED';
   lifecycleStatus?: string;
+  payoutCaseClosedAtMs?: number;
   bankName?: string;
   bankAccountNumber?: string;
   supervisor: {

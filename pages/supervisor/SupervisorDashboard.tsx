@@ -3621,6 +3621,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                     key={`${selectedInternId ?? ''}|${filterDate}|${filterStatus}|${filterWorkMode}`}
 
+                    internId={selectedInternId ?? undefined}
+
                     logs={filteredAttendanceLogs}
 
                     viewMode={attendanceViewMode}
@@ -4000,8 +4002,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               ) : null}
 
                               <div>
-                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.time_corrections_title')}</div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">{t('supervisor_dashboard.requests.pending_requests')}</h3>
                               </div>
 
                             </div>
@@ -4014,7 +4016,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                             <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed text-center">
 
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.no_pending_requests')}</p>
 
                             </div>
 
@@ -4044,7 +4046,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               ))}
                               {pendingTimeCorrections.length > 3 ? (
                                 <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                  Click to view all
+                                  {t('supervisor_dashboard.requests.click_to_view_all')}
                                 </div>
                               ) : null}
                             </div>
@@ -4066,8 +4068,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                             ) : null}
 
                             <div>
-                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
-                              <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.excel_import_title')}</div>
+                              <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2">{t('supervisor_dashboard.requests.pending_requests')}</h3>
                             </div>
                           </div>
 
@@ -4076,7 +4078,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                         {pendingExcelImports.length === 0 ? (
                           <div className="p-8 bg-slate-50/50 rounded-3xl border border-slate-200 border-dashed text-center">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.no_pending_requests')}</p>
                           </div>
                         ) : (
                           <div className="space-y-3">
@@ -4092,7 +4094,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
                               </div>
                             ))}
                             {pendingExcelImports.length > 3 ? (
-                              <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Click to view all</div>
+                              <div className="pt-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.click_to_view_all')}</div>
                             ) : null}
                           </div>
                         )}
@@ -4267,8 +4269,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             <div className="w-full max-w-3xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.time_corrections_title')}</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">{t('supervisor_dashboard.requests.pending_requests')}</h3>
                 </div>
                 <button
                   onClick={() => setIsTimeCorrectionsOpen(false)}
@@ -4281,7 +4283,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
               <div className="p-8 space-y-4">
                 {pendingTimeCorrections.length === 0 ? (
                   <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.no_pending_requests')}</p>
                   </div>
                 ) : (
                   <>
@@ -4419,8 +4421,8 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
             <div className="w-full max-w-3xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">Pending requests</h3>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.excel_import_title')}</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">{t('supervisor_dashboard.requests.pending_requests')}</h3>
                 </div>
                 <button
                   onClick={() => setIsExcelImportsOpen(false)}
@@ -4439,7 +4441,7 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
                 {pendingExcelImports.length === 0 ? (
                   <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No pending requests</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('supervisor_dashboard.requests.no_pending_requests')}</p>
                   </div>
                 ) : (
                   <>

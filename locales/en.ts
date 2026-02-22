@@ -125,6 +125,20 @@ const en = {
     email_placeholder: 'name@example.com',
     password_placeholder: 'Password',
     sign_in: 'Sign In',
+    forgot_password: 'Forgot password?',
+    reset_password: {
+      title: 'Reset Password',
+      subtitle: 'Enter your email and we will send you a reset link.',
+      back_to_login: 'Back to login',
+      send_button: 'Send reset email',
+      sending: 'Sending...',
+      success: 'Password reset email has been sent to {{email}}.',
+      errors: {
+        email_required: 'Please enter your email.',
+        too_many: 'Too many attempts. Please try again later.',
+        generic: 'Failed to send password reset email.',
+      },
+    },
     create_account: 'Create an account',
   },
   register: {
@@ -817,6 +831,48 @@ const en = {
       assigned_support: 'ASSIGNED SUPPORT',
       none_assigned: 'No supervisor assigned',
     },
+    security: {
+      title: 'Security',
+      change_password: {
+        subtitle: 'You will be asked to confirm your current password before changing it.',
+        no_password_provider: 'This account does not use password sign-in.',
+        button: 'CHANGE PASSWORD',
+      },
+      reset_password: {
+        button: 'SEND RESET EMAIL',
+        success: 'Password reset email has been sent to {{email}}.',
+        errors: {
+          user_not_found: 'User not found. Please sign in again.',
+          too_many: 'Too many attempts. Please try again later.',
+          generic: 'Failed to send password reset email.',
+        },
+      },
+    },
+    password: {
+      modal: {
+        title: 'Change Password',
+        fields: {
+          current: 'Current password',
+          next: 'New password',
+          confirm: 'Confirm new password',
+        },
+        actions: {
+          cancel: 'Cancel',
+          save: 'Update',
+        },
+      },
+      success: 'Password changed successfully.',
+      errors: {
+        user_not_found: 'User not found. Please sign in again.',
+        fill_all: 'Please fill in all password fields.',
+        confirm_mismatch: 'New password confirmation does not match.',
+        min_6: 'New password must be at least 6 characters.',
+        wrong_current: 'Current password is incorrect.',
+        too_many: 'Too many attempts. Please try again later.',
+        relogin: 'Please sign out and sign in again, then try again.',
+        generic: 'Failed to change password.',
+      },
+    },
     edit_modal: {
       title: 'Edit Profile',
       fields: {
@@ -1107,6 +1163,49 @@ const en = {
         line_id: 'Line ID',
       },
     },
+    security: {
+      title: 'Security',
+      change_password: {
+        title: 'Change password',
+        subtitle: 'You will be asked to confirm your current password before changing it.',
+        no_password_provider: 'This account does not use password sign-in.',
+        button: 'CHANGE PASSWORD',
+      },
+      reset_password: {
+        button: 'SEND RESET EMAIL',
+        success: 'Password reset email has been sent to {{email}}.',
+        errors: {
+          user_not_found: 'User not found. Please sign in again.',
+          too_many: 'Too many attempts. Please try again later.',
+          generic: 'Failed to send password reset email.',
+        },
+      },
+    },
+    password: {
+      modal: {
+        title: 'Change Password',
+        fields: {
+          current: 'Current password',
+          next: 'New password',
+          confirm: 'Confirm new password',
+        },
+        actions: {
+          cancel: 'Cancel',
+          save: 'Update',
+        },
+      },
+      success: 'Password changed successfully.',
+      errors: {
+        user_not_found: 'User not found. Please sign in again.',
+        fill_all: 'Please fill in all password fields.',
+        confirm_mismatch: 'New password confirmation does not match.',
+        min_6: 'New password must be at least 6 characters.',
+        wrong_current: 'Current password is incorrect.',
+        too_many: 'Too many attempts. Please try again later.',
+        relogin: 'Please sign out and sign in again, then try again.',
+        generic: 'Failed to change password.',
+      },
+    },
   },
   supervisor_university_evaluation: {
     title: 'University Evaluation',
@@ -1266,6 +1365,16 @@ const en = {
     col_status: 'STATUS',
     no_records: 'No attendance records found',
   },
+  supervisor_attendance_history: {
+    button: 'History',
+    title: 'REQUEST HISTORY',
+    subtitle: 'Excel import & time correction requests',
+    close: 'Close history',
+    tab_excel: 'Excel imports',
+    tab_corrections: 'Time corrections',
+    empty_excel: 'No Excel import requests',
+    empty_corrections: 'No time correction requests',
+  },
   supervisor_dashboard: {
     evaluation: {
       executive_summary: 'EXECUTIVE SUMMARY',
@@ -1388,6 +1497,13 @@ const en = {
       save: 'Save',
       tip: 'Tip: Click an intern row to adjust amount.',
       save_failed: 'Failed to save adjustment. Please check permissions and try again.',
+    },
+    requests: {
+      time_corrections_title: 'TIME CORRECTIONS',
+      excel_import_title: 'EXCEL IMPORT',
+      pending_requests: 'Pending requests',
+      no_pending_requests: 'No pending requests',
+      click_to_view_all: 'Click to view all',
     },
     pending_actions: {
       title: 'Pending Actions',
@@ -1600,6 +1716,20 @@ const en = {
     col_clock_out: 'Clock Out',
     col_mode: 'Mode',
     col_status: 'Status',
+    excel_import_title: 'EXCEL IMPORT',
+    excel_import_requests_title: 'Requests',
+    time_corrections_title: 'TIME CORRECTIONS',
+    time_corrections_all_requests_title: 'All requests',
+    empty_excel_pending: 'No Excel import requests',
+    empty_corrections_pending: 'No correction requests',
+    history_button: 'History',
+    history_title: 'REQUEST HISTORY',
+    history_subtitle: 'Excel import & time correction requests',
+    history_close: 'Close history',
+    history_tab_excel: 'Excel imports',
+    history_tab_corrections: 'Time corrections',
+    history_empty_excel: 'No Excel import requests',
+    history_empty_corrections: 'No time correction requests',
   },
   admin_absences: {
     title: 'Absence & Leave Audit',
@@ -1700,6 +1830,11 @@ const en = {
     adjusted_amount: 'Adjusted Amount',
     note: 'Note',
     close: 'Close',
+    close_case: 'Close case',
+    view_active: 'Active',
+    view_history: 'History',
+    close_case_confirm: 'Close payout case for this intern? This will hide them from the active payouts list.',
+    close_case_failed: 'Failed to close payout case. Please check permissions and try again.',
     payout_overdue: 'Payout overdue',
     overdue_message: '{{count}} claim(s) reached planned payout date but are not paid yet.',
     search_name: 'Search name',
@@ -1728,6 +1863,9 @@ const en = {
     filter_pending: 'PENDING',
     filter_approved: 'APPROVED',
     filter_paid: 'PAID',
+    sync_wallet: 'Sync wallet',
+    sync_wallet_running: 'Syncing...',
+    sync_wallet_error: 'Sync failed',
   },
   intern_withdrawal: {
     title: 'Withdrawal Program',

@@ -3,6 +3,9 @@ import { Briefcase, User, ShieldCheck, Settings, Mail, ArrowLeft, Sparkles, Cale
 import { Link } from 'react-router-dom';
 import { getDefaultAvatarUrl } from '@/app/avatar';
 import { useTranslation } from 'react-i18next';
+import { sendPasswordResetEmail } from 'firebase/auth';
+
+import { firebaseAuth } from '@/firebase';
 
 interface LoginPageProps {
   isLoading?: boolean;
@@ -13,7 +16,57 @@ interface LoginPageProps {
 const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'login' | 'reset'>('login');
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetSending, setIsResetSending] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
   const { t } = useTranslation();
+
+  const openReset = () => {
+    setResetError(null);
+    setResetSuccess(null);
+    setResetEmail(email.trim());
+    setMode('reset');
+  };
+
+  const closeReset = () => {
+    setResetError(null);
+    setResetSuccess(null);
+    setMode('login');
+  };
+
+  const handleSendReset = async () => {
+    if (isResetSending) return;
+    setResetError(null);
+    setResetSuccess(null);
+
+    const to = resetEmail.trim();
+    if (!to) {
+      setResetError(t('login.reset_password.errors.email_required'));
+      return;
+    }
+
+    setIsResetSending(true);
+    try {
+      const actionCodeSettings = {
+        url: `${window.location.origin}/login`,
+        handleCodeInApp: false,
+      };
+      await sendPasswordResetEmail(firebaseAuth, to, actionCodeSettings);
+      setResetSuccess(t('login.reset_password.success', { email: to }));
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      const code = String(e?.code ?? 'unknown');
+      if (code === 'auth/too-many-requests') {
+        setResetError(t('login.reset_password.errors.too_many'));
+      } else {
+        setResetError(`${e?.message ?? t('login.reset_password.errors.generic')}`);
+      }
+    } finally {
+      setIsResetSending(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6 relative overflow-hidden font-sans">
@@ -68,40 +121,102 @@ const LoginPage: React.FC<LoginPageProps> = ({ isLoading, errorMessage, onLogin 
             )}
 
             <div className="space-y-5">
-              <div>
-                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.email_label')}</label>
-                <input
-                  type="email"
-                  placeholder={t('login.email_placeholder')}
-                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="username"
-                />
-              </div>
+              {mode === 'login' ? (
+                <>
+                  <div>
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.email_label')}</label>
+                    <input
+                      type="email"
+                      placeholder={t('login.email_placeholder')}
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="username"
+                    />
+                  </div>
 
-              <div>
-                <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.password_label')}</label>
-                <input
-                  type="password"
-                  placeholder={t('login.password_placeholder')}
-                  className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && void onLogin(email, password)}
-                  autoComplete="current-password"
-                />
-              </div>
+                  <div>
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.password_label')}</label>
+                    <input
+                      type="password"
+                      placeholder={t('login.password_placeholder')}
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && void onLogin(email, password)}
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={openReset}
+                      className="mt-3 text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline"
+                    >
+                      {t('login.forgot_password')}
+                    </button>
+                  </div>
 
-              <button
-                onClick={() => void onLogin(email, password)}
-                disabled={!!isLoading}
-                className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
-                  isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
-                }`}
-              >
-                {t('login.sign_in')} <ChevronRight size={20} />
-              </button>
+                  <button
+                    onClick={() => void onLogin(email, password)}
+                    disabled={!!isLoading}
+                    className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
+                      isLoading ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
+                    }`}
+                  >
+                    {t('login.sign_in')} <ChevronRight size={20} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xl font-black text-slate-900 tracking-tight">{t('login.reset_password.title')}</h4>
+                      <p className="text-slate-500 text-sm font-medium mt-1">{t('login.reset_password.subtitle')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeReset}
+                      className="text-slate-500 font-black text-[11px] uppercase tracking-widest hover:text-slate-900"
+                    >
+                      {t('login.reset_password.back_to_login')}
+                    </button>
+                  </div>
+
+                  {resetError ? (
+                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-bold">
+                      {resetError}
+                    </div>
+                  ) : null}
+                  {resetSuccess ? (
+                    <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 text-sm font-bold">
+                      {resetSuccess}
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 block">{t('login.email_label')}</label>
+                    <input
+                      type="email"
+                      placeholder={t('login.email_placeholder')}
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-[1.5rem] px-8 py-5 text-[16px] font-black text-slate-700 focus:ring-8 focus:ring-blue-500/5 focus:bg-white focus:border-blue-200 outline-none transition-all placeholder:text-slate-300 shadow-sm"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && void handleSendReset()}
+                      autoComplete="username"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleSendReset()}
+                    disabled={isResetSending}
+                    className={`w-full py-6 rounded-[2.2rem] font-black text-[15px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 active:scale-95 shadow-2xl ${
+                      isResetSending ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-[#111827] text-white hover:bg-blue-600'
+                    }`}
+                  >
+                    {isResetSending ? t('login.reset_password.sending') : t('login.reset_password.send_button')}
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="mt-12 pt-8 border-t border-slate-50 text-center">

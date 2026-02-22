@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Building2, ChevronLeft, ChevronRight, CircleAlert, Home, X } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CircleAlert, Files, Home, History, X } from 'lucide-react';
 
 import { httpsCallable } from 'firebase/functions';
 
@@ -98,9 +98,14 @@ const AttendanceTab: React.FC = () => {
   const [isSavingDecision, setIsSavingDecision] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
 
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'excel' | 'corrections'>('excel');
+
   const [currentPage, setCurrentPage] = useState(1);
   const [excelRequestsPage, setExcelRequestsPage] = useState(1);
   const [correctionsPage, setCorrectionsPage] = useState(1);
+
+  const formatCount = (count: number): string => (count > 5 ? `<${count}>` : String(count));
 
   const formatTime = (value: unknown): string | null => {
     if (!value) return null;
@@ -336,6 +341,9 @@ const AttendanceTab: React.FC = () => {
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(rows.length / PAGE_SIZE)), [rows.length]);
 
+  const pendingExcelImports = useMemo(() => excelImports.filter((x) => x.status === 'PENDING'), [excelImports]);
+  const pendingCorrections = useMemo(() => corrections.filter((x) => x.status === 'PENDING'), [corrections]);
+
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
@@ -350,8 +358,8 @@ const AttendanceTab: React.FC = () => {
   );
 
   const excelRequestsTotalPages = useMemo(
-    () => Math.max(1, Math.ceil(excelImports.length / EXCEL_REQUESTS_PAGE_SIZE)),
-    [excelImports.length],
+    () => Math.max(1, Math.ceil(pendingExcelImports.length / EXCEL_REQUESTS_PAGE_SIZE)),
+    [pendingExcelImports.length],
   );
 
   useEffect(() => {
@@ -360,16 +368,16 @@ const AttendanceTab: React.FC = () => {
 
   useEffect(() => {
     setExcelRequestsPage(1);
-  }, [excelImports.length]);
+  }, [pendingExcelImports.length]);
 
-  const pagedExcelImports = useMemo(
-    () => excelImports.slice((excelRequestsPage - 1) * EXCEL_REQUESTS_PAGE_SIZE, excelRequestsPage * EXCEL_REQUESTS_PAGE_SIZE),
-    [excelImports, excelRequestsPage],
+  const pagedPendingExcelImports = useMemo(
+    () => pendingExcelImports.slice((excelRequestsPage - 1) * EXCEL_REQUESTS_PAGE_SIZE, excelRequestsPage * EXCEL_REQUESTS_PAGE_SIZE),
+    [pendingExcelImports, excelRequestsPage],
   );
 
   const correctionsTotalPages = useMemo(
-    () => Math.max(1, Math.ceil(corrections.length / CORRECTIONS_PAGE_SIZE)),
-    [corrections.length],
+    () => Math.max(1, Math.ceil(pendingCorrections.length / CORRECTIONS_PAGE_SIZE)),
+    [pendingCorrections.length],
   );
 
   useEffect(() => {
@@ -378,11 +386,11 @@ const AttendanceTab: React.FC = () => {
 
   useEffect(() => {
     setCorrectionsPage(1);
-  }, [corrections.length]);
+  }, [pendingCorrections.length]);
 
-  const pagedCorrections = useMemo(
-    () => corrections.slice((correctionsPage - 1) * CORRECTIONS_PAGE_SIZE, correctionsPage * CORRECTIONS_PAGE_SIZE),
-    [corrections, correctionsPage],
+  const pagedPendingCorrections = useMemo(
+    () => pendingCorrections.slice((correctionsPage - 1) * CORRECTIONS_PAGE_SIZE, correctionsPage * CORRECTIONS_PAGE_SIZE),
+    [pendingCorrections, correctionsPage],
   );
 
   const toLocalDateFromKey = (dateKey: string): Date | null => {
@@ -486,6 +494,11 @@ const AttendanceTab: React.FC = () => {
     }
   };
 
+  const handleOpenHistory = (tab?: 'excel' | 'corrections') => {
+    if (tab) setHistoryTab(tab);
+    setIsHistoryOpen(true);
+  };
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
 
@@ -553,12 +566,256 @@ const AttendanceTab: React.FC = () => {
         </>
       ) : null}
 
+      {isHistoryOpen ? (
+        <>
+          <div className="fixed inset-0 z-[180] bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsHistoryOpen(false)} />
+          <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+            <div className="w-full max-w-5xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-start justify-between gap-6">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.history_title')}</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">{tr('admin_attendance.history_subtitle')}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center"
+                  aria-label={tr('admin_attendance.history_close')}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-[1.75rem] p-2">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('excel')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                      historyTab === 'excel' ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <Files size={16} /> {tr('admin_attendance.history_tab_excel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('corrections')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                      historyTab === 'corrections' ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <CircleAlert size={16} /> {tr('admin_attendance.history_tab_corrections')}
+                  </button>
+                </div>
+
+                <div className="mt-8 max-h-[70vh] overflow-y-auto pr-2">
+                  {historyTab === 'excel' ? (
+                    <>
+                      {excelReviewError ? (
+                        <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+                          {excelReviewError}
+                        </div>
+                      ) : null}
+
+                      {excelImports.length === 0 ? (
+                        <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.history_empty_excel')}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {excelImports.map((req) => (
+                            <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.internId}</div>
+                                  <button
+                                    type="button"
+                                    className="mt-4 text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                    onClick={() => void handleOpenExcelImport(req.storagePath)}
+                                  >
+                                    {req.fileName}
+                                  </button>
+                                  {typeof req.submittedAtMs === 'number' ? (
+                                    <div className="mt-2 text-[10px] font-bold text-slate-500">Submitted: {new Date(req.submittedAtMs).toLocaleString()}</div>
+                                  ) : null}
+                                  {req.reviewedByName ? (
+                                    <div className="mt-1 text-[10px] font-bold text-slate-500">
+                                      Reviewed by: {req.reviewedByName}{req.reviewedByRole ? ` (${req.reviewedByRole})` : ''}
+                                      {typeof req.reviewedAtMs === 'number' ? ` • ${new Date(req.reviewedAtMs).toLocaleString()}` : ''}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${
+                                      req.status === 'APPLIED'
+                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                        : req.status === 'FAILED'
+                                          ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                          : req.status === 'REJECTED'
+                                            ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                            : req.status === 'APPROVED'
+                                              ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                              : 'bg-amber-50 text-amber-600 border-amber-100'
+                                    }`}
+                                  >
+                                    {req.status}
+                                  </span>
+
+                                  {req.status === 'PENDING' ? (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleReviewExcelImport(req, 'REJECT')}
+                                        disabled={excelReviewBusyId === req.id}
+                                        className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all disabled:opacity-60"
+                                      >
+                                        Reject
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleReviewExcelImport(req, 'APPROVE')}
+                                        disabled={excelReviewBusyId === req.id}
+                                        className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60"
+                                      >
+                                        Approve
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {corrections.length === 0 ? (
+                        <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.history_empty_corrections')}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {corrections.map((req) => (
+                            <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.date}</div>
+                                  {(req.requestedClockIn || req.requestedClockOut) ? (
+                                    <div className="mt-3 flex items-center gap-4">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-in</div>
+                                        <div className="text-[13px] font-black text-emerald-700">{req.requestedClockIn || '--'}</div>
+                                      </div>
+                                      <div className="text-slate-200 font-black">→</div>
+                                      <div className="flex flex-col gap-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-out</div>
+                                        <div className="text-[13px] font-black text-rose-600">{req.requestedClockOut || '--'}</div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {req.reason ? (
+                                    <div className="mt-3 text-[11px] font-bold text-slate-700 whitespace-pre-wrap break-words">{req.reason}</div>
+                                  ) : null}
+                                  {req.supervisorDecisionNote ? (
+                                    <div className="mt-2 text-[10px] font-bold text-slate-500 italic">Note: {req.supervisorDecisionNote}</div>
+                                  ) : null}
+                                  {req.attachments.length > 0 ? (
+                                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
+                                      {req.attachments.map((a) => (
+                                        <button
+                                          key={a.storagePath}
+                                          type="button"
+                                          className="text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                          onClick={async () => {
+                                            try {
+                                              const url = await getDownloadURL(storageRef(firebaseStorage, a.storagePath));
+                                              window.open(url, '_blank', 'noopener,noreferrer');
+                                            } catch {
+                                              // ignore
+                                            }
+                                          }}
+                                        >
+                                          {a.fileName}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                                      req.status === 'APPROVED'
+                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                        : req.status === 'REJECTED'
+                                          ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                          : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                    }`}
+                                  >
+                                    {req.status === 'APPROVED' ? '✓ Approved' : req.status === 'REJECTED' ? '✕ Rejected' : '⏳ Pending'}
+                                  </span>
+                                  {req.status === 'PENDING' ? (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsHistoryOpen(false);
+                                          setDecisionTarget(req);
+                                          setDecisionMode('REJECT');
+                                          setDecisionNote('');
+                                        }}
+                                        className="px-4 py-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 text-[10px] font-black uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all"
+                                      >
+                                        Reject
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsHistoryOpen(false);
+                                          setDecisionTarget(req);
+                                          setDecisionMode('APPROVE');
+                                          setDecisionNote('');
+                                        }}
+                                        disabled={!req.requestedClockIn || !req.requestedClockOut}
+                                        className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-60 disabled:hover:bg-emerald-50 disabled:hover:text-emerald-700"
+                                      >
+                                        Approve
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center justify-between mb-10">
           <div className="space-y-1">
             <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('admin_attendance.title')}</h3>
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">{tr('admin_attendance.subtitle')}</p>
           </div>
+          <button
+            type="button"
+            onClick={() => handleOpenHistory()}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all"
+          >
+            <History size={16} /> {tr('admin_attendance.history_button')}
+          </button>
         </div>
 
         <div className="overflow-x-auto">
@@ -644,10 +901,17 @@ const AttendanceTab: React.FC = () => {
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-4 mb-10">
           <div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">EXCEL IMPORT</div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">Requests</h3>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.excel_import_title')}</div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">{tr('admin_attendance.excel_import_requests_title')}</h3>
           </div>
-          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{excelImports.length}</div>
+          <button
+            type="button"
+            onClick={() => handleOpenHistory('excel')}
+            className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all"
+          >
+            <History size={16} /> {tr('admin_attendance.history_button')}
+          </button>
+          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{formatCount(pendingExcelImports.length)}</div>
         </div>
 
         {excelReviewError ? (
@@ -656,13 +920,13 @@ const AttendanceTab: React.FC = () => {
           </div>
         ) : null}
 
-        {excelImports.length === 0 ? (
+        {pendingExcelImports.length === 0 ? (
           <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No Excel import requests</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.empty_excel_pending')}</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {pagedExcelImports.map((req) => (
+            {pagedPendingExcelImports.map((req) => (
               <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -730,7 +994,7 @@ const AttendanceTab: React.FC = () => {
           </div>
         )}
 
-        {excelImports.length > EXCEL_REQUESTS_PAGE_SIZE ? (
+        {pendingExcelImports.length > EXCEL_REQUESTS_PAGE_SIZE ? (
           <div className="pt-6 flex justify-center">
             <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
               <button
@@ -772,25 +1036,32 @@ const AttendanceTab: React.FC = () => {
 
       <section className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-4 mb-10">
-          {corrections.some((c) => c.status === 'PENDING') ? (
+          {pendingCorrections.length > 0 ? (
             <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
               <CircleAlert size={18} />
             </div>
           ) : null}
           <div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIME CORRECTIONS</div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">All requests</h3>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.time_corrections_title')}</div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">{tr('admin_attendance.time_corrections_all_requests_title')}</h3>
           </div>
-          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{corrections.length}</div>
+          <button
+            type="button"
+            onClick={() => handleOpenHistory('corrections')}
+            className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all"
+          >
+            <History size={16} /> {tr('admin_attendance.history_button')}
+          </button>
+          <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">{formatCount(pendingCorrections.length)}</div>
         </div>
 
-        {corrections.length === 0 ? (
+        {pendingCorrections.length === 0 ? (
           <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No correction requests</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_attendance.empty_corrections_pending')}</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {pagedCorrections.map((req) => (
+            {pagedPendingCorrections.map((req) => (
               <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -872,7 +1143,7 @@ const AttendanceTab: React.FC = () => {
           </div>
         )}
 
-        {corrections.length > CORRECTIONS_PAGE_SIZE ? (
+        {pendingCorrections.length > CORRECTIONS_PAGE_SIZE ? (
           <div className="pt-6 flex justify-center">
             <div className="bg-white border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
               <button

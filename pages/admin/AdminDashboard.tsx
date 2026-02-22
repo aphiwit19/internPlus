@@ -51,6 +51,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 
+import { httpsCallable } from 'firebase/functions';
+
 import { toast } from 'sonner';
 
 import { AdminTab } from './components/AdminDashboardTabs';
@@ -61,7 +63,7 @@ import CertificatesTab from './components/CertificatesTab';
 import RosterTab from './components/RosterTab';
 import { AllowanceClaim, CertRequest, InternRecord, Mentor } from './adminDashboardTypes';
 
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseFunctions } from '@/firebase';
 import { firebaseAuth } from '@/firebase';
 import { UserRole } from '@/types';
 import { getDefaultAvatarUrl, normalizeAvatarUrl } from '@/app/avatar';
@@ -90,6 +92,7 @@ type UserDoc = {
   supervisorId?: string;
   supervisorName?: string;
   lifecycleStatus?: string;
+  payoutCaseClosedAt?: any;
   bankName?: string;
   bankAccountNumber?: string;
 };
@@ -121,6 +124,7 @@ function toInternRecord(id: string, data: UserDoc): InternRecord {
     dept: data.department || 'Unknown',
     status,
     lifecycleStatus: data.lifecycleStatus,
+    payoutCaseClosedAtMs: typeof data.payoutCaseClosedAt?.toMillis === 'function' ? data.payoutCaseClosedAt.toMillis() : undefined,
     bankName: data.bankName,
     bankAccountNumber: data.bankAccountNumber,
     supervisor: null,
@@ -195,6 +199,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const [editAllowanceNote, setEditAllowanceNote] = useState('');
   const [isSavingAllowanceEdit, setIsSavingAllowanceEdit] = useState(false);
 
+  const [syncStateByInternId, setSyncStateByInternId] = useState<
+    Record<string, { status?: string; startedAtMs?: number | null; errorMessage?: string | null }>
+  >({});
+
   const [allowanceRules, setAllowanceRules] = useState({
     payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
     wfoRate: 100,
@@ -206,6 +214,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const monthKeyFromDate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
   const [selectedMonthKey, setSelectedMonthKey] = useState(() => monthKeyFromDate(new Date()));
+  const [payoutView, setPayoutView] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
 
   const monthOptions = Array.from({ length: 12 }, (_, idx) => {
     const base = new Date();
@@ -374,8 +383,119 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     }
   };
 
+  const isExitedLifecycle = (s: string | undefined | null) => s === 'COMPLETED';
+
+  const canClosePayoutCase = (claim: AllowanceClaim) => {
+    if (claim.status !== 'PAID') return false;
+    if (!isExitedLifecycle(claim.lifecycleStatus)) return false;
+    if (typeof claim.payoutCaseClosedAtMs === 'number') return false;
+    return true;
+  };
+
+  const handleClosePayoutCase = async (internId: string) => {
+    const ok = window.confirm(tr('allowances_tab.close_case_confirm'));
+    if (!ok) return;
+
+    try {
+      const uid = firebaseAuth.currentUser?.uid;
+      await updateDoc(doc(firestoreDb, 'users', internId), {
+        payoutCaseClosedAt: serverTimestamp(),
+        payoutCaseClosedBy: uid ?? 'HR_ADMIN',
+        updatedAt: serverTimestamp(),
+      });
+
+      const now = Date.now();
+      setInternRoster((prev) => prev.map((i) => (i.id === internId ? { ...i, payoutCaseClosedAtMs: now } : i)));
+      setAllowanceClaims((prev) => prev.map((c) => (c.internId === internId ? { ...c, payoutCaseClosedAtMs: now } : c)));
+    } catch {
+      toast.error(tr('allowances_tab.close_case_failed'), { duration: 7000 });
+    }
+  };
+
+  const visibleAllowanceClaims = React.useMemo(() => {
+    if (payoutView === 'HISTORY') {
+      return allowanceClaims.filter((c) => c.status === 'PAID' && c.lifecycleStatus !== 'WITHDRAWN');
+    }
+
+    return allowanceClaims.filter((c) => {
+      if (c.lifecycleStatus === 'WITHDRAWN') return false;
+      if (isExitedLifecycle(c.lifecycleStatus) && typeof c.payoutCaseClosedAtMs === 'number') return false;
+      return true;
+    });
+  }, [allowanceClaims, payoutView]);
+
   const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
   const [mentorOptions, setMentorOptions] = useState<MentorOption[]>([]);
+
+  useEffect(() => {
+    if (activeTab !== 'allowances') return;
+    if (allowanceRules.payoutFreq !== 'END_PROGRAM') {
+      setSyncStateByInternId({});
+      return;
+    }
+
+    const internIds = internRoster.map((i) => i.id);
+    if (internIds.length === 0) {
+      setSyncStateByInternId({});
+      return;
+    }
+
+    const unsubs: Array<() => void> = [];
+    const idChunks = chunkArray(internIds, 10);
+    for (const chunk of idChunks) {
+      const q = query(collection(firestoreDb, 'walletSyncLocks'), where(documentId(), 'in', chunk));
+      unsubs.push(
+        onSnapshot(
+          q,
+          (snap) => {
+            setSyncStateByInternId((prev) => {
+              const next = { ...prev };
+              snap.docs.forEach((d) => {
+                const raw = d.data() as any;
+                const startedAtMs =
+                  typeof raw?.startedAt?.toMillis === 'function' ? raw.startedAt.toMillis() : (raw?.startedAtMs ?? null);
+                next[d.id] = {
+                  status: typeof raw?.status === 'string' ? raw.status : undefined,
+                  startedAtMs: typeof startedAtMs === 'number' ? startedAtMs : null,
+                  errorMessage: typeof raw?.errorMessage === 'string' ? raw.errorMessage : null,
+                };
+              });
+              return next;
+            });
+          },
+          () => {
+            // ignore
+          },
+        ),
+      );
+    }
+
+    return () => {
+      unsubs.forEach((fn) => fn());
+    };
+  }, [activeTab, allowanceRules.payoutFreq, internRoster]);
+
+  const handleSyncWallet = async (internId: string) => {
+    try {
+      setSyncStateByInternId((prev) => ({
+        ...prev,
+        [internId]: {
+          status: 'RUNNING',
+          startedAtMs: Date.now(),
+          errorMessage: null,
+        },
+      }));
+      const fn = httpsCallable(firebaseFunctions, 'syncAllowanceWallet');
+      const res = (await fn({ internId })) as any;
+      const data = (res as any)?.data;
+      if (data?.alreadyRunning) {
+        toast.message(tr('allowances_tab.sync_wallet_running'));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : tr('allowances_tab.sync_wallet_error');
+      toast.error(msg, { duration: 6000 });
+    }
+  };
 
   useEffect(() => {
     const ref = doc(firestoreDb, 'config', 'systemSettings');
@@ -462,6 +582,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                     ? 'PENDING'
                     : 'PENDING';
 
+              const plannedPayoutDate = typeof raw?.plannedPayoutDate === 'string' ? raw.plannedPayoutDate : undefined;
+              const paymentDate = typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined;
+              const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
+
               const isCompleted = intern.lifecycleStatus === 'COMPLETED';
               const lockedByEndProgram = !isCompleted;
 
@@ -477,6 +601,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                 period: 'End Program',
                 breakdown,
                 status,
+                plannedPayoutDate,
+                paymentDate,
+                paidAtMs,
+                lifecycleStatus: intern.lifecycleStatus,
+                payoutCaseClosedAtMs: intern.payoutCaseClosedAtMs,
                 ...(lockedByEndProgram ? { isPayoutLocked: true, lockReason: 'Locked until program completion' } : {}),
               });
             });
@@ -501,6 +630,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               period: 'End Program',
               breakdown: { wfo: 0, wfh: 0, leaves: 0 },
               status: 'PENDING',
+              lifecycleStatus: intern.lifecycleStatus,
+              payoutCaseClosedAtMs: intern.payoutCaseClosedAtMs,
               ...(lockedByEndProgram ? { isPayoutLocked: true, lockReason: 'Locked until program completion' } : {}),
             });
           }
@@ -529,6 +660,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             avatar: typeof raw?.avatar === 'string' ? raw.avatar : (intern?.avatar ?? ''),
             bankName: intern?.bankName,
             bankAccountNumber: intern?.bankAccountNumber,
+            lifecycleStatus: intern?.lifecycleStatus,
+            payoutCaseClosedAtMs: intern?.payoutCaseClosedAtMs,
           });
         });
 
@@ -958,7 +1091,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('admin_dashboard.bulk_actions')}</div>
                  <div className="text-sm font-black text-slate-900 mt-1">{tr('admin_dashboard.bulk_actions_desc')}</div>
                </div>
-               <div className="flex items-center gap-3">
+               <div className="flex items-center gap-3 flex-wrap">
+                 <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                   <button
+                     type="button"
+                     onClick={() => setPayoutView('ACTIVE')}
+                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                       payoutView === 'ACTIVE' ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
+                     }`}
+                   >
+                     {tr('allowances_tab.view_active')}
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setPayoutView('HISTORY')}
+                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                       payoutView === 'HISTORY' ? 'bg-[#111827] text-white shadow-xl' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
+                     }`}
+                   >
+                     {tr('allowances_tab.view_history')}
+                   </button>
+                 </div>
+
                  <button
                    type="button"
                    onClick={() => void handleAuthorizeAllAllowances()}
@@ -979,11 +1133,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
              </div>
 
              <AllowancesTab
-               allowanceClaims={allowanceClaims}
+               allowanceClaims={visibleAllowanceClaims}
                isLoading={isAllowanceLoading}
                errorMessage={allowanceLoadError}
                onAuthorize={handleAuthorizeAllowance}
                onProcessPayment={handleProcessPayment}
+               onClosePayoutCase={handleClosePayoutCase}
+               canClosePayoutCase={canClosePayoutCase}
+               onSyncWallet={allowanceRules.payoutFreq === 'END_PROGRAM' ? handleSyncWallet : undefined}
+               syncStateByInternId={allowanceRules.payoutFreq === 'END_PROGRAM' ? syncStateByInternId : undefined}
                monthOptions={monthOptions}
                selectedMonthKey={selectedMonthKey}
                onSelectMonthKey={setSelectedMonthKey}

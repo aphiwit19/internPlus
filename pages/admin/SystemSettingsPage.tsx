@@ -88,6 +88,16 @@ type WithdrawalUserRow = {
   updatedAt?: any;
 };
 
+type CompletedOffboardingUserRow = {
+  id: string;
+  name: string;
+  avatar: string;
+  email?: string;
+  postProgramAccessLevel?: PostProgramAccessLevel;
+  postProgramRetentionPeriod?: string;
+  offboardingRequestedAt?: any;
+};
+
 type PendingUserOperation =
   | {
       type: 'APPLY_WITHDRAWAL';
@@ -512,6 +522,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   }, [selectedPayPeriodMonthKey, defaultPayoutDay]);
   const [withdrawalRequests, setWithdrawalRequests] = useState<WithdrawalUserRow[]>([]);
   const [withdrawnUsers, setWithdrawnUsers] = useState<WithdrawalUserRow[]>([]);
+  const [completedOffboardingUsers, setCompletedOffboardingUsers] = useState<CompletedOffboardingUserRow[]>([]);
   const [withdrawnAccessOverrides, setWithdrawnAccessOverrides] = useState<Record<string, PostProgramAccessLevel>>({});
   const [withdrawnRetentionOverrides, setWithdrawnRetentionOverrides] = useState<Record<string, string>>({});
   const [withdrawnDirty, setWithdrawnDirty] = useState<Record<string, boolean>>({});
@@ -655,6 +666,39 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       
       setWithdrawalUsers(withdrawal);
     });
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(firestoreDb, 'users'), where('lifecycleStatus', '==', 'COMPLETED'));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const users = snap.docs
+          .map((d) => {
+            const data = d.data() as {
+              name?: string;
+              avatar?: string;
+              email?: string;
+              postProgramAccessLevel?: PostProgramAccessLevel;
+              postProgramRetentionPeriod?: string;
+              offboardingRequestedAt?: any;
+            };
+            return {
+              id: d.id,
+              name: data.name || 'Unknown',
+              avatar: normalizeAvatarUrl(data.avatar),
+              email: data.email,
+              postProgramAccessLevel: data.postProgramAccessLevel,
+              postProgramRetentionPeriod: data.postProgramRetentionPeriod,
+              offboardingRequestedAt: data.offboardingRequestedAt,
+            };
+          })
+          .filter((u) => Boolean(u.offboardingRequestedAt));
+        users.sort((a, b) => a.name.localeCompare(b.name));
+        setCompletedOffboardingUsers(users);
+      },
+      () => setCompletedOffboardingUsers([]),
+    );
   }, []);
 
   const stageSelectWithdrawalUser = (u: WithdrawalUserRow) => {
@@ -839,6 +883,27 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       setWithdrawnDirty((prev) => ({ ...prev, [userId]: false }));
     } catch {
       openAlert(lang === 'EN' ? 'Failed to save changes.' : 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
+    }
+  };
+
+  const handleRestoreCompletedOffboardingImmediate = async (userId: string) => {
+    const ok = await openConfirm(
+      lang === 'EN' ? 'Restore this user to ACTIVE?' : 'ต้องการคืนสถานะผู้ใช้นี้เป็น ACTIVE ใช่ไหม?',
+      lang === 'EN' ? 'Confirm' : 'ยืนยัน',
+    );
+    if (!ok) return;
+
+    try {
+      await updateDoc(doc(firestoreDb, 'users', userId), {
+        lifecycleStatus: 'ACTIVE',
+        offboardingRequestedAt: deleteField(),
+        completionReportedAt: deleteField(),
+        postProgramAccessLevel: deleteField(),
+        postProgramRetentionPeriod: deleteField(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      openAlert(lang === 'EN' ? 'Failed to restore user.' : 'ไม่สามารถคืนสถานะผู้ใช้ได้', lang === 'EN' ? 'Error' : 'เกิดข้อผิดพลาด');
     }
   };
 
@@ -1951,6 +2016,55 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                     </div>
                                   );
                                 })
+                              )}
+                            </div>
+                          </div>
+
+                          {/* OFFBOARDING USERS */}
+                          <div className="mt-8">
+                            <div className="flex items-center justify-between gap-4 mb-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <h4 className="text-sm font-bold text-slate-700">{t.offboardingUsersLabel}</h4>
+                                <span className="text-xs text-slate-400">({completedOffboardingUsers.length} {t.usersCount})</span>
+                              </div>
+                              <Link
+                                to="/admin/withdrawn-offboarding-users"
+                                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all whitespace-nowrap"
+                              >
+                                {lang === 'EN' ? 'View all' : 'ดูทั้งหมด'}
+                              </Link>
+                            </div>
+                            <div className="space-y-3">
+                              {completedOffboardingUsers.length === 0 ? (
+                                <div className="py-6 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center gap-3">
+                                  <Users size={24} className="text-slate-200" />
+                                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{t.noOffboardingUsers}</p>
+                                </div>
+                              ) : (
+                                completedOffboardingUsers.slice(0, 3).map((u) => (
+                                  <div key={u.id} className="p-5 bg-blue-50 border border-blue-100 rounded-2xl flex flex-col gap-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex items-center gap-4 min-w-0">
+                                        <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover ring-2 ring-white" alt="" />
+                                        <div className="min-w-0">
+                                          <div className="text-sm font-black text-slate-800 truncate">{u.name}</div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="px-2 py-1 bg-blue-100 text-blue-600 text-[8px] font-black uppercase rounded-full">OFFBOARDING</span>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{t.completedProcess}</div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        onClick={() => void handleRestoreCompletedOffboardingImmediate(u.id)}
+                                        className="px-4 py-2 bg-white border border-slate-200 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 hover:border-blue-200 transition-all whitespace-nowrap"
+                                      >
+                                        {lang === 'EN' ? 'Restore' : 'คืนค่า'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
                               )}
                             </div>
                           </div>

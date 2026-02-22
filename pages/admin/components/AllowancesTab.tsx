@@ -11,6 +11,10 @@ interface AllowancesTabProps {
   errorMessage?: string | null;
   onAuthorize: (id: string) => void;
   onProcessPayment: (id: string) => void;
+  onClosePayoutCase?: (internId: string) => void;
+  canClosePayoutCase?: (claim: AllowanceClaim) => boolean;
+  onSyncWallet?: (internId: string) => void;
+  syncStateByInternId?: Record<string, { status?: string; startedAtMs?: number | null; errorMessage?: string | null }>;
   monthOptions: string[];
   selectedMonthKey: string;
   onSelectMonthKey: (next: string) => void;
@@ -25,6 +29,10 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
   errorMessage = null,
   onAuthorize,
   onProcessPayment,
+  onClosePayoutCase,
+  canClosePayoutCase,
+  onSyncWallet,
+  syncStateByInternId,
   monthOptions,
   selectedMonthKey,
   onSelectMonthKey,
@@ -271,6 +279,34 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
               )}
 
               {pageItems.map(claim => (
+                (() => {
+                  const syncState = syncStateByInternId?.[claim.internId];
+                  const isSyncRunning = syncState?.status === 'RUNNING';
+                  const syncButton = onSyncWallet ? (
+                    <button
+                      type="button"
+                      disabled={isSyncRunning}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSyncWallet(claim.internId);
+                      }}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                        isSyncRunning
+                          ? 'bg-slate-100 text-slate-400 border border-slate-100 cursor-not-allowed'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                      }`}
+                      title={
+                        syncState?.status === 'ERROR'
+                          ? String(syncState?.errorMessage ?? tr('allowances_tab.sync_wallet_error'))
+                          : tr('allowances_tab.sync_wallet')
+                      }
+                    >
+                      {isSyncRunning ? tr('allowances_tab.sync_wallet_running') : tr('allowances_tab.sync_wallet')}
+                    </button>
+                  ) : null;
+
+                  return (
                 <tr
                   key={claim.id}
                   className={`group hover:bg-slate-50/50 transition-all ${onRowClick ? 'cursor-pointer' : ''}`}
@@ -285,7 +321,10 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                   <td className="py-6 pl-4">
                     <div className="flex items-center gap-4">
                       <img src={claim.avatar} className="w-10 h-10 rounded-lg object-cover" alt="" />
-                      <span className="text-sm font-black text-slate-900">{claim.internName}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-slate-900">{claim.internName}</span>
+                        {readOnly && syncButton ? <div className="mt-2">{syncButton}</div> : null}
+                      </div>
                     </div>
                   </td>
                   <td className="py-6">
@@ -455,13 +494,28 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                           <Banknote size={14} /> {tr('allowances_tab.process_payout')}
                         </button>
                       ) : (
-                        <div className="flex justify-end pr-2">
+                        <div className="flex justify-end pr-2 gap-2">
+                          {syncButton ? <div className="mr-1">{syncButton}</div> : null}
+                          {onClosePayoutCase && (canClosePayoutCase ? canClosePayoutCase(claim) : false) ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onClosePayoutCase(claim.internId);
+                              }}
+                              className="px-5 py-2.5 bg-slate-50 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-sm flex items-center gap-2"
+                              title={tr('allowances_tab.close_case')}
+                            >
+                              <ShieldCheck size={14} /> {tr('allowances_tab.close_case')}
+                            </button>
+                          ) : null}
                           <ArrowUpRight size={18} className="text-slate-300" />
                         </div>
                       )}
                     </td>
                   )}
                 </tr>
+                  );
+                })()
               ))}
             </tbody>
           </table>

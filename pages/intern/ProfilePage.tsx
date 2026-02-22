@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  EyeOff,
   Search,
   LayoutGrid,
   FileCheck,
@@ -32,10 +33,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { UserProfile, Supervisor, DocumentStatus, Language } from '@/types';
 import SupervisorCard from '@/components/SupervisorCard';
 import { useAppContext } from '@/app/AppContext';
-import { firestoreDb, firebaseStorage } from '@/firebase';
+import { firestoreDb, firebaseAuth, firebaseStorage } from '@/firebase';
 import { getUserProfileByUid } from '@/app/firestoreUserRepository';
 import { pageIdToPath } from '@/app/routeUtils';
 import { useTranslation } from 'react-i18next';
@@ -79,6 +81,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   const [supervisorProfile, setSupervisorProfile] = useState<UserProfile | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null);
+  const [isPwSaving, setIsPwSaving] = useState(false);
+
+  const canChangePassword = useMemo(() => {
+    const fbUser = firebaseAuth.currentUser;
+    if (!fbUser) return false;
+    const providers = Array.isArray(fbUser.providerData) ? fbUser.providerData.map((p) => p?.providerId).filter(Boolean) : [];
+    return providers.includes('password');
+  }, [user?.id]);
   const [editForm, setEditForm] = useState({
     name: '',
     phone: '',
@@ -216,6 +230,62 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
     setIsEditing(false);
   };
 
+  const openChangePassword = () => {
+    setPwError(null);
+    setPwSuccess(null);
+    setPwForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+    setIsChangingPassword(true);
+  };
+
+  const handleChangePassword = async () => {
+    if (isPwSaving) return;
+    setPwError(null);
+    setPwSuccess(null);
+
+    const fbUser = firebaseAuth.currentUser;
+    const email = fbUser?.email ?? '';
+    if (!fbUser || !email) {
+      setPwError(tr('intern_profile.password.errors.user_not_found'));
+      return;
+    }
+
+    if (!pwForm.currentPassword.trim() || !pwForm.newPassword.trim()) {
+      setPwError(tr('intern_profile.password.errors.fill_all'));
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmNewPassword) {
+      setPwError(tr('intern_profile.password.errors.confirm_mismatch'));
+      return;
+    }
+    if (pwForm.newPassword.length < 6) {
+      setPwError(tr('intern_profile.password.errors.min_6'));
+      return;
+    }
+
+    setIsPwSaving(true);
+    try {
+      const cred = EmailAuthProvider.credential(email, pwForm.currentPassword);
+      await reauthenticateWithCredential(fbUser, cred);
+      await updatePassword(fbUser, pwForm.newPassword);
+      setPwSuccess(tr('intern_profile.password.success'));
+      setPwForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      const code = String(e?.code ?? 'unknown');
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setPwError(tr('intern_profile.password.errors.wrong_current'));
+      } else if (code === 'auth/too-many-requests') {
+        setPwError(tr('intern_profile.password.errors.too_many'));
+      } else if (code === 'auth/requires-recent-login') {
+        setPwError(tr('intern_profile.password.errors.relogin'));
+      } else {
+        setPwError(`${e?.message ?? tr('intern_profile.password.errors.generic')}`);
+      }
+    } finally {
+      setIsPwSaving(false);
+    }
+  };
+
   const handleAvatarSelected = async (file: File | null) => {
     if (!user || !file) return;
 
@@ -270,6 +340,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
           onChange={setEditForm}
           onClose={() => setIsEditing(false)}
           onSave={() => void handleSaveProfile()}
+        />
+      )}
+
+      {isChangingPassword && (
+        <ChangePasswordModal
+          lang={_lang}
+          form={pwForm}
+          error={pwError}
+          success={pwSuccess}
+          isSaving={isPwSaving}
+          onChange={setPwForm}
+          onClose={() => setIsChangingPassword(false)}
+          onSave={() => void handleChangePassword()}
         />
       )}
 
@@ -436,6 +519,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
             >
               <CreditCard size={18} /> {tr('intern_profile.actions.document_vault')}
             </button>
+
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm h-fit mb-6">
+              <div className="mb-8">
+                <h3 className="text-base font-black text-slate-900 tracking-tight leading-none uppercase">{tr('intern_profile.security.title')}</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                  {canChangePassword
+                    ? tr('intern_profile.security.change_password.subtitle')
+                    : tr('intern_profile.security.change_password.no_password_provider')}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={openChangePassword}
+                disabled={!canChangePassword}
+                className="w-full py-4 bg-slate-900 text-white rounded-[1.75rem] border border-slate-900 flex items-center justify-center gap-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-95 disabled:opacity-50"
+              >
+                {tr('intern_profile.security.change_password.button')}
+              </button>
+            </div>
+
             {supervisorCardData ? (
               <SupervisorCard supervisor={supervisorCardData} lang={_lang} />
             ) : (
@@ -577,6 +681,119 @@ const Field: React.FC<{ label: string; value: string; onChange: (v: string) => v
     />
   </label>
 );
+
+const PasswordField: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  reveal: boolean;
+  onToggleReveal: () => void;
+}> = ({ label, value, onChange, reveal, onToggleReveal }) => (
+  <label className="space-y-2">
+    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
+    <div className="relative">
+      <input
+        type={reveal ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full pr-14 px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+      />
+      <button
+        type="button"
+        onClick={onToggleReveal}
+        className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-300 transition-all"
+        aria-label={reveal ? 'Hide password' : 'Show password'}
+      >
+        {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  </label>
+);
+
+const ChangePasswordModal: React.FC<{
+  lang: Language;
+  form: { currentPassword: string; newPassword: string; confirmNewPassword: string };
+  error: string | null;
+  success: string | null;
+  isSaving: boolean;
+  onChange: (next: { currentPassword: string; newPassword: string; confirmNewPassword: string }) => void;
+  onClose: () => void;
+  onSave: () => void;
+}> = ({ lang, form, error, success, isSaving, onChange, onClose, onSave }) => {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: any) => String(t(key, { ...(options ?? {}), lng: lang === 'TH' ? 'th' : 'en' }));
+
+  const [revealCurrent, setRevealCurrent] = useState(false);
+  const [revealNext, setRevealNext] = useState(false);
+  const [revealConfirm, setRevealConfirm] = useState(false);
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={onClose} />
+      <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
+          <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('intern_profile.password.modal.title')}</h3>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={isSaving}
+              className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all disabled:opacity-50"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-8">
+            {error ? <div className="mb-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-xs font-bold">{error}</div> : null}
+            {success ? <div className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl px-5 py-4 text-xs font-bold">{success}</div> : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <PasswordField
+                label={tr('intern_profile.password.modal.fields.current')}
+                value={form.currentPassword}
+                onChange={(v) => onChange({ ...form, currentPassword: v })}
+                reveal={revealCurrent}
+                onToggleReveal={() => setRevealCurrent((v) => !v)}
+              />
+              <div className="hidden md:block" />
+              <PasswordField
+                label={tr('intern_profile.password.modal.fields.next')}
+                value={form.newPassword}
+                onChange={(v) => onChange({ ...form, newPassword: v })}
+                reveal={revealNext}
+                onToggleReveal={() => setRevealNext((v) => !v)}
+              />
+              <PasswordField
+                label={tr('intern_profile.password.modal.fields.confirm')}
+                value={form.confirmNewPassword}
+                onChange={(v) => onChange({ ...form, confirmNewPassword: v })}
+                reveal={revealConfirm}
+                onToggleReveal={() => setRevealConfirm((v) => !v)}
+              />
+            </div>
+            <div className="flex justify-end gap-3 mt-8">
+              <button
+                onClick={onClose}
+                disabled={isSaving}
+                className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-50"
+              >
+                {tr('intern_profile.password.modal.actions.cancel')}
+              </button>
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
+              >
+                {tr('intern_profile.password.modal.actions.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
 
 const InfoRow = ({ label, value, highlight }: { label: string, value: string, highlight?: boolean }) => (
   <div className="flex justify-between items-center group/row cursor-default">

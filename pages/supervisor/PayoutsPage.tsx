@@ -12,8 +12,10 @@ import {
   where,
 } from 'firebase/firestore';
 
+import { httpsCallable } from 'firebase/functions';
+
 import { Language, UserProfile } from '@/types';
-import { firestoreDb } from '@/firebase';
+import { firestoreDb, firebaseFunctions } from '@/firebase';
 import { normalizeAvatarUrl } from '@/app/avatar';
 import { useTranslation } from 'react-i18next';
 
@@ -41,6 +43,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const tr = (key: string, options?: any) => String(t(key, options));
 
   const [selectedMonthKey, setSelectedMonthKey] = useState(() => monthKeyFromDate(new Date()));
+  const [payoutView, setPayoutView] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
   const monthOptions = useMemo(() => {
     return Array.from({ length: 12 }, (_, idx) => {
       const base = new Date();
@@ -52,6 +55,10 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const [claims, setClaims] = useState<AllowanceClaim[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [syncStateByInternId, setSyncStateByInternId] = useState<
+    Record<string, { status?: string; startedAtMs?: number | null; errorMessage?: string | null }>
+  >({});
 
   const [allowanceRules, setAllowanceRules] = useState({
     payoutFreq: 'MONTHLY' as 'MONTHLY' | 'END_PROGRAM',
@@ -96,24 +103,20 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
     const loadAssigned = async () => {
       const fromProfile = Array.isArray(user.assignedInterns) ? user.assignedInterns.filter(Boolean) : [];
-      if (fromProfile.length > 0) {
-        setAssignedInternIds(fromProfile);
-        return;
-      }
 
       try {
         const snap = await getDocs(
           query(collection(firestoreDb, 'users'), where('supervisorId', '==', user.id)),
         );
-        const nextIds: string[] = [];
+        const nextIds: string[] = [...fromProfile];
         snap.forEach((d) => {
           const data = d.data() as any;
           if (data?.hasLoggedIn === false) return;
-          nextIds.push(d.id);
+          if (!nextIds.includes(d.id)) nextIds.push(d.id);
         });
         if (!cancelled) setAssignedInternIds(nextIds);
       } catch {
-        if (!cancelled) setAssignedInternIds([]);
+        if (!cancelled) setAssignedInternIds(fromProfile);
       }
     };
 
@@ -139,7 +142,14 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
         const userByInternId = new Map<
           string,
-          { bankName?: string; bankAccountNumber?: string; internName?: string; avatar?: string }
+          {
+            bankName?: string;
+            bankAccountNumber?: string;
+            internName?: string;
+            avatar?: string;
+            lifecycleStatus?: string;
+            payoutCaseClosedAtMs?: number;
+          }
         >();
         const idChunks = chunkArray(internIds, 10);
 
@@ -147,23 +157,29 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           const userSnap = await getDocs(query(collection(firestoreDb, 'users'), where(documentId(), 'in', chunk)));
           userSnap.forEach((d) => {
             const raw = d.data() as any;
+            const payoutCaseClosedAtMs =
+              typeof raw?.payoutCaseClosedAt?.toMillis === 'function' ? raw.payoutCaseClosedAt.toMillis() : undefined;
             userByInternId.set(d.id, {
               bankName: typeof raw?.bankName === 'string' ? raw.bankName : undefined,
               bankAccountNumber: typeof raw?.bankAccountNumber === 'string' ? raw.bankAccountNumber : undefined,
               internName: typeof raw?.name === 'string' ? raw.name : undefined,
               avatar: normalizeAvatarUrl(raw?.avatar),
+              lifecycleStatus: typeof raw?.lifecycleStatus === 'string' ? raw.lifecycleStatus : undefined,
+              payoutCaseClosedAtMs: typeof payoutCaseClosedAtMs === 'number' ? payoutCaseClosedAtMs : undefined,
             });
           });
         }
 
         if (allowanceRules.payoutFreq === 'END_PROGRAM') {
           const allRows: AllowanceClaim[] = [];
+          const foundWalletIds = new Set<string>();
           for (const chunk of idChunks) {
             const walletSnap = await getDocs(
               query(collection(firestoreDb, 'CurrentWallet'), where(documentId(), 'in', chunk)),
             );
             walletSnap.forEach((d) => {
               const internId = d.id;
+              foundWalletIds.add(internId);
               const raw = d.data() as any;
               const u = userByInternId.get(internId);
               const totalAmount = typeof raw?.totalAmount === 'number' ? raw.totalAmount : 0;
@@ -187,6 +203,10 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                     ? 'PENDING'
                     : 'PENDING';
 
+              const plannedPayoutDate = typeof raw?.plannedPayoutDate === 'string' ? raw.plannedPayoutDate : undefined;
+              const paymentDate = typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined;
+              const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
+
               allRows.push({
                 id: internId,
                 internId,
@@ -194,21 +214,50 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                 avatar: u?.avatar ?? '',
                 bankName: u?.bankName,
                 bankAccountNumber: u?.bankAccountNumber,
+                lifecycleStatus: u?.lifecycleStatus,
+                payoutCaseClosedAtMs: u?.payoutCaseClosedAtMs,
                 amount: totalAmount,
                 calculatedAmount: totalCalculatedAmount,
                 monthKey: selectedMonthKey,
                 period: 'End Program',
                 breakdown,
                 status,
+                plannedPayoutDate,
+                paymentDate,
+                paidAtMs,
               });
             });
           }
+
+          // Include interns that don't have a wallet doc yet (e.g., never recalculated/synced).
+          for (const internId of internIds) {
+            if (foundWalletIds.has(internId)) continue;
+            const u = userByInternId.get(internId);
+            allRows.push({
+              id: internId,
+              internId,
+              internName: u?.internName ?? 'Unknown',
+              avatar: u?.avatar ?? '',
+              bankName: u?.bankName,
+              bankAccountNumber: u?.bankAccountNumber,
+              lifecycleStatus: u?.lifecycleStatus,
+              payoutCaseClosedAtMs: u?.payoutCaseClosedAtMs,
+              amount: 0,
+              calculatedAmount: 0,
+              monthKey: selectedMonthKey,
+              period: 'End Program',
+              breakdown: { wfo: 0, wfh: 0, leaves: 0 },
+              status: 'PENDING',
+            });
+          }
+
           allRows.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
           if (!cancelled) setClaims(allRows);
           return;
         }
 
         const allClaims: AllowanceClaim[] = [];
+        const foundClaimInternIds = new Set<string>();
         for (const chunk of idChunks) {
           const snap = await getDocs(
             query(
@@ -221,6 +270,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           snap.forEach((d) => {
             const raw = d.data() as any;
             const internId = typeof raw?.internId === 'string' ? raw.internId : d.id.split('_')[0];
+            foundClaimInternIds.add(internId);
             const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
             const supervisorAdjustedAtMs =
               typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
@@ -269,6 +319,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               avatar: normalizeAvatarUrl(raw?.avatar),
               bankName: u?.bankName,
               bankAccountNumber: u?.bankAccountNumber,
+              lifecycleStatus: u?.lifecycleStatus,
+              payoutCaseClosedAtMs: u?.payoutCaseClosedAtMs,
               monthKey: typeof raw?.monthKey === 'string' ? raw.monthKey : selectedMonthKey,
               amount,
               calculatedAmount: computedNet,
@@ -291,6 +343,28 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           });
         }
 
+        // Include interns that don't have a claim doc yet for this month (e.g., never recalculated).
+        for (const internId of internIds) {
+          if (foundClaimInternIds.has(internId)) continue;
+          const u = userByInternId.get(internId);
+          allClaims.push({
+            id: `${internId}_${selectedMonthKey}`,
+            internId,
+            internName: u?.internName ?? 'Unknown',
+            avatar: u?.avatar ?? '',
+            bankName: u?.bankName,
+            bankAccountNumber: u?.bankAccountNumber,
+            lifecycleStatus: u?.lifecycleStatus,
+            payoutCaseClosedAtMs: u?.payoutCaseClosedAtMs,
+            monthKey: selectedMonthKey,
+            amount: 0,
+            calculatedAmount: 0,
+            period: selectedMonthKey,
+            breakdown: { wfo: 0, wfh: 0, leaves: 0 },
+            status: 'PENDING',
+          });
+        }
+
         allClaims.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
         if (!cancelled) setClaims(allClaims);
       } catch (e) {
@@ -310,6 +384,75 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
       cancelled = true;
     };
   }, [allowanceRules.applyTax, allowanceRules.payoutFreq, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, assignedInternIds, selectedMonthKey]);
+
+  useEffect(() => {
+    if (allowanceRules.payoutFreq !== 'END_PROGRAM') {
+      setSyncStateByInternId({});
+      return;
+    }
+
+    const internIds = assignedInternIds;
+    if (internIds.length === 0) {
+      setSyncStateByInternId({});
+      return;
+    }
+
+    const unsubs: Array<() => void> = [];
+    const idChunks = chunkArray(internIds, 10);
+    for (const chunk of idChunks) {
+      const q = query(collection(firestoreDb, 'walletSyncLocks'), where(documentId(), 'in', chunk));
+      unsubs.push(
+        onSnapshot(
+          q,
+          (snap) => {
+            setSyncStateByInternId((prev) => {
+              const next = { ...prev };
+              snap.docs.forEach((d) => {
+                const raw = d.data() as any;
+                const startedAtMs =
+                  typeof raw?.startedAt?.toMillis === 'function' ? raw.startedAt.toMillis() : (raw?.startedAtMs ?? null);
+                next[d.id] = {
+                  status: typeof raw?.status === 'string' ? raw.status : undefined,
+                  startedAtMs: typeof startedAtMs === 'number' ? startedAtMs : null,
+                  errorMessage: typeof raw?.errorMessage === 'string' ? raw.errorMessage : null,
+                };
+              });
+              return next;
+            });
+          },
+          () => {
+            // ignore
+          },
+        ),
+      );
+    }
+
+    return () => {
+      unsubs.forEach((fn) => fn());
+    };
+  }, [allowanceRules.payoutFreq, assignedInternIds]);
+
+  const handleSyncWallet = async (internId: string) => {
+    try {
+      setSyncStateByInternId((prev) => ({
+        ...prev,
+        [internId]: {
+          status: 'RUNNING',
+          startedAtMs: Date.now(),
+          errorMessage: null,
+        },
+      }));
+      const fn = httpsCallable(firebaseFunctions, 'syncAllowanceWallet');
+      const res = (await fn({ internId })) as any;
+      const data = (res as any)?.data;
+      if (data?.alreadyRunning) {
+        alert(tr('allowances_tab.sync_wallet_running'));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : tr('allowances_tab.sync_wallet_error');
+      alert(msg);
+    }
+  };
 
   const handleOpenEdit = (claim: AllowanceClaim) => {
     if (!assignedInternIds.includes(claim.internId)) return;
@@ -368,8 +511,47 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
     }
   };
 
+  const visibleClaims = useMemo(() => {
+    if (payoutView === 'HISTORY') {
+      return claims.filter((c) => c.status === 'PAID' && c.lifecycleStatus !== 'WITHDRAWN');
+    }
+
+    return claims.filter((c) => {
+      if (c.lifecycleStatus === 'WITHDRAWN') return false;
+      if (c.lifecycleStatus === 'COMPLETED' && typeof c.payoutCaseClosedAtMs === 'number') return false;
+      return true;
+    });
+  }, [claims, payoutView]);
+
   return (
     <div className="h-full min-h-0 w-full overflow-y-auto p-4 md:p-6 lg:p-10 bg-slate-50">
+      <div className="max-w-7xl mx-auto w-full mb-6 flex justify-end">
+        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setPayoutView('ACTIVE')}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              payoutView === 'ACTIVE'
+                ? 'bg-[#111827] text-white shadow-xl'
+                : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            {tr('allowances_tab.view_active')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPayoutView('HISTORY')}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+              payoutView === 'HISTORY'
+                ? 'bg-[#111827] text-white shadow-xl'
+                : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            {tr('allowances_tab.view_history')}
+          </button>
+        </div>
+      </div>
+
       <div className="max-w-7xl mx-auto w-full">
         {editingClaim && (
           <>
@@ -382,9 +564,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                 <div className="p-8 border-b border-slate-100 flex items-center justify-between">
                   <div>
                     <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('supervisor_dashboard.payouts.adjust_title')}</h3>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">
-                      {editingClaim.internName}
-                    </div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{editingClaim.internName}</div>
                   </div>
                   <button
                     onClick={() => (isSavingEdit ? void 0 : setEditingClaim(null))}
@@ -435,11 +615,13 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
         )}
 
         <AllowancesTab
-          allowanceClaims={claims}
+          allowanceClaims={visibleClaims}
           isLoading={isLoading}
           errorMessage={errorMessage}
           onAuthorize={() => void 0}
           onProcessPayment={() => void 0}
+          onSyncWallet={allowanceRules.payoutFreq === 'END_PROGRAM' ? handleSyncWallet : undefined}
+          syncStateByInternId={allowanceRules.payoutFreq === 'END_PROGRAM' ? syncStateByInternId : undefined}
           monthOptions={monthOptions}
           selectedMonthKey={selectedMonthKey}
           onSelectMonthKey={setSelectedMonthKey}
@@ -448,10 +630,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           onRowClick={handleOpenEdit}
         />
 
-        {!isLoading && !errorMessage && claims.length > 0 && (
-          <div className="mt-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            {tr('supervisor_dashboard.payouts.tip')}
-          </div>
+        {!isLoading && !errorMessage && visibleClaims.length > 0 && (
+          <div className="mt-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.payouts.tip')}</div>
         )}
       </div>
     </div>

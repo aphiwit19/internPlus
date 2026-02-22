@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronLeft, ChevronRight, History, Home } from 'lucide-react';
+import { CircleAlert, Files, History, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { getDownloadURL, ref as storageRef } from 'firebase/storage';
+
+import { firestoreDb, firebaseStorage } from '@/firebase';
 
 export type AttendanceViewMode = 'LOG' | 'CALENDAR';
 
@@ -13,6 +18,33 @@ export interface AttendanceLogItem {
   status: 'PRESENT' | 'LATE';
   duration: string;
 }
+
+type CorrectionDoc = {
+  id: string;
+  internId: string;
+  internName: string;
+  date: string;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedClockIn?: string;
+  requestedClockOut?: string;
+  supervisorDecisionNote?: string;
+  workMode: 'WFH' | 'WFO';
+  attachments: Array<{ fileName: string; storagePath: string }>;
+};
+
+type ExcelImportDoc = {
+  id: string;
+  internId: string;
+  internName: string;
+  fileName: string;
+  storagePath: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPLIED' | 'FAILED';
+  submittedAtMs?: number;
+  reviewedAtMs?: number;
+  reviewedByName?: string;
+  reviewedByRole?: string;
+};
 
 const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
   const { t } = useTranslation();
@@ -149,16 +181,22 @@ const AttendanceCalendar = ({ logs }: { logs: AttendanceLogItem[] }) => {
 };
 
 interface AttendanceTabProps {
+  internId?: string;
   logs: AttendanceLogItem[];
   viewMode: AttendanceViewMode;
   onViewModeChange: (mode: AttendanceViewMode) => void;
 }
 
-const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewModeChange }) => {
+const AttendanceTab: React.FC<AttendanceTabProps> = ({ internId, logs, viewMode, onViewModeChange }) => {
   const { t } = useTranslation();
   const tr = (key: string) => String(t(key));
   const PAGE_SIZE = 5;
   const [currentPage, setCurrentPage] = useState(1);
+
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'excel' | 'corrections'>('excel');
+  const [corrections, setCorrections] = useState<CorrectionDoc[]>([]);
+  const [excelImports, setExcelImports] = useState<ExcelImportDoc[]>([]);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(logs.length / PAGE_SIZE)), [logs.length]);
 
@@ -175,15 +213,316 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
     [currentPage, logs],
   );
 
+  useEffect(() => {
+    if (!isHistoryOpen || !internId) return;
+
+    const unsubs: Array<() => void> = [];
+
+    const q1 = query(collection(firestoreDb, 'timeCorrections'), where('internId', '==', internId));
+    unsubs.push(
+      onSnapshot(
+        q1,
+        (snap) => {
+          const list: CorrectionDoc[] = [];
+          snap.forEach((d) => {
+            const raw = d.data() as any;
+            const date = typeof raw?.date === 'string' ? raw.date : '';
+            const reason = typeof raw?.reason === 'string' ? raw.reason : '';
+            const status: CorrectionDoc['status'] =
+              raw?.status === 'APPROVED' ? 'APPROVED' : raw?.status === 'REJECTED' ? 'REJECTED' : 'PENDING';
+            const requestedClockIn = typeof raw?.requestedClockIn === 'string' ? raw.requestedClockIn : undefined;
+            const requestedClockOut = typeof raw?.requestedClockOut === 'string' ? raw.requestedClockOut : undefined;
+            const supervisorDecisionNote = typeof raw?.supervisorDecisionNote === 'string' ? raw.supervisorDecisionNote : undefined;
+            const workMode: 'WFH' | 'WFO' = raw?.workMode === 'WFH' ? 'WFH' : 'WFO';
+            const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+            const attachments = Array.isArray(raw?.attachments)
+              ? (raw.attachments as any[]).flatMap((a) => {
+                  const fileName = typeof a?.fileName === 'string' ? a.fileName : '';
+                  const storagePath = typeof a?.storagePath === 'string' ? a.storagePath : '';
+                  if (!fileName || !storagePath) return [];
+                  return [{ fileName, storagePath }];
+                })
+              : [];
+            if (!date) return;
+            list.push({
+              id: d.id,
+              internId,
+              internName,
+              date,
+              reason,
+              status,
+              requestedClockIn,
+              requestedClockOut,
+              supervisorDecisionNote,
+              workMode,
+              attachments,
+            });
+          });
+          list.sort((a, b) => b.date.localeCompare(a.date));
+          setCorrections(list);
+        },
+        () => setCorrections([]),
+      ),
+    );
+
+    const q2 = query(
+      collection(firestoreDb, 'attendanceExcelImports'),
+      where('internId', '==', internId),
+      orderBy('submittedAt', 'desc'),
+      limit(50),
+    );
+    unsubs.push(
+      onSnapshot(
+        q2,
+        (snap) => {
+          const list: ExcelImportDoc[] = [];
+          snap.forEach((d) => {
+            const raw = d.data() as any;
+            const fileName = typeof raw?.fileName === 'string' ? raw.fileName : 'Excel';
+            const storagePath = typeof raw?.storagePath === 'string' ? raw.storagePath : '';
+            if (!storagePath) return;
+            const internName = typeof raw?.internName === 'string' ? raw.internName : 'Unknown';
+            const status: ExcelImportDoc['status'] =
+              raw?.status === 'APPLIED' || raw?.status === 'FAILED' || raw?.status === 'APPROVED' || raw?.status === 'REJECTED'
+                ? raw.status
+                : 'PENDING';
+            const submittedAtMs = typeof raw?.submittedAt?.toMillis === 'function' ? raw.submittedAt.toMillis() : undefined;
+            const reviewedAtMs = typeof raw?.reviewedAt?.toMillis === 'function' ? raw.reviewedAt.toMillis() : undefined;
+            const reviewedByName = typeof raw?.reviewedByName === 'string' ? raw.reviewedByName : undefined;
+            const reviewedByRole = typeof raw?.reviewedByRole === 'string' ? raw.reviewedByRole : undefined;
+            list.push({
+              id: d.id,
+              internId,
+              internName,
+              fileName,
+              storagePath,
+              status,
+              submittedAtMs,
+              reviewedAtMs,
+              reviewedByName,
+              reviewedByRole,
+            });
+          });
+          setExcelImports(list);
+        },
+        () => setExcelImports([]),
+      ),
+    );
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [internId, isHistoryOpen]);
+
+  const handleOpenHistory = (tab?: 'excel' | 'corrections') => {
+    if (!internId) return;
+    if (tab) setHistoryTab(tab);
+    setIsHistoryOpen(true);
+  };
+
+  const handleOpenStoragePath = async (path: string) => {
+    try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, path));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-6 duration-500">
+
+      {isHistoryOpen ? (
+        <>
+          <div className="fixed inset-0 z-[180] bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsHistoryOpen(false)} />
+          <div className="fixed inset-0 z-[190] flex items-center justify-center p-4">
+            <div className="w-full max-w-5xl bg-white rounded-[2.75rem] border border-slate-100 shadow-2xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 flex items-start justify-between gap-6">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_history.title')}</div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-2">{tr('supervisor_attendance_history.subtitle')}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center"
+                  aria-label={tr('supervisor_attendance_history.close')}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-8">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-[1.75rem] p-2">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('excel')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                      historyTab === 'excel' ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <Files size={16} /> {tr('supervisor_attendance_history.tab_excel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('corrections')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                      historyTab === 'corrections' ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <CircleAlert size={16} /> {tr('supervisor_attendance_history.tab_corrections')}
+                  </button>
+                </div>
+
+                <div className="mt-8 max-h-[70vh] overflow-y-auto pr-2">
+                  {historyTab === 'excel' ? (
+                    <>
+                      {excelImports.length === 0 ? (
+                        <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_history.empty_excel')}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {excelImports.map((req) => (
+                            <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.internId}</div>
+                                  <button
+                                    type="button"
+                                    className="mt-4 text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                    onClick={() => void handleOpenStoragePath(req.storagePath)}
+                                  >
+                                    {req.fileName}
+                                  </button>
+                                  {typeof req.submittedAtMs === 'number' ? (
+                                    <div className="mt-2 text-[10px] font-bold text-slate-500">Submitted: {new Date(req.submittedAtMs).toLocaleString()}</div>
+                                  ) : null}
+                                  {req.reviewedByName ? (
+                                    <div className="mt-1 text-[10px] font-bold text-slate-500">
+                                      Reviewed by: {req.reviewedByName}{req.reviewedByRole ? ` (${req.reviewedByRole})` : ''}
+                                      {typeof req.reviewedAtMs === 'number' ? ` • ${new Date(req.reviewedAtMs).toLocaleString()}` : ''}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${
+                                      req.status === 'APPLIED'
+                                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                        : req.status === 'FAILED'
+                                          ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                          : req.status === 'REJECTED'
+                                            ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                            : req.status === 'APPROVED'
+                                              ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                              : 'bg-amber-50 text-amber-600 border-amber-100'
+                                    }`}
+                                  >
+                                    {req.status}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {corrections.length === 0 ? (
+                        <div className="p-10 bg-slate-50/50 rounded-[2.25rem] border border-slate-200 border-dashed text-center">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_attendance_history.empty_corrections')}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {corrections.map((req) => (
+                            <div key={req.id} className="p-6 bg-slate-50/50 rounded-[2.25rem] border border-slate-100">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-base font-black text-slate-900 truncate">{req.internName}</div>
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{req.date}</div>
+                                  {(req.requestedClockIn || req.requestedClockOut) ? (
+                                    <div className="mt-3 flex items-center gap-4">
+                                      <div className="flex flex-col gap-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-in</div>
+                                        <div className="text-[13px] font-black text-emerald-700">{req.requestedClockIn || '--'}</div>
+                                      </div>
+                                      <div className="text-slate-200 font-black">→</div>
+                                      <div className="flex flex-col gap-1">
+                                        <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clock-out</div>
+                                        <div className="text-[13px] font-black text-rose-600">{req.requestedClockOut || '--'}</div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {req.reason ? (
+                                    <div className="mt-3 text-[11px] font-bold text-slate-700 whitespace-pre-wrap break-words">{req.reason}</div>
+                                  ) : null}
+                                  {req.supervisorDecisionNote ? (
+                                    <div className="mt-2 text-[10px] font-bold text-slate-500 italic">Note: {req.supervisorDecisionNote}</div>
+                                  ) : null}
+                                  {req.attachments.length > 0 ? (
+                                    <div className="mt-4 pt-4 border-t border-slate-100 space-y-1">
+                                      {req.attachments.map((a) => (
+                                        <button
+                                          key={a.storagePath}
+                                          type="button"
+                                          className="text-left text-[11px] font-black text-blue-600 hover:underline break-words"
+                                          onClick={() => void handleOpenStoragePath(a.storagePath)}
+                                        >
+                                          {a.fileName}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex flex-col items-end gap-3 flex-shrink-0">
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                                      req.status === 'APPROVED'
+                                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                        : req.status === 'REJECTED'
+                                          ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                          : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                    }`}
+                                  >
+                                    {req.status === 'APPROVED' ? '✓ Approved' : req.status === 'REJECTED' ? '✕ Rejected' : '⏳ Pending'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       <div className="bg-white rounded-[3.5rem] p-12 border border-slate-100 shadow-sm relative">
         <div className="flex items-center justify-between mb-12">
           <div>
             <h3 className="text-2xl font-black text-slate-900 tracking-tight">{tr('supervisor_attendance_calendar.title')}</h3>
             <p className="text-slate-400 text-[10px] font-black uppercase mt-1">{tr('supervisor_attendance_calendar.subtitle')}</p>
           </div>
-          <div className="flex bg-slate-50 p-1 rounded-[1.25rem] border border-slate-100 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleOpenHistory()}
+              disabled={!internId}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <History size={16} /> {tr('supervisor_attendance_history.button')}
+            </button>
+
+            <div className="flex bg-slate-50 p-1 rounded-[1.25rem] border border-slate-100 shadow-sm overflow-hidden">
             <button
               onClick={() => onViewModeChange('LOG')}
               className={`px-8 py-3 rounded-xl text-[11px] font-black transition-all ${
@@ -204,6 +543,7 @@ const AttendanceTab: React.FC<AttendanceTabProps> = ({ logs, viewMode, onViewMod
             >
               {tr('supervisor_attendance_calendar.calendar')}
             </button>
+            </div>
           </div>
         </div>
 
