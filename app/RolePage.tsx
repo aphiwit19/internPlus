@@ -20,6 +20,7 @@ import FeedbackPage from '@/pages/intern/FeedbackPage';
 import EvaluationPage from '@/pages/intern/EvaluationPage';
 import CertificatesPage from '@/pages/intern/CertificatesPage';
 import OffboardingPage from '@/pages/intern/OffboardingPage';
+import OnboardingPage from '@/pages/intern/OnboardingPage';
 import AllowancePage from '@/pages/intern/AllowancePage';
 import WithdrawalPage from '@/pages/intern/WithdrawalPage';
 import InternLeaveRequestPage from '@/pages/intern/LeaveRequestPage';
@@ -124,6 +125,8 @@ export default function RolePage() {
     switch (resolvedPageId) {
       case 'dashboard':
         return <InternDashboard user={user} onNavigate={onNavigate} lang={lang} />;
+      case 'onboarding':
+        return <OnboardingPage onNavigate={onNavigate} lang={lang} />;
       case 'profile':
         return <ProfilePage lang={lang} />;
       case 'documents':

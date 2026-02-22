@@ -1,5 +1,6 @@
 export type PageId =
   | 'dashboard'
+  | 'onboarding'
   | 'profile'
   | 'documents'
   | 'training'
