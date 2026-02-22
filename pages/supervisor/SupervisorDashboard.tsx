@@ -1606,8 +1606,24 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
 
   const mapUserToInternDetail = useMemo(() => {
-
     return (id: string, data: any): InternDetail => {
+      // Check retention period - hide interns completed > 1 month ago
+      const shouldHideDueToRetention = (() => {
+        if (data.lifecycleStatus === 'WITHDRAWN' || data.lifecycleStatus === 'COMPLETED') {
+          const offboardDate = data.offboardingRequestedAt?.toDate?.() || 
+                              data.withdrawalRequestedAt?.toDate?.();
+          if (offboardDate) {
+            const oneMonthAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+            return offboardDate.getTime() < oneMonthAgo;
+          }
+        }
+        return false;
+      })();
+
+      // Hide intern if retention period exceeded
+      if (shouldHideDueToRetention) {
+        return null as any;
+      }
 
       const rawSupPerf = (data?.supervisorPerformance ?? null) as Partial<PerformanceMetrics> | null;
 
@@ -1913,9 +1929,9 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
     const unsubAssigned = onSnapshot(assignedQ, (snap) => {
 
-      setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+      setInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())).filter(Boolean));
 
-      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())));
+      setAllInterns(snap.docs.map((d) => mapUserToInternDetail(d.id, d.data())).filter(Boolean));
 
     });
 

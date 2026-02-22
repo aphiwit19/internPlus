@@ -510,11 +510,53 @@ const InternManagementPage: React.FC = () => {
 
           supervisorSummary?: string;
 
+          offboardingRequestedAt?: any;
+
+          withdrawalRequestedAt?: any;
+
         };
 
 
 
         if (data.hasLoggedIn === false) return [];
+
+
+
+        // Check retention period - hide interns completed > 1 month ago
+
+        const shouldHideDueToRetention = (() => {
+
+          if (data.lifecycleStatus === 'WITHDRAWN' || data.lifecycleStatus === 'COMPLETED') {
+
+            const offboardDate = (data.offboardingRequestedAt as any)?.toDate?.() || 
+
+                                (data.withdrawalRequestedAt as any)?.toDate?.();
+
+            if (offboardDate) {
+
+              const oneMonthAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+
+              return offboardDate.getTime() < oneMonthAgo;
+
+            }
+
+          }
+
+          return false;
+
+        })();
+
+
+
+        // Hide intern if retention period exceeded
+
+        if (shouldHideDueToRetention) {
+
+          return [];
+
+        }
+
+
 
 
 
