@@ -100,6 +100,15 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
     return filtered.slice(start, start + pageSize);
   }, [filtered, safePage]);
 
+  // Debug: Log what AllowancesTab receives
+  console.log('🔍 AllowancesTab Debug:', {
+    allowanceClaimsCount: allowanceClaims.length,
+    filteredCount: filtered.length,
+    pageItemsCount: pageItems.length,
+    isLoading,
+    errorMessage,
+  });
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       {noteClaim && (
@@ -314,7 +323,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                     if (!onRowClick) return;
                     if (readOnly && !allowEditInReadOnly) return;
                     if (claim.status === 'PAID') return;
-                    if (claim.isPayoutLocked) return;
+                    // Remove isPayoutLocked check to allow editing in end-program mode
                     onRowClick(claim);
                   }}
                 >
@@ -352,15 +361,22 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                     <div
                       className="flex flex-col"
                       title={
-                        typeof claim.adminAdjustedAmount === 'number'
-                          ? claim.adminAdjustmentNote || tr('allowances_tab.admin_adjusted')
-                          : typeof claim.supervisorAdjustedAmount === 'number'
-                            ? claim.supervisorAdjustmentNote || tr('allowances_tab.supervisor_adjusted')
-                            : undefined
+                        (() => {
+                          // Check who adjusted last based on timestamp
+                          const adminTime = typeof claim.adminAdjustedAtMs === 'number' ? claim.adminAdjustedAtMs : 0;
+                          const supervisorTime = typeof claim.supervisorAdjustedAtMs === 'number' ? claim.supervisorAdjustedAtMs : 0;
+                          
+                          if (adminTime > supervisorTime) {
+                            return claim.adminAdjustmentNote || tr('allowances_tab.admin_adjusted');
+                          } else if (supervisorTime > 0) {
+                            return claim.supervisorAdjustmentNote || tr('allowances_tab.supervisor_adjusted');
+                          }
+                          return undefined;
+                        })()
                       }
                     >
                       <div className="flex items-center gap-2">
-                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' && !claim.isPayoutLocked ? (
+                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -376,7 +392,7 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                         ) : (
                           <span className="text-sm font-black text-slate-900">{Number(claim.amount ?? 0).toLocaleString()} THB</span>
                         )}
-                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' && !claim.isPayoutLocked ? (
+                        {onRowClick && (!readOnly || allowEditInReadOnly) && claim.status !== 'PAID' ? (
                           <button
                             type="button"
                             onClick={(e) => {

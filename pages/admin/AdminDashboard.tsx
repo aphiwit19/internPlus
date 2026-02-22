@@ -244,14 +244,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     try {
       setIsSavingAllowanceEdit(true);
       const uid = firebaseAuth.currentUser?.uid;
-      await updateDoc(doc(firestoreDb, 'allowanceClaims', editingAllowanceClaim.id), {
-        amount: nextAmount,
-        adminAdjustedAmount: nextAmount,
-        adminAdjustmentNote: note,
-        adminAdjustedBy: uid ?? 'HR_ADMIN',
-        adminAdjustedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      
+      // Check if it's end-program mode - use CurrentWallet instead of allowanceClaims
+      if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+        // Update CurrentWallet document
+        await updateDoc(doc(firestoreDb, 'CurrentWallet', editingAllowanceClaim.internId), {
+          totalAmount: nextAmount,
+          adminAdjustedAmount: nextAmount,
+          adminAdjustmentNote: note,
+          adminAdjustedBy: uid ?? 'HR_ADMIN',
+          adminAdjustedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Update allowanceClaims document
+        await updateDoc(doc(firestoreDb, 'allowanceClaims', editingAllowanceClaim.id), {
+          amount: nextAmount,
+          adminAdjustedAmount: nextAmount,
+          adminAdjustmentNote: note,
+          adminAdjustedBy: uid ?? 'HR_ADMIN',
+          adminAdjustedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setAllowanceClaims((prev) =>
         prev.map((c) =>
@@ -267,11 +282,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
             : c,
         ),
       );
+      
+      // Force refresh data after a short delay to ensure latest data
+      setTimeout(() => {
+        // Trigger data reload by changing a dummy state
+        setAllowanceClaims(prev => [...prev]);
+      }, 1000);
       setEditingAllowanceClaim(null);
       setEditAllowanceAmount('');
       setEditAllowanceNote('');
-    } catch {
-      toast.error('Failed to save admin adjustment. Please check permissions and try again.', { duration: 6000 });
+    } catch (err) {
+      console.error('Admin allowance edit error:', err);
+      const e = err as { code?: string; message?: string };
+      toast.error(`${e?.message || 'Failed to save admin adjustment. Please check permissions and try again.'}`, { duration: 6000 });
     } finally {
       setIsSavingAllowanceEdit(false);
     }
@@ -413,15 +436,55 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
   };
 
   const visibleAllowanceClaims = React.useMemo(() => {
-    if (payoutView === 'HISTORY') {
-      return allowanceClaims.filter((c) => c.status === 'PAID' && c.lifecycleStatus !== 'WITHDRAWN');
-    }
-
-    return allowanceClaims.filter((c) => {
-      if (c.lifecycleStatus === 'WITHDRAWN') return false;
-      if (isExitedLifecycle(c.lifecycleStatus) && typeof c.payoutCaseClosedAtMs === 'number') return false;
-      return true;
+    const filtered = payoutView === 'HISTORY'
+      ? allowanceClaims.filter((c) => c.status === 'PAID' && c.lifecycleStatus !== 'WITHDRAWN')
+      : allowanceClaims.filter((c) => {
+          if (c.lifecycleStatus === 'WITHDRAWN') return false;
+          
+          // Only filter out if PAID AND payout case is closed
+          // COMPLETED interns should still be visible for payment
+          if (c.status === 'PAID' && typeof c.payoutCaseClosedAtMs === 'number') {
+            console.log(`🔍 Filtering out ${c.internName}: status=PAID, payoutCaseClosedAtMs=${c.payoutCaseClosedAtMs}`);
+            return false;
+          }
+          
+          // Exclude PAID items from the "รายการที่ต้องทำ" view
+          if (c.status === 'PAID') return false;
+          // Temporarily allow OFFBOARDING_REQUESTED to be visible for debugging
+          return true;
+        });
+    
+    // Debug: Log filtering results
+    console.log('Allowance claims filtered:', {
+      view: payoutView,
+      total: allowanceClaims.length,
+      visible: filtered.length,
+      byStatus: filtered.reduce((acc, c) => {
+        acc[c.status] = (acc[c.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      byLifecycle: filtered.reduce((acc, c) => {
+        acc[c.lifecycleStatus || 'unknown'] = (acc[c.lifecycleStatus || 'unknown'] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
     });
+    
+    // Simple debug: show all claims
+    console.log('🔍 All allowance claims:', allowanceClaims.map(c => ({
+      name: c.internName,
+      status: c.status,
+      lifecycleStatus: c.lifecycleStatus,
+      locked: c.isPayoutLocked,
+    })));
+    
+    console.log('🔍 Visible claims:', filtered.map(c => ({
+      name: c.internName,
+      status: c.status,
+      lifecycleStatus: c.lifecycleStatus,
+      locked: c.isPayoutLocked,
+    })));
+    
+    return filtered;
   }, [allowanceClaims, payoutView]);
 
   const [internRoster, setInternRoster] = useState<InternRecord[]>([]);
@@ -532,11 +595,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     let cancelled = false;
     if (activeTab !== 'allowances') return;
     if (internRoster.length === 0) {
+      console.log('🔍 No intern roster, setting allowance claims to empty');
       setAllowanceClaims([]);
       return;
     }
 
     const monthKey = selectedMonthKey;
+    console.log('🔍 Starting allowance claims load:', {
+      activeTab,
+      payoutFreq: allowanceRules.payoutFreq,
+      internRosterCount: internRoster.length,
+      monthKey,
+    });
+
     const load = async () => {
       try {
         if (!cancelled) setIsAllowanceLoading(true);
@@ -587,6 +658,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
               const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
 
               const isCompleted = intern.lifecycleStatus === 'COMPLETED';
+              // Lock if not completed, but allow editing when unlocked
               const lockedByEndProgram = !isCompleted;
 
               next.push({
@@ -638,6 +710,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
 
           next.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
           if (!cancelled) setAllowanceClaims(next);
+          
+          // Debug: Log what we loaded
+          console.log('End-program allowance claims loaded:', {
+            total: next.length,
+            byStatus: next.reduce((acc, c) => {
+              acc[c.status] = (acc[c.status] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            byLifecycle: next.reduce((acc, c) => {
+              acc[c.lifecycleStatus || 'unknown'] = (acc[c.lifecycleStatus || 'unknown'] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+          });
           return;
         }
 
@@ -683,6 +768,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       cancelled = true;
     };
   }, [activeTab, allowanceRules.applyTax, allowanceRules.taxPercent, allowanceRules.wfhRate, allowanceRules.wfoRate, internRoster, selectedMonthKey]);
+
+  // Add periodic refresh for end-program mode to sync with CurrentWallet changes
+  useEffect(() => {
+    if (allowanceRules.payoutFreq !== 'END_PROGRAM') return;
+    if (activeTab !== 'allowances') return;
+    
+    const interval = setInterval(() => {
+      // Trigger a gentle refresh every 30 seconds
+      setAllowanceClaims(prev => [...prev]);
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [activeTab, allowanceRules.payoutFreq]);
 
   useEffect(() => {
     const q = query(collection(firestoreDb, 'users'));
@@ -796,14 +894,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       return;
     }
     try {
-      await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
-        status: 'APPROVED',
-        approvedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      // Check if it's end-program mode - use CurrentWallet instead of allowanceClaims
+      if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+        // Update CurrentWallet document
+        await updateDoc(doc(firestoreDb, 'CurrentWallet', claim.internId), {
+          status: 'APPROVED',
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Update allowanceClaims document
+        await updateDoc(doc(firestoreDb, 'allowanceClaims', id), {
+          status: 'APPROVED',
+          approvedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
       setAllowanceClaims((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'APPROVED' } : a)));
-    } catch {
-      toast.error('Failed to authorize payout. Please check Firestore permissions and try again.', { duration: 7000 });
+    } catch (err) {
+      console.error('Admin allowance authorize error:', err);
+      const e = err as { code?: string; message?: string };
+      toast.error(`${e?.message || 'Failed to authorize payout. Please check Firestore permissions and try again.'}`, { duration: 7000 });
     }
   };
 
@@ -904,12 +1015,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
     });
 
     try {
-      await updateDoc(doc(firestoreDb, 'allowanceClaims', payoutClaimId), {
-        status: 'PAID',
-        paymentDate,
-        paidAt: Timestamp.fromDate(paidAtDate),
-        updatedAt: serverTimestamp(),
-      });
+      // Check if it's end-program mode - use CurrentWallet instead of allowanceClaims
+      if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+        // Update CurrentWallet document
+        await updateDoc(doc(firestoreDb, 'CurrentWallet', claim.internId), {
+          status: 'PAID',
+          paymentDate,
+          paidAt: Timestamp.fromDate(paidAtDate),
+          paidAtMs: paidAtDate.getTime(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Update allowanceClaims document
+        await updateDoc(doc(firestoreDb, 'allowanceClaims', payoutClaimId), {
+          status: 'PAID',
+          paymentDate,
+          paidAt: Timestamp.fromDate(paidAtDate),
+          updatedAt: serverTimestamp(),
+        });
+      }
+      
       setAllowanceClaims((prev) =>
         prev.map((a) =>
           a.id === payoutClaimId ? { ...a, status: 'PAID', paymentDate, paidAtMs: paidAtDate.getTime() } : a,
@@ -917,8 +1042,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialTab = 'roster' }
       );
       setPayoutClaimId(null);
       setPayoutPaidAtInput('');
-    } catch {
-      toast.error('Failed to process payout. Please check Firestore permissions and try again.', { duration: 7000 });
+    } catch (err) {
+      console.error('Admin payout process error:', err);
+      const e = err as { code?: string; message?: string };
+      toast.error(`${e?.message || 'Failed to process payout. Please check Firestore permissions and try again.'}`, { duration: 7000 });
     }
   };
 

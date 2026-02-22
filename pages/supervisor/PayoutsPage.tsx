@@ -271,11 +271,13 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
             const raw = d.data() as any;
             const internId = typeof raw?.internId === 'string' ? raw.internId : d.id.split('_')[0];
             foundClaimInternIds.add(internId);
-            const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : undefined;
+            const paidAtMs = typeof raw?.paidAt?.toMillis === 'function' ? raw.paidAt.toMillis() : (typeof raw?.paidAt === 'number' ? raw.paidAt : undefined);
             const supervisorAdjustedAtMs =
-              typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : undefined;
+              typeof raw?.supervisorAdjustedAt?.toMillis === 'function' ? raw.supervisorAdjustedAt.toMillis() : 
+              (typeof raw?.supervisorAdjustedAt === 'number' ? raw.supervisorAdjustedAt : undefined);
             const adminAdjustedAtMs =
-              typeof raw?.adminAdjustedAt?.toMillis === 'function' ? raw.adminAdjustedAt.toMillis() : undefined;
+              typeof raw?.adminAdjustedAt?.toMillis === 'function' ? raw.adminAdjustedAt.toMillis() : 
+              (typeof raw?.adminAdjustedAt === 'number' ? raw.adminAdjustedAt : undefined);
             const u = userByInternId.get(internId);
 
             const breakdown = {
@@ -304,13 +306,18 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
               (raw?.status !== 'PAID');
 
             const amount =
-              typeof adminAdjustedAmount === 'number'
-                ? adminAdjustedAmount
-                : typeof supervisorAdjustedAmount === 'number'
-                  ? supervisorAdjustedAmount
-                  : shouldUseComputed
-                    ? computedNet
-                    : storedAmount;
+              (() => {
+                // Check who adjusted last based on timestamp
+                const adminTime = typeof adminAdjustedAtMs === 'number' ? adminAdjustedAtMs : 0;
+                const supervisorTime = typeof supervisorAdjustedAtMs === 'number' ? supervisorAdjustedAtMs : 0;
+                
+                if (adminTime > supervisorTime && typeof adminAdjustedAmount === 'number') {
+                  return adminAdjustedAmount;
+                } else if (supervisorTime > 0 && typeof supervisorAdjustedAmount === 'number') {
+                  return supervisorAdjustedAmount;
+                }
+                return shouldUseComputed ? computedNet : storedAmount;
+              })();
 
             allClaims.push({
               id: d.id,
@@ -457,8 +464,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
   const handleOpenEdit = (claim: AllowanceClaim) => {
     if (!assignedInternIds.includes(claim.internId)) return;
     if (claim.status === 'PAID') return;
-    if (claim.isPayoutLocked) return;
-    if (typeof claim.adminAdjustedAmount === 'number') return;
+    // Remove isPayoutLocked check to allow supervisor editing in end-program mode
+    // Remove adminAdjustedAmount check to allow supervisor editing even if admin already adjusted
     setEditingClaim(claim);
     setEditAmount(String(claim.amount ?? 0));
     setEditNote('');
@@ -468,8 +475,8 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
     if (!editingClaim) return;
     if (!assignedInternIds.includes(editingClaim.internId)) return;
     if (editingClaim.status === 'PAID') return;
-    if (editingClaim.isPayoutLocked) return;
-    if (typeof editingClaim.adminAdjustedAmount === 'number') return;
+    // Remove isPayoutLocked check to allow supervisor editing in end-program mode
+    // Remove adminAdjustedAmount check to allow supervisor editing even if admin already adjusted
 
     const nextAmount = Number(editAmount);
     if (!Number.isFinite(nextAmount)) return;
@@ -478,14 +485,29 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
 
     try {
       setIsSavingEdit(true);
-      await updateDoc(doc(firestoreDb, 'allowanceClaims', editingClaim.id), {
-        amount: nextAmount,
-        supervisorAdjustedAmount: nextAmount,
-        supervisorAdjustmentNote: note,
-        supervisorAdjustedBy: user.id,
-        supervisorAdjustedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      
+      // Check if it's end-program mode - use CurrentWallet instead of allowanceClaims
+      if (allowanceRules.payoutFreq === 'END_PROGRAM') {
+        // Update CurrentWallet document
+        await updateDoc(doc(firestoreDb, 'CurrentWallet', editingClaim.internId), {
+          totalAmount: nextAmount,
+          supervisorAdjustedAmount: nextAmount,
+          supervisorAdjustmentNote: note,
+          supervisorAdjustedBy: user.id,
+          supervisorAdjustedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Update allowanceClaims document
+        await updateDoc(doc(firestoreDb, 'allowanceClaims', editingClaim.id), {
+          amount: nextAmount,
+          supervisorAdjustedAmount: nextAmount,
+          supervisorAdjustmentNote: note,
+          supervisorAdjustedBy: user.id,
+          supervisorAdjustedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setClaims((prev) =>
         prev.map((c) =>
@@ -497,6 +519,10 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
                 supervisorAdjustmentNote: note,
                 supervisorAdjustedBy: user.id,
                 supervisorAdjustedAtMs: Date.now(),
+                // Also update adminAdjustedAmount to ensure display uses supervisor's value
+                adminAdjustedAmount: undefined,
+                adminAdjustmentNote: undefined,
+                adminAdjustedAtMs: undefined,
               }
             : c,
         ),
@@ -504,6 +530,13 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
       setEditingClaim(null);
       setEditAmount('');
       setEditNote('');
+      
+      // Force refresh data after a short delay to ensure Firestore sync
+      setTimeout(() => {
+        // This will trigger the useEffect to reload data
+        const event = new Event('storage');
+        window.dispatchEvent(event);
+      }, 500);
     } catch {
       alert(tr('supervisor_dashboard.payouts.save_failed'));
     } finally {
@@ -626,7 +659,7 @@ const SupervisorPayoutsPage: React.FC<SupervisorPayoutsPageProps> = ({ user, lan
           selectedMonthKey={selectedMonthKey}
           onSelectMonthKey={setSelectedMonthKey}
           readOnly
-          allowEditInReadOnly={allowanceRules.payoutFreq !== 'END_PROGRAM'}
+          allowEditInReadOnly={true}
           onRowClick={handleOpenEdit}
         />
 
