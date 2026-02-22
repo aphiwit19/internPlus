@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CircleAlert, Files, History, X } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, CircleAlert, Files, History, Home, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
