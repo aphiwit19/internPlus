@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
 import { UserProfile, Language } from '@/types';
 import ProfileCard from '@/components/ProfileCard';
@@ -21,10 +21,6 @@ const AdminProfilePage: React.FC<AdminProfilePageProps> = ({ user, lang }) => {
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState<string | null>(null);
   const [isPwSaving, setIsPwSaving] = useState(false);
-
-  const [isResetSending, setIsResetSending] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
-  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
 
   const canChangePassword = useMemo(() => {
     const fbUser = firebaseAuth.currentUser;
@@ -114,44 +110,6 @@ const AdminProfilePage: React.FC<AdminProfilePageProps> = ({ user, lang }) => {
     }
   };
 
-  const handleSendPasswordReset = async () => {
-    if (isResetSending) return;
-
-    setResetError(null);
-    setResetSuccess(null);
-
-    const fbUser = firebaseAuth.currentUser;
-    const email = fbUser?.email ?? '';
-    if (!fbUser || !email) {
-      setResetError(lang === 'TH' ? 'ไม่พบอีเมลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่' : 'User email not found. Please sign in again.');
-      return;
-    }
-
-    setIsResetSending(true);
-    try {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/login`,
-        handleCodeInApp: false,
-      };
-      await sendPasswordResetEmail(firebaseAuth, email, actionCodeSettings);
-      setResetSuccess(
-        lang === 'TH'
-          ? `ส่งลิงก์ตั้งรหัสผ่านไปที่ ${email} แล้ว`
-          : `Password reset link has been sent to ${email}`,
-      );
-    } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
-      const code = String(e?.code ?? 'unknown');
-      if (code === 'auth/too-many-requests') {
-        setResetError(lang === 'TH' ? 'ลองหลายครั้งเกินไป กรุณาลองใหม่ภายหลัง' : 'Too many attempts. Please try again later.');
-      } else {
-        setResetError(`${e?.message ?? (lang === 'TH' ? 'ส่งลิงก์ไม่สำเร็จ' : 'Failed to send reset link.')}`);
-      }
-    } finally {
-      setIsResetSending(false);
-    }
-  };
-
   return (
     <div className="h-full w-full flex flex-col p-4 md:p-6 lg:p-10 bg-[#F8FAFC]">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
@@ -206,12 +164,6 @@ const AdminProfilePage: React.FC<AdminProfilePageProps> = ({ user, lang }) => {
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-lg font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'ความปลอดภัย' : 'Security'}</h3>
               </div>
-              {resetError ? (
-                <div className="mb-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-xs font-bold">{resetError}</div>
-              ) : null}
-              {resetSuccess ? (
-                <div className="mb-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl px-5 py-4 text-xs font-bold">{resetSuccess}</div>
-              ) : null}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-50 border border-slate-100 rounded-[2rem] p-8">
                 <div>
                   <div className="text-sm font-black text-slate-900 tracking-tight">{lang === 'TH' ? 'เปลี่ยนรหัสผ่าน' : 'Change password'}</div>
@@ -225,24 +177,14 @@ const AdminProfilePage: React.FC<AdminProfilePageProps> = ({ user, lang }) => {
                         : 'This account does not use password sign-in.'}
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleSendPasswordReset}
-                    disabled={!canChangePassword || isResetSending}
-                    className="px-8 py-4 bg-white border border-slate-200 text-slate-900 rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/5 active:scale-95 disabled:opacity-50"
-                  >
-                    {lang === 'TH' ? 'ลืมรหัสผ่าน' : 'FORGOT PASSWORD'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openChangePassword}
-                    disabled={!canChangePassword}
-                    className="px-8 py-4 bg-slate-900 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-95 disabled:opacity-50"
-                  >
-                    {lang === 'TH' ? 'เปลี่ยนรหัสผ่าน' : 'CHANGE PASSWORD'}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={openChangePassword}
+                  disabled={!canChangePassword}
+                  className="px-8 py-4 bg-slate-900 text-white rounded-[1.25rem] text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 active:scale-95 disabled:opacity-50"
+                >
+                  {lang === 'TH' ? 'เปลี่ยนรหัสผ่าน' : 'CHANGE PASSWORD'}
+                </button>
               </div>
             </div>
           </div>
