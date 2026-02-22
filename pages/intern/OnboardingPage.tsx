@@ -194,7 +194,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang: _lang
     if (orderedConfigSteps.length === 0) return [];
 
     return orderedConfigSteps.map((s, idx) => {
-      const status: RoadmapStep['status'] = idx <= 1 ? 'completed' : idx === 2 ? 'next-action' : 'locked';
+      const status: RoadmapStep['status'] = 'next-action';
       const isDocUpload = s.type === 'DOC_UPLOAD';
       const targetPage = isDocUpload ? 'documents' : s.targetPage;
       const actionLabel = status === 'next-action'

@@ -448,7 +448,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
         };
 
         if (Array.isArray(data.onboardingSteps) && data.onboardingSteps.length > 0) {
-          const ordered = [...data.onboardingSteps].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+          const ordered = [...data.onboardingSteps]
+            .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+            .map((s) => ({
+              ...s,
+              active: s.active !== false,
+            }));
           setOnboardingSteps(ordered);
         }
 
@@ -1142,7 +1147,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   };
 
   const handleToggleStep = (id: string) => {
-    setOnboardingSteps(steps => steps.map(s => s.id === id ? { ...s, active: !s.active } : s));
+    setOnboardingSteps((steps) =>
+      steps.map((s) => (s.id === id ? { ...s, active: !(s.active !== false) } : s)),
+    );
   };
 
   const handleUpdateStep = (id: string, updates: Partial<RoadmapStep>) => {
@@ -1329,12 +1336,17 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                                  >
                                    <Edit3 size={18}/>
                                  </button>
-                                 <div 
-                                   onClick={() => handleToggleStep(step.id)} 
-                                   className={`w-12 h-6 rounded-full relative transition-all cursor-pointer ${step.active ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-slate-200'}`}
+                                 <button
+                                   type="button"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     handleToggleStep(step.id);
+                                   }}
+                                   aria-pressed={step.active !== false}
+                                   className={`w-12 h-6 rounded-full relative transition-all cursor-pointer ${step.active !== false ? 'bg-blue-600 shadow-lg shadow-blue-500/20' : 'bg-slate-200'}`}
                                  >
-                                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md ${step.active ? 'left-7' : 'left-1'}`}></div>
-                                 </div>
+                                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md ${step.active !== false ? 'left-7' : 'left-1'}`}></div>
+                                 </button>
                               </div>
                            </div>
 
