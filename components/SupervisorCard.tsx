@@ -2,6 +2,7 @@ import React from 'react';
 import { Mail, Briefcase, Phone, MessageSquareMore, Copy } from 'lucide-react';
 import { Supervisor, Language } from '@/types';
 import { useTranslation } from 'react-i18next';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 interface SupervisorCardProps {
   supervisor: Supervisor;
@@ -27,7 +28,7 @@ const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang: _lang
 
       <div className="flex items-center gap-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100 mb-6 transition-all hover:bg-white hover:shadow-md">
         <img 
-          src={supervisor.avatar} 
+          src={normalizeAvatarUrl(supervisor.avatar)} 
           alt={supervisor.name} 
           className="w-12 h-12 rounded-xl object-cover ring-2 ring-white shadow-sm"
         />

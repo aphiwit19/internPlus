@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 import { ArrowUpRight, Banknote, Building2, ChevronLeft, ChevronRight, CreditCard, Edit2, Home, ShieldCheck, UserX } from 'lucide-react';
 
+import { getDefaultAvatarUrl, normalizeAvatarUrl } from '@/app/avatar';
+
 import { AllowanceClaim } from '../adminDashboardTypes';
 
 interface AllowancesTabProps {
@@ -329,7 +331,15 @@ const AllowancesTab: React.FC<AllowancesTabProps> = ({
                 >
                   <td className="py-6 pl-4">
                     <div className="flex items-center gap-4">
-                      <img src={claim.avatar} className="w-10 h-10 rounded-lg object-cover" alt="" />
+                      <img
+                        src={normalizeAvatarUrl(claim.avatar)}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = getDefaultAvatarUrl();
+                        }}
+                        className="w-10 h-10 rounded-lg object-cover"
+                        alt=""
+                      />
                       <div className="flex flex-col">
                         <span className="text-sm font-black text-slate-900">{claim.internName}</span>
                         {readOnly && syncButton ? <div className="mt-2">{syncButton}</div> : null}

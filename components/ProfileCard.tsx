@@ -5,6 +5,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { firestoreDb, firebaseStorage } from '@/firebase';
 import { useTranslation } from 'react-i18next';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 interface ProfileCardProps {
   user: UserProfile;
@@ -84,7 +85,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, lang: _lang, enableAvat
       <div className="relative mb-8">
         <div className="w-36 h-36 rounded-[3.5rem] overflow-hidden ring-8 ring-slate-50 shadow-2xl transition-transform group-hover:scale-[1.02] duration-500">
           <img 
-            src={user.avatar} 
+            src={normalizeAvatarUrl(user.avatar)} 
             alt={user.name} 
             className="w-full h-full object-cover"
           />

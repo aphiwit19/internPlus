@@ -4,6 +4,7 @@ import { X, LogOut, ChevronRight, ShieldCheck, Users, Repeat } from 'lucide-reac
 import { UserProfile, Language, UserRole, PostProgramAccessLevel } from '@/types';
 import { PageId } from '@/pageTypes';
 import { useTranslation } from 'react-i18next';
+import { normalizeAvatarUrl } from '@/app/avatar';
 
 interface SidebarProps {
   activeId: PageId;
@@ -194,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="bg-slate-50/80 rounded-[1.5rem] p-4 flex items-center gap-4 border border-slate-100 shadow-sm transition-all hover:bg-slate-100/50 cursor-default group">
             <div className="relative flex-shrink-0">
               <img 
-                src={user.avatar} 
+                src={normalizeAvatarUrl(user.avatar)} 
                 alt={user.name} 
                 className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-md transition-transform group-hover:scale-105"
               />
