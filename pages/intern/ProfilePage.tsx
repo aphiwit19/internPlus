@@ -477,7 +477,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
                         <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
                         {tr('intern_profile.summary.title')}
                       </h3>
-                      <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{tr('intern_profile.actions.edit')}</button>
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+                      >
+                        {tr('intern_profile.actions.edit')}
+                      </button>
                    </div>
                    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-12 italic opacity-80">
                      {summary ? `"${summary}"` : summaryPlaceholder}

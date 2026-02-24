@@ -77,6 +77,241 @@ export const syncAllowanceWallet = onCall({ cors: true }, async (request) => {
         throw new HttpsError('internal', message);
     }
 });
+async function hasAnyDocs(q) {
+    const snap = await q.limit(1).get();
+    return !snap.empty;
+}
+async function getUserActivityFlags(uid) {
+    const db = admin.firestore();
+    const reasons = [];
+    // Subcollections under user
+    const subcollections = [
+        { key: 'feedbackMilestones', q: db.collection('users').doc(uid).collection('feedbackMilestones') },
+        { key: 'attendance', q: db.collection('users').doc(uid).collection('attendance') },
+        { key: 'assignmentProjects', q: db.collection('users').doc(uid).collection('assignmentProjects') },
+        { key: 'personalProjects', q: db.collection('users').doc(uid).collection('personalProjects') },
+    ];
+    for (const s of subcollections) {
+        if (await hasAnyDocs(s.q))
+            reasons.push(`subcollection:${s.key}`);
+    }
+    // Global collections referencing intern
+    const collectionsToCheck = [
+        { key: 'certificateRequests', q: db.collection('certificateRequests').where('internId', '==', uid) },
+        { key: 'leaveRequests', q: db.collection('leaveRequests').where('internId', '==', uid) },
+        { key: 'timeCorrections', q: db.collection('timeCorrections').where('internId', '==', uid) },
+        { key: 'universityEvaluations', q: db.collection('universityEvaluations').where('internId', '==', uid) },
+        { key: 'allowanceClaims', q: db.collection('allowanceClaims').where('internId', '==', uid) },
+    ];
+    for (const c of collectionsToCheck) {
+        if (await hasAnyDocs(c.q))
+            reasons.push(`collection:${c.key}`);
+    }
+    return { hasActivity: reasons.length > 0, reasons };
+}
+export const checkUserDeletionEligibility = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const userSnap = await db.collection('users').doc(uid).get();
+        if (!userSnap.exists)
+            return { ok: true, eligible: true, skipped: true };
+        const userDoc = userSnap.data();
+        const roles = Array.isArray(userDoc?.roles) ? userDoc.roles : [];
+        if (roles.includes('HR_ADMIN') || roles.includes('SUPERVISOR')) {
+            return { ok: true, eligible: false, reasons: ['role:protected'] };
+        }
+        const activity = await getUserActivityFlags(uid);
+        return {
+            ok: true,
+            eligible: !activity.hasActivity,
+            reasons: activity.reasons,
+            uid,
+            targetRoles: roles,
+            requestedBy: caller.uid,
+        };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+export const disableUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            throw new HttpsError('not-found', 'users doc not found');
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        if (roles.includes('HR_ADMIN'))
+            throw new HttpsError('permission-denied', 'Cannot disable HR_ADMIN');
+        await admin.auth().updateUser(uid, { disabled: true });
+        await targetRef.set({
+            accountStatus: 'DISABLED',
+            disabledAt: admin.firestore.FieldValue.serverTimestamp(),
+            disabledBy: caller.uid,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        await db.collection('adminUserActions').add({
+            type: 'DISABLE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+        });
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+export const enableUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            throw new HttpsError('not-found', 'users doc not found');
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        await admin.auth().updateUser(uid, { disabled: false });
+        await targetRef.set({
+            accountStatus: 'ACTIVE',
+            disabledAt: admin.firestore.FieldValue.delete(),
+            disabledBy: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        await db.collection('adminUserActions').add({
+            type: 'ENABLE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+        });
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+async function deleteQueryBatch(db, q) {
+    let total = 0;
+    let snap = await q.limit(100).get();
+    while (!snap.empty) {
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        total += snap.size;
+        if (snap.size < 100)
+            break;
+        snap = await q.limit(100).get();
+    }
+    return total;
+}
+export const hardDeleteUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        const confirmText = String(request.data?.confirmText ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        if (confirmText !== 'DELETE')
+            throw new HttpsError('failed-precondition', 'Missing confirmText');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            return { ok: true, skipped: true };
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        if (roles.includes('HR_ADMIN') || roles.includes('SUPERVISOR')) {
+            throw new HttpsError('permission-denied', 'Protected role');
+        }
+        const supervisorId = typeof target?.supervisorId === 'string' ? target.supervisorId : '';
+        // 1. Audit log snapshot (before deleting anything)
+        await db.collection('adminUserActions').add({
+            type: 'HARD_DELETE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+            targetSnapshot: {
+                name: target?.name ?? null,
+                email: target?.email ?? null,
+                supervisorId: supervisorId || null,
+            },
+        });
+        // 2. Remove from supervisor's assignedInterns
+        if (supervisorId) {
+            try {
+                await db.collection('users').doc(supervisorId).update({
+                    assignedInterns: admin.firestore.FieldValue.arrayRemove(uid),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            }
+            catch {
+                // ignore
+            }
+        }
+        // 3. Delete subcollections under users/{uid}
+        const subcollections = ['feedbackMilestones', 'attendance', 'assignmentProjects', 'personalProjects'];
+        for (const sub of subcollections) {
+            await deleteQueryBatch(db, db.collection('users').doc(uid).collection(sub));
+        }
+        // 4. Delete global collections referencing internId == uid
+        const globalCollections = [
+            'leaveRequests',
+            'timeCorrections',
+            'certificateRequests',
+            'universityEvaluations',
+            'allowanceClaims',
+        ];
+        for (const col of globalCollections) {
+            await deleteQueryBatch(db, db.collection(col).where('internId', '==', uid));
+        }
+        // 5. Delete CurrentWallet doc (keyed by uid)
+        try {
+            await db.collection('CurrentWallet').doc(uid).delete();
+        }
+        catch {
+            // ignore if not exists
+        }
+        // 6. Delete Firestore user profile doc
+        await targetRef.delete();
+        // 7. Delete Firebase Auth user
+        try {
+            await admin.auth().deleteUser(uid);
+        }
+        catch (err) {
+            const e = err;
+            throw new HttpsError('internal', e?.message ?? 'Failed to delete auth user');
+        }
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
 export const recalculateMyAllowance = onCall({ cors: true }, async (request) => {
     const caller = await assertInternSelf(request);
     const monthKey = String(request.data?.monthKey ?? '').trim();

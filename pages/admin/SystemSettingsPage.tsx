@@ -2257,12 +2257,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                       <button
                         type="button"
                         onClick={() => setEvalEditHeadingsOpen((v) => !v)}
-                        className="w-full flex items-center justify-between gap-4"
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-white hover:border-blue-200 transition-all"
                       >
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (EN/TH)' : 'EDIT HEADINGS (EN/TH)'} </div>
                         <ChevronDown
-                          size={18}
-                          className={`text-slate-300 transition-transform ${evalEditHeadingsOpen ? 'rotate-0' : '-rotate-90'}`}
+                          size={20}
+                          className={`text-slate-500 transition-transform ${evalEditHeadingsOpen ? 'rotate-0' : '-rotate-90'}`}
                         />
                       </button>
 
@@ -2370,12 +2370,12 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                           <button
                             type="button"
                             onClick={() => setEvalEditPreviewOpen((v) => !v)}
-                            className="w-full flex items-center justify-between gap-4"
+                            className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-white hover:border-blue-200 transition-all"
                           >
                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขพรีวิว (EN/TH)' : 'EDIT PREVIEW (EN/TH)'}</div>
                             <ChevronDown
-                              size={18}
-                              className={`text-slate-300 transition-transform ${evalEditPreviewOpen ? 'rotate-0' : '-rotate-90'}`}
+                              size={20}
+                              className={`text-slate-500 transition-transform ${evalEditPreviewOpen ? 'rotate-0' : '-rotate-90'}`}
                             />
                           </button>
 

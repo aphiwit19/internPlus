@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ChevronLeft, ChevronRight, Users, UserPlus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Users, UserPlus, X, Trash2 } from 'lucide-react';
+
+import { httpsCallable } from 'firebase/functions';
+
+import { firebaseFunctions } from '@/firebase';
 
 import { InternRecord } from '../adminDashboardTypes';
 
@@ -11,14 +15,36 @@ interface RosterTabProps {
 }
 
 const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+  const lang = (i18n.language ?? '').toLowerCase().startsWith('th') ? 'TH' : 'EN';
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 5;
+
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const visibleInterns = useMemo(() => {
     return internRoster.filter((intern) => intern.status === 'Active' || intern.status === 'WITHDRAWN');
   }, [internRoster]);
+
+  const hardDeleteIntern = async (uid: string) => {
+    if (busyId) return;
+    setBusyId(uid);
+    setActionError(null);
+    try {
+      const fn = httpsCallable(firebaseFunctions, 'hardDeleteUserAccount');
+      await fn({ uid, confirmText: 'DELETE' });
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string; details?: unknown };
+      const details = e?.details ? ` | details: ${JSON.stringify(e.details)}` : '';
+      setActionError(`${e?.code ?? 'unknown'}: ${e?.message ?? 'Failed to delete user'}${details}`);
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const pageCount = useMemo(() => {
     const count = Math.ceil(visibleInterns.length / PAGE_SIZE);
@@ -52,7 +78,58 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
               {tr('admin_roster.active')}: {internRoster.filter(i => i.status === 'Active').length} | {tr('admin_roster.inactive')}: {internRoster.filter(i => i.status === 'WITHDRAWN').length}
             </p>
           </div>
+
         </div>
+
+        {actionError ? (
+          <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl px-5 py-4 text-sm font-bold">
+            {actionError}
+          </div>
+        ) : null}
+
+        {confirmDeleteId ? (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md bg-white rounded-[2rem] border border-slate-100 shadow-xl p-6">
+              <div className="text-lg font-black text-slate-900">
+                {lang === 'TH' ? 'ยืนยันลบผู้ใช้ถาวร' : 'Confirm permanent delete'}
+              </div>
+              <div className="mt-2 text-sm text-slate-500 font-semibold">
+                {lang === 'TH'
+                  ? 'ลบถาวรได้เฉพาะผู้ใช้ที่ยังไม่มีการใช้งาน (ไม่มี activity) กรุณาพิมพ์ DELETE เพื่อยืนยัน'
+                  : 'Hard delete is only allowed if user has no activity. Type DELETE to confirm.'}
+              </div>
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="mt-4 w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-800"
+                placeholder="DELETE"
+              />
+              <div className="mt-6 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setConfirmDeleteId(null); setDeleteConfirmText(''); }}
+                  className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-xs font-black"
+                >
+                  {lang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = confirmDeleteId;
+                    if (!id || deleteConfirmText.trim() !== 'DELETE') return;
+                    setConfirmDeleteId(null);
+                    setDeleteConfirmText('');
+                    void hardDeleteIntern(id);
+                  }}
+                  className="px-4 py-3 rounded-2xl bg-rose-600 text-white text-xs font-black disabled:opacity-50"
+                  disabled={!!busyId || deleteConfirmText.trim() !== 'DELETE'}
+                >
+                  {lang === 'TH' ? 'ลบถาวร' : 'Hard Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -104,13 +181,25 @@ const RosterTab: React.FC<RosterTabProps> = ({ internRoster, onAssignSupervisor 
                     </span>
                   </td>
                   <td className="py-6 text-right pr-4">
-                    <button
-                      onClick={() => onAssignSupervisor(intern)}
-                      className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:shadow-lg transition-all active:scale-95"
-                      title={tr('admin_roster.reassign_mentor')}
-                    >
-                      <UserPlus size={18} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onAssignSupervisor(intern)}
+                        className="p-3 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:shadow-lg transition-all active:scale-95"
+                        title={tr('admin_roster.reassign_mentor')}
+                      >
+                        <UserPlus size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setConfirmDeleteId(intern.id); setDeleteConfirmText(''); }}
+                        disabled={busyId === intern.id}
+                        className="p-3 bg-white border border-slate-100 rounded-xl text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all active:scale-95 disabled:opacity-50"
+                        title={lang === 'TH' ? 'ลบผู้ใช้ (ถาวร)' : 'Hard delete user'}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
