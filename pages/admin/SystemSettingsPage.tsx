@@ -237,7 +237,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       endProgramOpt: "END PROGRAM",
       wfoRate: "WFO RATE (DAY)",
       wfhRate: "WFH RATE (DAY)",
-      applyLocalTax: "APPLY VAT",
+      applyLocalTax: "APPLY WHT",
       financialDisclaimer: "Financial Disclaimer",
       financialDisclaimerDesc: "Changing calculation methods or rates mid-month will only affect future records. Existing \"Verified\" records will retain original values.",
       // Access control expanded
