@@ -1865,6 +1865,36 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
       });
 
+      const today = new Date();
+      const supervisorReviewedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      setInterns((prev) =>
+        prev.map((intern) => {
+          if (intern.id !== selectedInternId) return intern;
+          const list = Array.isArray(intern.feedback) ? intern.feedback : [];
+          const nextFeedback = list.map((f) => {
+            if (f.id !== activeFeedbackId) return f;
+            return {
+              ...f,
+              status: 'reviewed',
+              supervisorPerformance: nextPerf,
+              supervisorOverallComments: editOverallComments,
+              supervisorWorkPerformanceComments: editWorkPerformanceComments,
+              supervisorMentorshipQualityRating: Math.max(0, Math.min(5, Number(editMentorshipQualityRating) || 0)),
+              supervisorProgramSatisfactionRating: Math.max(0, Math.min(5, Number(editSupervisorProgramSatisfaction) || 0)),
+              supervisorSummary: editOverallComments,
+              supervisorReviewedDate,
+              supervisorScore: nextPerf.overallRating,
+              supervisorComments: editOverallComments,
+            };
+          });
+          return {
+            ...intern,
+            feedback: nextFeedback,
+          };
+        }),
+      );
+
     } catch (err: unknown) {
 
       const e = err as { code?: string; message?: string };

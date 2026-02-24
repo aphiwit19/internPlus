@@ -496,14 +496,6 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
         { merge: true },
       );
 
-      setActiveId((prev) => {
-        const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
-        const idx = list.findIndex((m) => m.id === prev);
-        if (idx < 0) return prev;
-        const next = list[idx + 1];
-        return next?.id ?? prev;
-      });
-
       if (videoInputRef.current) videoInputRef.current.value = '';
       if (attachmentsInputRef.current) attachmentsInputRef.current.value = '';
       setPendingVideo(null);
