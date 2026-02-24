@@ -256,6 +256,14 @@ async function assertHrAdminOrSupervisor(context: Parameters<typeof onCall>[0] e
   return { uid, roles };
 }
 
+async function assertHrAdmin(context: Parameters<typeof onCall>[0] extends any ? any : never): Promise<{ uid: string; roles: string[] }> {
+  const caller = await assertHrAdminOrSupervisor(context);
+  if (!caller.roles.includes('HR_ADMIN')) {
+    throw new HttpsError('permission-denied', 'HR_ADMIN only.');
+  }
+  return caller;
+}
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 function monthKeyFromDate(d: Date): string {
@@ -1855,7 +1863,7 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
 
 export const deleteCertificateTemplate = onCall({ cors: true }, async (request) => {
   try {
-    assertAdmin(request);
+    await assertHrAdmin(request);
 
     const templateId = String((request.data as any)?.templateId ?? '');
     if (!templateId) throw new HttpsError('invalid-argument', 'Missing templateId');
@@ -1895,7 +1903,7 @@ export const deleteCertificateTemplate = onCall({ cors: true }, async (request) 
 
 export const deleteTemplateBackground = onCall({ cors: true }, async (request) => {
   try {
-    assertAdmin(request);
+    await assertHrAdmin(request);
 
     const templateId = String((request.data as any)?.templateId ?? '');
     if (!templateId) throw new HttpsError('invalid-argument', 'Missing templateId');

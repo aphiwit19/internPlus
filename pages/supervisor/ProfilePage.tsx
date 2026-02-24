@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, X } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useTranslation } from 'react-i18next';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
@@ -18,7 +18,11 @@ const SupervisorProfilePage: React.FC<SupervisorProfilePageProps> = ({ user, lan
   const tr = (key: string, options?: any) => String(t(key, options));
   const internCount = user.assignedInterns?.length ?? 0;
 
+  const [profileSaveNotice, setProfileSaveNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const profileSaveNoticeTimeoutRef = useRef<number | null>(null);
+
   const [isEditing, setIsEditing] = useState(false);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
   const [pwError, setPwError] = useState<string | null>(null);
@@ -51,14 +55,42 @@ const SupervisorProfilePage: React.FC<SupervisorProfilePageProps> = ({ user, lan
   }, [user]);
 
   const handleSaveProfile = async () => {
-    await updateDoc(doc(firestoreDb, 'users', user.id), {
-      name: editForm.name,
-      phone: editForm.phone,
-      department: editForm.department,
-      position: editForm.position,
-      lineId: editForm.lineId,
-    });
-    setIsEditing(false);
+    if (isProfileSaving) return;
+
+    if (profileSaveNoticeTimeoutRef.current != null) {
+      window.clearTimeout(profileSaveNoticeTimeoutRef.current);
+      profileSaveNoticeTimeoutRef.current = null;
+    }
+    setProfileSaveNotice(null);
+    setIsProfileSaving(true);
+
+    try {
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        name: editForm.name,
+        phone: editForm.phone,
+        department: editForm.department,
+        position: editForm.position,
+        lineId: editForm.lineId,
+        updatedAt: serverTimestamp(),
+      });
+      setIsEditing(false);
+      setProfileSaveNotice({
+        type: 'success',
+        message: _lang === 'TH' ? 'บันทึกโปรไฟล์เรียบร้อยแล้ว' : 'Profile saved',
+      });
+      profileSaveNoticeTimeoutRef.current = window.setTimeout(() => {
+        setProfileSaveNotice(null);
+        profileSaveNoticeTimeoutRef.current = null;
+      }, 2500);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setProfileSaveNotice({
+        type: 'error',
+        message: `${e?.code ?? 'unknown'}: ${e?.message ?? (_lang === 'TH' ? 'บันทึกไม่สำเร็จ' : 'Failed to save')}`,
+      });
+    } finally {
+      setIsProfileSaving(false);
+    }
   };
 
   const openChangePassword = () => {
@@ -119,6 +151,18 @@ const SupervisorProfilePage: React.FC<SupervisorProfilePageProps> = ({ user, lan
 
   return (
     <div className="h-full w-full flex flex-col p-4 md:p-6 lg:p-10 bg-[#F8FAFC]">
+      {profileSaveNotice ? (
+        <div
+          className={`mb-6 rounded-[1.5rem] px-6 py-4 text-sm font-bold border ${
+            profileSaveNotice.type === 'success'
+              ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+              : 'bg-rose-50 border-rose-100 text-rose-700'
+          }`}
+        >
+          {profileSaveNotice.message}
+        </div>
+      ) : null}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6 px-2">
         <div className="animate-in fade-in slide-in-from-left-4">
           <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em] mb-2">{tr('supervisor_profile.breadcrumb')}</p>
@@ -208,6 +252,7 @@ const SupervisorProfilePage: React.FC<SupervisorProfilePageProps> = ({ user, lan
           onChange={setEditForm}
           onClose={() => setIsEditing(false)}
           onSave={() => void handleSaveProfile()}
+          isSaving={isProfileSaving}
         />
       )}
 
@@ -247,7 +292,8 @@ const EditProfileModal: React.FC<{
   onChange: (next: { name: string; phone: string; department: string; position: string; lineId: string }) => void;
   onClose: () => void;
   onSave: () => void;
-}> = ({ lang, form, onChange, onClose, onSave }) => {
+  isSaving?: boolean;
+}> = ({ lang, form, onChange, onClose, onSave, isSaving }) => {
   const { t } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, { ...(options ?? {}), lng: lang === 'TH' ? 'th' : 'en' }));
 
@@ -276,8 +322,12 @@ const EditProfileModal: React.FC<{
               <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">
                 {tr('supervisor_profile.edit_modal.actions.cancel')}
               </button>
-              <button onClick={onSave} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20">
-                {tr('supervisor_profile.edit_modal.actions.save')}
+              <button
+                onClick={onSave}
+                disabled={!!isSaving}
+                className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-50"
+              >
+                {isSaving ? (tr('supervisor_profile.edit_modal.actions.save') + '...') : tr('supervisor_profile.edit_modal.actions.save')}
               </button>
             </div>
           </div>

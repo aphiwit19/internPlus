@@ -22,11 +22,58 @@ export const syncAllowanceWallet = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'Missing internId');
     const db = admin.firestore();
     try {
-        return await syncAllowanceWalletInternal(db, internId);
+        const now = admin.firestore.Timestamp.now();
+        const lockRef = db.collection('walletSyncLocks').doc(internId);
+        const lockResult = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(lockRef);
+            const data = snap.exists ? snap.data() : null;
+            const status = typeof data?.status === 'string' ? data.status : null;
+            const startedAt = data?.startedAt instanceof admin.firestore.Timestamp ? data.startedAt : null;
+            // Treat a running lock as stale after 10 minutes.
+            const isStale = status === 'RUNNING' &&
+                startedAt &&
+                now.toMillis() - startedAt.toMillis() > 10 * 60 * 1000;
+            if (status === 'RUNNING' && !isStale) {
+                return { ok: false, alreadyRunning: true, startedAtMs: startedAt?.toMillis?.() ?? null };
+            }
+            tx.set(lockRef, {
+                status: 'RUNNING',
+                startedAt: now,
+                startedByUid: request.auth?.uid ?? null,
+                finishedAt: admin.firestore.FieldValue.delete(),
+                errorMessage: admin.firestore.FieldValue.delete(),
+                updatedAt: now,
+            }, { merge: true });
+            return { ok: true, alreadyRunning: false };
+        });
+        if (!lockResult.ok) {
+            return lockResult;
+        }
+        const result = await syncAllowanceWalletInternal(db, internId);
+        await lockRef.set({
+            status: 'DONE',
+            finishedAt: admin.firestore.Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now(),
+        }, { merge: true });
+        return { ...result, ok: true };
     }
     catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         console.error('syncAllowanceWallet:error', { internId, err });
+        try {
+            await db
+                .collection('walletSyncLocks')
+                .doc(internId)
+                .set({
+                status: 'ERROR',
+                finishedAt: admin.firestore.Timestamp.now(),
+                errorMessage: message,
+                updatedAt: admin.firestore.Timestamp.now(),
+            }, { merge: true });
+        }
+        catch {
+            // ignore
+        }
         throw new HttpsError('internal', message);
     }
 });
@@ -113,6 +160,13 @@ async function assertHrAdminOrSupervisor(context) {
     }
     return { uid, roles };
 }
+async function assertHrAdmin(context) {
+    const caller = await assertHrAdminOrSupervisor(context);
+    if (!caller.roles.includes('HR_ADMIN')) {
+        throw new HttpsError('permission-denied', 'HR_ADMIN only.');
+    }
+    return caller;
+}
 const pad2 = (n) => String(n).padStart(2, '0');
 function monthKeyFromDate(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
@@ -181,6 +235,9 @@ async function syncAllowanceWalletInternal(db, internId) {
     let totalLeaves = 0;
     let hasPending = false;
     let hasAny = false;
+    let nextPlannedPayoutDate = null;
+    let lastPaymentDate = null;
+    let lastPaidAtMs = null;
     // Store totals as a standalone document (no subcollection) per user's request.
     const totalsRef = db.collection('CurrentWallet').doc(internId);
     // Keep month breakdown docs in a separate structure.
@@ -201,7 +258,11 @@ async function syncAllowanceWalletInternal(db, internId) {
         const periodLabel = typeof raw?.period === 'string' ? raw.period : monthKey;
         const plannedPayoutDate = typeof raw?.plannedPayoutDate === 'string' ? raw.plannedPayoutDate : undefined;
         const paymentDate = typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined;
-        const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
+        const paidAtMs = typeof raw?.paidAt?.toMillis === 'function'
+            ? raw.paidAt.toMillis()
+            : typeof raw?.paidAtMs === 'number'
+                ? raw.paidAtMs
+                : undefined;
         const hasAdjustment = typeof raw?.adminAdjustedAmount === 'number' || typeof raw?.supervisorAdjustedAmount === 'number';
         hasAny = true;
         totalAmount += amount;
@@ -214,6 +275,22 @@ async function syncAllowanceWalletInternal(db, internId) {
         else {
             totalPendingAmount += amount;
             hasPending = true;
+        }
+        if (plannedPayoutDate && status !== 'PAID') {
+            if (!nextPlannedPayoutDate || plannedPayoutDate < nextPlannedPayoutDate)
+                nextPlannedPayoutDate = plannedPayoutDate;
+        }
+        if (status === 'PAID') {
+            if (typeof paidAtMs === 'number') {
+                if (!lastPaidAtMs || paidAtMs > lastPaidAtMs) {
+                    lastPaidAtMs = paidAtMs;
+                    lastPaymentDate = paymentDate ?? null;
+                }
+            }
+            else if (!lastPaidAtMs && !lastPaymentDate && paymentDate) {
+                // Fallback when we don't have a paidAt timestamp.
+                lastPaymentDate = paymentDate;
+            }
         }
         const monthRef = walletMonthsParentRef.collection('months').doc(monthKey);
         const monthPayload = {
@@ -251,6 +328,9 @@ async function syncAllowanceWalletInternal(db, internId) {
             leaves: totalLeaves,
         },
         statusSummary,
+        plannedPayoutDate: nextPlannedPayoutDate,
+        paymentDate: lastPaymentDate,
+        paidAtMs: lastPaidAtMs,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedByRole: 'SYSTEM',
     };
@@ -1474,7 +1554,7 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
 });
 export const deleteCertificateTemplate = onCall({ cors: true }, async (request) => {
     try {
-        assertAdmin(request);
+        await assertHrAdmin(request);
         const templateId = String(request.data?.templateId ?? '');
         if (!templateId)
             throw new HttpsError('invalid-argument', 'Missing templateId');
@@ -1513,7 +1593,7 @@ export const deleteCertificateTemplate = onCall({ cors: true }, async (request) 
 });
 export const deleteTemplateBackground = onCall({ cors: true }, async (request) => {
     try {
-        assertAdmin(request);
+        await assertHrAdmin(request);
         const templateId = String(request.data?.templateId ?? '');
         if (!templateId)
             throw new HttpsError('invalid-argument', 'Missing templateId');
