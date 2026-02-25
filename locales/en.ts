@@ -392,7 +392,7 @@ const en = {
       save_link: 'Save Link',
     },
     docs: {
-      title: 'University Documentation',
+      title: 'University Request for Supervisor Evaluation (Link)',
       subtitle: 'Upload files required for your academic credit or final sign-off.',
       confirm_delete: 'Delete this document?',
       add_additional_document: 'Add Additional Document',

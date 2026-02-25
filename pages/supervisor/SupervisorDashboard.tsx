@@ -2363,41 +2363,41 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
 
 
 
-        let maxMonth = 1;
+        const milestoneLabel = (id: string, customLabel?: string) => {
+          if (id === 'end-program') return 'End Program';
+          const weekMatch = /^week-(\d+)$/.exec(id);
+          if (weekMatch) return `Week ${Number(weekMatch[1])}`;
+          const monthMatch = /^month-(\d+)$/.exec(id);
+          if (monthMatch) return `Month ${Number(monthMatch[1])}`;
+          const otherMatch = /^other-(\d+)$/.exec(id);
+          if (otherMatch) return (customLabel ?? '').trim() || `Other ${otherMatch[1]}`;
+          return (customLabel ?? '').trim() || id;
+        };
 
-        for (const id of savedById.keys()) {
+        const ids = Array.from(savedById.keys());
 
-          const m = /^month-(\d+)$/.exec(id);
+        const weekIds = ids
+          .filter((id) => /^week-\d+$/.test(id))
+          .sort((a, b) => Number(/^week-(\d+)$/.exec(a)?.[1] ?? 0) - Number(/^week-(\d+)$/.exec(b)?.[1] ?? 0));
+        const monthIds = ids
+          .filter((id) => /^month-\d+$/.test(id))
+          .sort((a, b) => Number(/^month-(\d+)$/.exec(a)?.[1] ?? 0) - Number(/^month-(\d+)$/.exec(b)?.[1] ?? 0));
+        const otherIds = ids
+          .filter((id) => /^other-\d+$/.test(id))
+          .sort((a, b) => Number(/^other-(\d+)$/.exec(a)?.[1] ?? 0) - Number(/^other-(\d+)$/.exec(b)?.[1] ?? 0));
+        const hasEndProgram = ids.includes('end-program');
 
-          if (!m) continue;
+        const baseIds =
+          weekIds.length === 0 && monthIds.length === 0 && !hasEndProgram && otherIds.length === 0
+            ? ['week-1', 'month-1']
+            : [...weekIds, ...monthIds, ...(hasEndProgram ? ['end-program'] : []), ...otherIds];
 
-          const n = Number(m[1]);
-
-          if (Number.isFinite(n) && n > maxMonth) maxMonth = n;
-
-        }
-
-        const monthCount = Math.max(1, maxMonth + 1);
-
-
-
-        const base: FeedbackItem[] = [];
-
-        for (let i = 1; i <= 4; i += 1) {
-
-          const id = `week-${i}`;
-
-          base.push({ id, label: `Week ${i}`, period: `Week ${i}`, status: 'pending', programRating: 0 });
-
-        }
-
-        for (let i = 1; i <= monthCount; i += 1) {
-
-          const id = `month-${i}`;
-
-          base.push({ id, label: `Month ${i}`, period: `Month ${i}`, status: 'pending', programRating: 0 });
-
-        }
+        const base: FeedbackItem[] = baseIds.map((id) => {
+          const data = savedById.get(id) as any;
+          const customLabel = typeof data?.customLabel === 'string' ? data.customLabel : undefined;
+          const label = milestoneLabel(id, customLabel);
+          return { id, label, period: label, status: 'pending', programRating: 0 };
+        });
 
 
 
@@ -2468,6 +2468,10 @@ const SupervisorDashboard: React.FC<SupervisorDashboardProps> = ({ user, onNavig
           return {
 
             ...b,
+
+            label: milestoneLabel(b.id, typeof (data as any)?.customLabel === 'string' ? (data as any).customLabel : undefined),
+
+            period: milestoneLabel(b.id, typeof (data as any)?.customLabel === 'string' ? (data as any).customLabel : undefined),
 
             status: typeof data.status === 'string' ? data.status : b.status,
 

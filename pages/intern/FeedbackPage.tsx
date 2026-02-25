@@ -67,6 +67,7 @@ const computeOverall = (p: Pick<PerformanceMetrics, 'technical' | 'communication
 
 interface FeedbackMilestone {
   id: string;
+  customLabel?: string;
   status: 'pending' | 'submitted' | 'reviewed' | 'locked';
   internReflection?: string;
   internProgramFeedback?: string;
@@ -107,30 +108,24 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
   const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
   const isFinalized = (status?: FeedbackMilestone['status']) => status === 'submitted' || status === 'reviewed';
 
-  const milestoneLabel = (id: string) => {
+  const milestoneLabel = (id: string, customLabel?: string) => {
+    if (id === 'end-program') return uiLang === 'TH' ? 'End Program' : 'End Program';
     const weekMatch = /^week-(\d+)$/.exec(id);
     if (weekMatch) return String(t('intern_feedback.milestone.week_label', { n: Number(weekMatch[1]) } as any));
     const monthMatch = /^month-(\d+)$/.exec(id);
     if (monthMatch) return String(t('intern_feedback.milestone.month_label', { n: Number(monthMatch[1]) } as any));
-    return id;
+    const otherMatch = /^other-(\d+)$/.exec(id);
+    if (otherMatch) return customLabel || `Other ${otherMatch[1]}`;
+    return customLabel || id;
   };
 
-  const buildWeekMilestones = () => {
-    const arr: FeedbackMilestone[] = [];
-    for (let i = 1; i <= 4; i += 1) {
-      arr.push({
-        id: `week-${i}`,
-        status: 'pending',
-      });
-    }
-    return arr;
-  };
-
-  const [activeTrack, setActiveTrack] = useState<'week' | 'month'>('week');
-  const [activeId, setActiveId] = useState('week-1');
-  const [milestones, setMilestones] = useState<FeedbackMilestone[]>(buildWeekMilestones());
+  const [activeId, setActiveId] = useState<string>('');
+  const [milestones, setMilestones] = useState<FeedbackMilestone[]>([]);
   const [viewMode, setViewMode] = useState<'FORM' | 'HISTORY'>('FORM');
-  const [historyTrack, setHistoryTrack] = useState<'all' | 'week' | 'month'>('all');
+  const [historyTrack, setHistoryTrack] = useState<'all' | 'week' | 'month' | 'other'>('all');
+  const [otherLabelDraft, setOtherLabelDraft] = useState('');
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const otherInputRef = React.useRef<HTMLInputElement>(null);
 
   const [evaluationLabels, setEvaluationLabels] = useState<{
     technical: string;
@@ -190,7 +185,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
   const [attachmentLinkDraft, setAttachmentLinkDraft] = useState('');
   const [pendingAttachmentLinks, setPendingAttachmentLinks] = useState<string[]>([]);
 
-  const active = milestones.find((m) => m.id === activeId) || milestones[0];
+  const active = milestones.find((m) => m.id === activeId) || milestones[0] || null;
   const activeSupervisorScore =
     typeof (active?.supervisorPerformance as any)?.overallRating === 'number'
       ? (active?.supervisorPerformance as any).overallRating
@@ -225,9 +220,45 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
   }, [milestones]);
 
   const handleSelectFromHistory = (id: string) => {
-    setActiveTrack(id.startsWith('month-') ? 'month' : 'week');
     setActiveId(id);
     setViewMode('FORM');
+  };
+
+  const handleAddMilestone = (type: 'week' | 'month' | 'end-program' | 'other', customLabel?: string) => {
+    setMilestones((prev) => {
+      if (type === 'end-program') {
+        if (prev.some((m) => m.id === 'end-program')) return prev;
+        const next = [...prev, { id: 'end-program', status: 'pending' as const }];
+        setActiveId('end-program');
+        return next;
+      }
+      if (type === 'week') {
+        const existing = prev.filter((m) => /^week-\d+$/.test(m.id));
+        const nextN = existing.length + 1;
+        const id = `week-${nextN}`;
+        const next = [...prev, { id, status: 'pending' as const }];
+        setActiveId(id);
+        return next;
+      }
+      if (type === 'month') {
+        const existing = prev.filter((m) => /^month-\d+$/.test(m.id));
+        const nextN = existing.length + 1;
+        const id = `month-${nextN}`;
+        const next = [...prev, { id, status: 'pending' as const }];
+        setActiveId(id);
+        return next;
+      }
+      if (type === 'other') {
+        const existing = prev.filter((m) => /^other-\d+$/.test(m.id));
+        const nextN = existing.length + 1;
+        const id = `other-${nextN}`;
+        const label = (customLabel ?? '').trim() || `Other ${nextN}`;
+        const next = [...prev, { id, customLabel: label, status: 'pending' as const }];
+        setActiveId(id);
+        return next;
+      }
+      return prev;
+    });
   };
 
   const effectiveUser = authedUser ?? user ?? null;
@@ -237,30 +268,36 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
 
     const colRef = collection(firestoreDb, 'users', effectiveUser.id, 'feedbackMilestones');
     return onSnapshot(colRef, (snap) => {
-      const savedById = new Map<string, Partial<FeedbackMilestone>>();
+      const savedById = new Map<string, Partial<FeedbackMilestone> & { customLabel?: string }>();
       snap.docs.forEach((d) => {
         savedById.set(d.id, d.data() as Partial<FeedbackMilestone>);
       });
 
-      const weekBase = buildWeekMilestones();
-      let maxMonth = 1;
+      const ids = Array.from(savedById.keys());
+      const weekIds = ids.filter((id) => /^week-\d+$/.test(id)).sort((a, b) => {
+        const na = parseInt(/^week-(\d+)$/.exec(a)![1], 10);
+        const nb = parseInt(/^week-(\d+)$/.exec(b)![1], 10);
+        return na - nb;
+      });
+      const monthIds = ids.filter((id) => /^month-\d+$/.test(id)).sort((a, b) => {
+        const na = parseInt(/^month-(\d+)$/.exec(a)![1], 10);
+        const nb = parseInt(/^month-(\d+)$/.exec(b)![1], 10);
+        return na - nb;
+      });
+      const otherIds = ids.filter((id) => /^other-\d+$/.test(id)).sort((a, b) => {
+        const na = parseInt(/^other-(\d+)$/.exec(a)![1], 10);
+        const nb = parseInt(/^other-(\d+)$/.exec(b)![1], 10);
+        return na - nb;
+      });
+      const hasEndProgram = ids.includes('end-program');
 
-      for (const id of savedById.keys()) {
-        const m = /^month-(\d+)$/.exec(id);
-        if (!m) continue;
-        const n = Number(m[1]);
-        if (Number.isFinite(n) && n > maxMonth) maxMonth = n;
-      }
-      const monthCount = Math.max(1, maxMonth + 1);
-      const monthBase: FeedbackMilestone[] = [];
-      for (let i = 1; i <= monthCount; i += 1) {
-        monthBase.push({
-          id: `month-${i}`,
-          status: 'pending',
-        });
-      }
+      const baseIds =
+        weekIds.length === 0 && monthIds.length === 0 && !hasEndProgram && otherIds.length === 0
+          ? ['week-1', 'month-1']
+          : [...weekIds, ...monthIds, ...(hasEndProgram ? ['end-program'] : []), ...otherIds];
+      const base: FeedbackMilestone[] = baseIds.map((id) => ({ id, status: 'pending' as const }));
 
-      const nextAll = [...weekBase, ...monthBase].map((x) => {
+      const nextAll = base.map((x) => {
         const data = savedById.get(x.id) ?? null;
         if (!data) return x;
 
@@ -311,6 +348,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
               ? (data as any).supervisorProgramSatisfactionRating
               : x.supervisorProgramSatisfactionRating,
           submissionDate: typeof data.submissionDate === 'string' ? data.submissionDate : x.submissionDate,
+          customLabel: typeof (data as any).customLabel === 'string' ? (data as any).customLabel : x.customLabel,
           videoUrl: typeof (data as any).videoUrl === 'string' ? (data as any).videoUrl : x.videoUrl,
           videoStoragePath: typeof data.videoStoragePath === 'string' ? data.videoStoragePath : x.videoStoragePath,
           videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : x.videoFileName,
@@ -322,21 +360,12 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
       setMilestones(nextAll);
 
       setActiveId((prev) => {
-        const exists = nextAll.some((x) => x.id === prev);
-        if (exists) return prev;
-
-        const weekList = nextAll.filter((x) => x.id.startsWith('week-'));
-        const monthList = nextAll.filter((x) => x.id.startsWith('month-'));
-        const pickNext = (list: FeedbackMilestone[]) => {
-          const next = list.find((x) => !isFinalized(x.status));
-          return next?.id ?? list[list.length - 1]?.id;
-        };
-
-        if (activeTrack === 'month') return pickNext(monthList);
-        return pickNext(weekList);
+        if (nextAll.some((x) => x.id === prev)) return prev;
+        const next = nextAll.find((x) => !isFinalized(x.status));
+        return next?.id ?? nextAll[nextAll.length - 1]?.id ?? '';
       });
     });
-  }, [activeTrack, effectiveUser]);
+  }, [effectiveUser]);
 
   useEffect(() => {
     if (!active) return;
@@ -359,7 +388,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
     setAttachmentLinkDraft('');
     setPendingAttachmentLinks([]);
     setSubmitError(null);
-  }, [activeId]);
+  }, [activeId, active]);
 
   const displaySelfPerformance = useMemo(() => {
     const next: PerformanceMetrics = {
@@ -371,18 +400,6 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
     };
     return next;
   }, [tempSelfPerformance]);
-
-  useEffect(() => {
-    const list = milestones.filter((m) => m.id.startsWith(`${activeTrack}-`));
-    if (list.length === 0) return;
-
-    // Allow user to freely select any week/month. Only auto-pick when current activeId
-    // is not part of the current track (e.g., switching week <-> month).
-    if (activeId.startsWith(`${activeTrack}-`) && list.some((m) => m.id === activeId)) return;
-
-    const next = list.find((m) => !isFinalized(m.status)) ?? list[list.length - 1];
-    if (next && next.id !== activeId) setActiveId(next.id);
-  }, [activeId, activeTrack, milestones]);
 
   const openStoragePath = async (path: string) => {
     const url = await getDownloadURL(storageRef(firebaseStorage, path));
@@ -397,6 +414,8 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
 
   const handleSubmit = async () => {
     if (!effectiveUser) return;
+    if (!active) return;
+    if (!activeId) return;
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -469,6 +488,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
         {
           id: milestoneId,
           status: 'submitted',
+          ...(active?.customLabel ? { customLabel: active.customLabel } : {}),
           internReflection: tempReflection,
           internProgramFeedback: tempProgramFeedback,
           programRating: tempProgramRating,
@@ -511,6 +531,22 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
     }
   };
 
+  if (!active) {
+    return (
+      <div className="h-full w-full flex flex-col bg-[#F8FAFC] overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 scrollbar-hide pb-32">
+          <div className="max-w-[1400px] mx-auto w-full">
+            <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                {uiLang === 'TH' ? 'กำลังโหลด...' : 'Loading...'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full flex flex-col bg-[#F8FAFC] overflow-hidden relative">
       <div className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 scrollbar-hide pb-32">
@@ -542,51 +578,133 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
             </div>
 
             {viewMode === 'FORM' && (
-              <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm">
-                <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide">
-                  {milestones
-                    .filter((m) => m.id.startsWith(`${activeTrack}-`))
-                    .map((m) => {
+              <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm space-y-4">
+                {/* Add milestone buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">
+                    {uiLang === 'TH' ? 'เพิ่ม:' : 'Add:'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleAddMilestone('week')}
+                    className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 text-[11px] font-black hover:bg-blue-100 transition-all"
+                  >
+                    + Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddMilestone('month')}
+                    className="px-4 py-2 rounded-xl bg-violet-50 text-violet-700 border border-violet-100 text-[11px] font-black hover:bg-violet-100 transition-all"
+                  >
+                    + Month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!milestones.some((m) => m.id === 'end-program')) {
+                        handleAddMilestone('end-program');
+                      }
+                    }}
+                    disabled={milestones.some((m) => m.id === 'end-program')}
+                    className="px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] font-black hover:bg-emerald-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    + End Program
+                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOtherInput((v) => !v);
+                        setOtherLabelDraft('');
+                        setTimeout(() => otherInputRef.current?.focus(), 50);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-100 text-[11px] font-black hover:bg-amber-100 transition-all"
+                    >
+                      + Other
+                    </button>
+                    {showOtherInput && (
+                      <div className="absolute left-0 top-full mt-2 z-50 bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-64">
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                          {uiLang === 'TH' ? 'ชื่อ milestone' : 'Milestone name'}
+                        </div>
+                        <input
+                          ref={otherInputRef}
+                          value={otherLabelDraft}
+                          onChange={(e) => setOtherLabelDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleAddMilestone('other', otherLabelDraft);
+                              setShowOtherInput(false);
+                              setOtherLabelDraft('');
+                            }
+                            if (e.key === 'Escape') {
+                              setShowOtherInput(false);
+                              setOtherLabelDraft('');
+                            }
+                          }}
+                          placeholder={uiLang === 'TH' ? 'เช่น Mid-term Review' : 'e.g. Mid-term Review'}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-300"
+                        />
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            type="button"
+                            onClick={() => { setShowOtherInput(false); setOtherLabelDraft(''); }}
+                            className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] font-black"
+                          >
+                            {uiLang === 'TH' ? 'ยกเลิก' : 'Cancel'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleAddMilestone('other', otherLabelDraft);
+                              setShowOtherInput(false);
+                              setOtherLabelDraft('');
+                            }}
+                            className="flex-1 px-3 py-2 rounded-xl bg-amber-600 text-white text-[11px] font-black hover:bg-amber-700"
+                          >
+                            {uiLang === 'TH' ? 'เพิ่ม' : 'Add'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Milestone tabs */}
+                {milestones.length > 0 && (
+                  <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide pt-1">
+                    {milestones.map((m) => {
                       const reviewedAt = (m as any).supervisorReviewedAt;
                       const reviewedTimestamp = reviewedAt?.toDate ? reviewedAt.toDate().getTime() : 0;
                       const hasNewEvaluation = m.status === 'reviewed' && reviewedTimestamp > lastVisit;
-                      
-                      console.log('🔍 Milestone Debug:', {
-                        id: m.id,
-                        status: m.status,
-                        supervisorReviewedDate: m.supervisorReviewedDate,
-                        reviewedTimestamp,
-                        lastVisit,
-                        hasNewEvaluation
-                      });
-                      
                       return (
-                      <button
-                        key={m.id}
-                        onClick={() => setActiveId(m.id)}
-                        className={`px-8 py-4 rounded-[1.5rem] text-sm font-black transition-all duration-300 flex-shrink-0 flex items-center gap-3 relative ${
-                          activeId === m.id 
-                            ? 'bg-blue-600 text-white shadow-xl' 
-                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {hasNewEvaluation && (
-                          <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse z-10"></span>
-                        )}
-                        <span>{milestoneLabel(m.id)}</span>
-                        {isFinalized(m.status) && (
-                          <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                        <button
+                          key={m.id}
+                          onClick={() => setActiveId(m.id)}
+                          className={`px-6 py-3.5 rounded-[1.5rem] text-sm font-black transition-all duration-300 flex-shrink-0 flex items-center gap-3 relative ${
                             activeId === m.id
-                              ? 'bg-white/20 text-white border border-white/30'
-                              : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                          }`}>
-                            {t('intern_feedback.tags.submitted')}
-                          </span>
-                        )}
-                      </button>
+                              ? 'bg-blue-600 text-white shadow-xl'
+                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {hasNewEvaluation && (
+                            <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse z-10" />
+                          )}
+                          <span>{milestoneLabel(m.id, m.customLabel)}</span>
+                          {isFinalized(m.status) && (
+                            <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                              activeId === m.id
+                                ? 'bg-white/20 text-white border border-white/30'
+                                : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                            }`}>
+                              {t('intern_feedback.tags.submitted')}
+                            </span>
+                          )}
+                        </button>
                       );
                     })}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -623,6 +741,15 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setHistoryTrack('other')}
+                      className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                        historyTrack === 'other' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
+                      }`}
+                    >
+                      Other
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setHistoryTrack('all')}
                       className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
                         historyTrack === 'all' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white'
@@ -644,6 +771,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                   {historyItems
                     .filter(({ m }) => {
                       if (historyTrack === 'all') return true;
+                      if (historyTrack === 'other') return m.id === 'end-program' || m.id.startsWith('other-');
                       return m.id.startsWith(`${historyTrack}-`);
                     })
                     .map(({ m, submittedDate, reviewedDate }) => (
@@ -654,7 +782,7 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                     >
                       <div className="flex items-start justify-between gap-6">
                         <div className="min-w-0">
-                          <div className="text-lg font-black text-slate-900 truncate">{milestoneLabel(m.id)}</div>
+                          <div className="text-lg font-black text-slate-900 truncate">{milestoneLabel(m.id, m.customLabel)}</div>
                           <div className="mt-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                             {submittedDate
                               ? `${t('intern_feedback.milestone.submitted_prefix')} ${submittedDate}`
@@ -667,7 +795,11 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                           </div>
                         </div>
                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex-shrink-0">
-                          {m.id.startsWith('month-') ? t('intern_feedback.history.filter_month') : t('intern_feedback.history.filter_week')}
+                          {m.id.startsWith('month-')
+                            ? t('intern_feedback.history.filter_month')
+                            : m.id === 'end-program' || m.id.startsWith('other-')
+                              ? 'Other'
+                              : t('intern_feedback.history.filter_week')}
                         </div>
                       </div>
                     </button>
@@ -689,14 +821,16 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                       <Zap size={28} strokeWidth={2.5} />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">{milestoneLabel(active.id)}</h3>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                        {active ? milestoneLabel(active.id, active.customLabel) : ''}
+                      </h3>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">{t('intern_feedback.milestone.header')}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => void handleSubmit()}
                     className="px-10 py-4 bg-blue-600 text-white rounded-full font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                    disabled={isSubmitting || !effectiveUser}
+                    disabled={isSubmitting || !effectiveUser || !activeId}
                   >
                     {isSubmitting ? t('intern_feedback.milestone.submitting') : t('intern_feedback.milestone.submit_2_way_review')}
                   </button>
@@ -1054,9 +1188,9 @@ const FeedbackPage: React.FC<FeedbackPageProps> = ({ lang: _lang, user }) => {
                   <div className="mb-8">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">{t('intern_feedback.milestone.assessment_period')}</div>
                     <div className="mt-2 text-sm font-black text-white">
-                      {milestoneLabel(active.id)}
-                      {active.submissionDate ? `  •  ${t('intern_feedback.milestone.submitted_prefix')} ${active.submissionDate}` : ''}
-                      {active.supervisorReviewedDate ? `  •  ${t('intern_feedback.milestone.reviewed_prefix')} ${active.supervisorReviewedDate}` : ''}
+                      {active ? milestoneLabel(active.id, active.customLabel) : ''}
+                      {active?.submissionDate ? `  •  ${t('intern_feedback.milestone.submitted_prefix')} ${active.submissionDate}` : ''}
+                      {active?.supervisorReviewedDate ? `  •  ${t('intern_feedback.milestone.reviewed_prefix')} ${active.supervisorReviewedDate}` : ''}
                     </div>
                   </div>
 

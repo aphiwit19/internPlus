@@ -1882,7 +1882,7 @@ export const generateTemplatePreview = onCall({ cors: true }, async (request) =>
   }
 });
 
-export const generateCertificate = onCall({ cors: true }, async (request) => {
+export const generateCertificate = onCall({ cors: true, memory: '1GiB', timeoutSeconds: 120 }, async (request) => {
   try {
     const caller = await assertHrAdminOrSupervisor(request);
 
@@ -2039,43 +2039,77 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         )
       : fixedSvg;
 
-    const transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, (tpl.layout as any)?.background ?? null);
-    const issuedPng = await sharp(transformedBgPng)
-      .composite([
-        {
-          input: Buffer.from(svg),
-          top: 0,
-          left: 0,
-        },
-      ])
-      .png()
-      .toBuffer();
+    let transformedBgPng: Buffer;
+    try {
+      transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, (tpl.layout as any)?.background ?? null);
+    } catch (err: unknown) {
+      console.error('generateCertificate:transformBackgroundFailed', { requestId, templateId, err });
+      throw new HttpsError('failed-precondition', 'Unable to process certificate background image.');
+    }
 
-    // Create PDF by embedding the PNG as full page
-    const pdfDoc = await PDFDocument.create();
-    const pngImage = await pdfDoc.embedPng(issuedPng);
+    let issuedPng: Buffer;
+    try {
+      issuedPng = await sharp(transformedBgPng)
+        .composite([
+          {
+            input: Buffer.from(svg),
+            top: 0,
+            left: 0,
+          },
+        ])
+        .png()
+        .toBuffer();
+    } catch (err: unknown) {
+      console.error('generateCertificate:renderPngFailed', {
+        requestId,
+        templateId,
+        width,
+        height,
+        hasCustomLayout,
+        err,
+      });
+      throw new HttpsError(
+        'failed-precondition',
+        'Unable to render certificate image. Please verify template layout, fonts, and field values.',
+      );
+    }
 
-    // Use pixel size as PDF points for phase 1 (works for download/printing; can refine later)
-    const page = pdfDoc.addPage([width, height]);
-    page.drawImage(pngImage, { x: 0, y: 0, width, height });
+    let pdfBytes: Uint8Array;
+    try {
+      // Create PDF by embedding the PNG as full page
+      const pdfDoc = await PDFDocument.create();
+      const pngImage = await pdfDoc.embedPng(issuedPng);
 
-    const pdfBytes = await pdfDoc.save();
+      // Use pixel size as PDF points for phase 1 (works for download/printing; can refine later)
+      const page = pdfDoc.addPage([width, height]);
+      page.drawImage(pngImage, { x: 0, y: 0, width, height });
+
+      pdfBytes = await pdfDoc.save();
+    } catch (err: unknown) {
+      console.error('generateCertificate:buildPdfFailed', { requestId, templateId, err });
+      throw new HttpsError('failed-precondition', 'Unable to generate certificate PDF.');
+    }
 
     const issuedPngPath = `certificates/${req.internId}/${requestId}/certificate.png`;
     const issuedPdfPath = `certificates/${req.internId}/${requestId}/certificate.pdf`;
 
-    await Promise.all([
-      bucket.file(issuedPngPath).save(issuedPng, {
-        contentType: 'image/png',
-        resumable: false,
-        metadata: { cacheControl: 'no-store, max-age=0' },
-      }),
-      bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), {
-        contentType: 'application/pdf',
-        resumable: false,
-        metadata: { cacheControl: 'no-store, max-age=0' },
-      }),
-    ]);
+    try {
+      await Promise.all([
+        bucket.file(issuedPngPath).save(issuedPng, {
+          contentType: 'image/png',
+          resumable: false,
+          metadata: { cacheControl: 'no-store, max-age=0' },
+        }),
+        bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), {
+          contentType: 'application/pdf',
+          resumable: false,
+          metadata: { cacheControl: 'no-store, max-age=0' },
+        }),
+      ]);
+    } catch (err: unknown) {
+      console.error('generateCertificate:uploadIssuedFailed', { requestId, templateId, issuedPngPath, issuedPdfPath, err });
+      throw new HttpsError('failed-precondition', 'Unable to upload generated certificate files.');
+    }
 
     await reqRef.update({
       status: 'ISSUED',
@@ -2117,7 +2151,13 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
   } catch (err: unknown) {
     if (err instanceof HttpsError) throw err;
     console.error('generateCertificate:internalError', err);
-    throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    const msg =
+      err instanceof Error
+        ? `${err.name}: ${err.message}`
+        : typeof err === 'string'
+          ? err
+          : 'Unknown error';
+    throw new HttpsError('failed-precondition', msg);
   }
 });
 
