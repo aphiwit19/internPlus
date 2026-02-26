@@ -22,12 +22,294 @@ export const syncAllowanceWallet = onCall({ cors: true }, async (request) => {
         throw new HttpsError('invalid-argument', 'Missing internId');
     const db = admin.firestore();
     try {
-        return await syncAllowanceWalletInternal(db, internId);
+        const now = admin.firestore.Timestamp.now();
+        const lockRef = db.collection('walletSyncLocks').doc(internId);
+        const lockResult = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(lockRef);
+            const data = snap.exists ? snap.data() : null;
+            const status = typeof data?.status === 'string' ? data.status : null;
+            const startedAt = data?.startedAt instanceof admin.firestore.Timestamp ? data.startedAt : null;
+            // Treat a running lock as stale after 10 minutes.
+            const isStale = status === 'RUNNING' &&
+                startedAt &&
+                now.toMillis() - startedAt.toMillis() > 10 * 60 * 1000;
+            if (status === 'RUNNING' && !isStale) {
+                return { ok: false, alreadyRunning: true, startedAtMs: startedAt?.toMillis?.() ?? null };
+            }
+            tx.set(lockRef, {
+                status: 'RUNNING',
+                startedAt: now,
+                startedByUid: request.auth?.uid ?? null,
+                finishedAt: admin.firestore.FieldValue.delete(),
+                errorMessage: admin.firestore.FieldValue.delete(),
+                updatedAt: now,
+            }, { merge: true });
+            return { ok: true, alreadyRunning: false };
+        });
+        if (!lockResult.ok) {
+            return lockResult;
+        }
+        const result = await syncAllowanceWalletInternal(db, internId);
+        await lockRef.set({
+            status: 'DONE',
+            finishedAt: admin.firestore.Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now(),
+        }, { merge: true });
+        return { ...result, ok: true };
     }
     catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         console.error('syncAllowanceWallet:error', { internId, err });
+        try {
+            await db
+                .collection('walletSyncLocks')
+                .doc(internId)
+                .set({
+                status: 'ERROR',
+                finishedAt: admin.firestore.Timestamp.now(),
+                errorMessage: message,
+                updatedAt: admin.firestore.Timestamp.now(),
+            }, { merge: true });
+        }
+        catch {
+            // ignore
+        }
         throw new HttpsError('internal', message);
+    }
+});
+async function hasAnyDocs(q) {
+    const snap = await q.limit(1).get();
+    return !snap.empty;
+}
+async function getUserActivityFlags(uid) {
+    const db = admin.firestore();
+    const reasons = [];
+    // Subcollections under user
+    const subcollections = [
+        { key: 'feedbackMilestones', q: db.collection('users').doc(uid).collection('feedbackMilestones') },
+        { key: 'attendance', q: db.collection('users').doc(uid).collection('attendance') },
+        { key: 'assignmentProjects', q: db.collection('users').doc(uid).collection('assignmentProjects') },
+        { key: 'personalProjects', q: db.collection('users').doc(uid).collection('personalProjects') },
+    ];
+    for (const s of subcollections) {
+        if (await hasAnyDocs(s.q))
+            reasons.push(`subcollection:${s.key}`);
+    }
+    // Global collections referencing intern
+    const collectionsToCheck = [
+        { key: 'certificateRequests', q: db.collection('certificateRequests').where('internId', '==', uid) },
+        { key: 'leaveRequests', q: db.collection('leaveRequests').where('internId', '==', uid) },
+        { key: 'timeCorrections', q: db.collection('timeCorrections').where('internId', '==', uid) },
+        { key: 'universityEvaluations', q: db.collection('universityEvaluations').where('internId', '==', uid) },
+        { key: 'allowanceClaims', q: db.collection('allowanceClaims').where('internId', '==', uid) },
+    ];
+    for (const c of collectionsToCheck) {
+        if (await hasAnyDocs(c.q))
+            reasons.push(`collection:${c.key}`);
+    }
+    return { hasActivity: reasons.length > 0, reasons };
+}
+export const checkUserDeletionEligibility = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const userSnap = await db.collection('users').doc(uid).get();
+        if (!userSnap.exists)
+            return { ok: true, eligible: true, skipped: true };
+        const userDoc = userSnap.data();
+        const roles = Array.isArray(userDoc?.roles) ? userDoc.roles : [];
+        if (roles.includes('HR_ADMIN') || roles.includes('SUPERVISOR')) {
+            return { ok: true, eligible: false, reasons: ['role:protected'] };
+        }
+        const activity = await getUserActivityFlags(uid);
+        return {
+            ok: true,
+            eligible: !activity.hasActivity,
+            reasons: activity.reasons,
+            uid,
+            targetRoles: roles,
+            requestedBy: caller.uid,
+        };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+export const disableUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            throw new HttpsError('not-found', 'users doc not found');
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        if (roles.includes('HR_ADMIN'))
+            throw new HttpsError('permission-denied', 'Cannot disable HR_ADMIN');
+        await admin.auth().updateUser(uid, { disabled: true });
+        await targetRef.set({
+            accountStatus: 'DISABLED',
+            disabledAt: admin.firestore.FieldValue.serverTimestamp(),
+            disabledBy: caller.uid,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        await db.collection('adminUserActions').add({
+            type: 'DISABLE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+        });
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+export const enableUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            throw new HttpsError('not-found', 'users doc not found');
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        await admin.auth().updateUser(uid, { disabled: false });
+        await targetRef.set({
+            accountStatus: 'ACTIVE',
+            disabledAt: admin.firestore.FieldValue.delete(),
+            disabledBy: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        await db.collection('adminUserActions').add({
+            type: 'ENABLE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+        });
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+    }
+});
+async function deleteQueryBatch(db, q) {
+    let total = 0;
+    let snap = await q.limit(100).get();
+    while (!snap.empty) {
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+        total += snap.size;
+        if (snap.size < 100)
+            break;
+        snap = await q.limit(100).get();
+    }
+    return total;
+}
+export const hardDeleteUserAccount = onCall({ cors: true }, async (request) => {
+    try {
+        const caller = await assertHrAdmin(request);
+        const uid = String(request.data?.uid ?? '').trim();
+        const confirmText = String(request.data?.confirmText ?? '').trim();
+        if (!uid)
+            throw new HttpsError('invalid-argument', 'Missing uid');
+        if (confirmText !== 'DELETE')
+            throw new HttpsError('failed-precondition', 'Missing confirmText');
+        const db = admin.firestore();
+        const targetRef = db.collection('users').doc(uid);
+        const targetSnap = await targetRef.get();
+        if (!targetSnap.exists)
+            return { ok: true, skipped: true };
+        const target = targetSnap.data();
+        const roles = Array.isArray(target?.roles) ? target.roles : [];
+        if (roles.includes('HR_ADMIN') || roles.includes('SUPERVISOR')) {
+            throw new HttpsError('permission-denied', 'Protected role');
+        }
+        const supervisorId = typeof target?.supervisorId === 'string' ? target.supervisorId : '';
+        // 1. Audit log snapshot (before deleting anything)
+        await db.collection('adminUserActions').add({
+            type: 'HARD_DELETE',
+            uid,
+            roles,
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            by: caller.uid,
+            targetSnapshot: {
+                name: target?.name ?? null,
+                email: target?.email ?? null,
+                supervisorId: supervisorId || null,
+            },
+        });
+        // 2. Remove from supervisor's assignedInterns
+        if (supervisorId) {
+            try {
+                await db.collection('users').doc(supervisorId).update({
+                    assignedInterns: admin.firestore.FieldValue.arrayRemove(uid),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            }
+            catch {
+                // ignore
+            }
+        }
+        // 3. Delete subcollections under users/{uid}
+        const subcollections = ['feedbackMilestones', 'attendance', 'assignmentProjects', 'personalProjects'];
+        for (const sub of subcollections) {
+            await deleteQueryBatch(db, db.collection('users').doc(uid).collection(sub));
+        }
+        // 4. Delete global collections referencing internId == uid
+        const globalCollections = [
+            'leaveRequests',
+            'timeCorrections',
+            'certificateRequests',
+            'universityEvaluations',
+            'allowanceClaims',
+        ];
+        for (const col of globalCollections) {
+            await deleteQueryBatch(db, db.collection(col).where('internId', '==', uid));
+        }
+        // 5. Delete CurrentWallet doc (keyed by uid)
+        try {
+            await db.collection('CurrentWallet').doc(uid).delete();
+        }
+        catch {
+            // ignore if not exists
+        }
+        // 6. Delete Firestore user profile doc
+        await targetRef.delete();
+        // 7. Delete Firebase Auth user
+        try {
+            await admin.auth().deleteUser(uid);
+        }
+        catch (err) {
+            const e = err;
+            throw new HttpsError('internal', e?.message ?? 'Failed to delete auth user');
+        }
+        return { ok: true };
+    }
+    catch (err) {
+        if (err instanceof HttpsError)
+            throw err;
+        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
     }
 });
 export const recalculateMyAllowance = onCall({ cors: true }, async (request) => {
@@ -113,6 +395,13 @@ async function assertHrAdminOrSupervisor(context) {
     }
     return { uid, roles };
 }
+async function assertHrAdmin(context) {
+    const caller = await assertHrAdminOrSupervisor(context);
+    if (!caller.roles.includes('HR_ADMIN')) {
+        throw new HttpsError('permission-denied', 'HR_ADMIN only.');
+    }
+    return caller;
+}
 const pad2 = (n) => String(n).padStart(2, '0');
 function monthKeyFromDate(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
@@ -181,6 +470,9 @@ async function syncAllowanceWalletInternal(db, internId) {
     let totalLeaves = 0;
     let hasPending = false;
     let hasAny = false;
+    let nextPlannedPayoutDate = null;
+    let lastPaymentDate = null;
+    let lastPaidAtMs = null;
     // Store totals as a standalone document (no subcollection) per user's request.
     const totalsRef = db.collection('CurrentWallet').doc(internId);
     // Keep month breakdown docs in a separate structure.
@@ -201,7 +493,11 @@ async function syncAllowanceWalletInternal(db, internId) {
         const periodLabel = typeof raw?.period === 'string' ? raw.period : monthKey;
         const plannedPayoutDate = typeof raw?.plannedPayoutDate === 'string' ? raw.plannedPayoutDate : undefined;
         const paymentDate = typeof raw?.paymentDate === 'string' ? raw.paymentDate : undefined;
-        const paidAtMs = typeof raw?.paidAtMs === 'number' ? raw.paidAtMs : undefined;
+        const paidAtMs = typeof raw?.paidAt?.toMillis === 'function'
+            ? raw.paidAt.toMillis()
+            : typeof raw?.paidAtMs === 'number'
+                ? raw.paidAtMs
+                : undefined;
         const hasAdjustment = typeof raw?.adminAdjustedAmount === 'number' || typeof raw?.supervisorAdjustedAmount === 'number';
         hasAny = true;
         totalAmount += amount;
@@ -214,6 +510,22 @@ async function syncAllowanceWalletInternal(db, internId) {
         else {
             totalPendingAmount += amount;
             hasPending = true;
+        }
+        if (plannedPayoutDate && status !== 'PAID') {
+            if (!nextPlannedPayoutDate || plannedPayoutDate < nextPlannedPayoutDate)
+                nextPlannedPayoutDate = plannedPayoutDate;
+        }
+        if (status === 'PAID') {
+            if (typeof paidAtMs === 'number') {
+                if (!lastPaidAtMs || paidAtMs > lastPaidAtMs) {
+                    lastPaidAtMs = paidAtMs;
+                    lastPaymentDate = paymentDate ?? null;
+                }
+            }
+            else if (!lastPaidAtMs && !lastPaymentDate && paymentDate) {
+                // Fallback when we don't have a paidAt timestamp.
+                lastPaymentDate = paymentDate;
+            }
         }
         const monthRef = walletMonthsParentRef.collection('months').doc(monthKey);
         const monthPayload = {
@@ -251,6 +563,9 @@ async function syncAllowanceWalletInternal(db, internId) {
             leaves: totalLeaves,
         },
         statusSummary,
+        plannedPayoutDate: nextPlannedPayoutDate,
+        paymentDate: lastPaymentDate,
+        paidAtMs: lastPaidAtMs,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedByRole: 'SYSTEM',
     };
@@ -1282,7 +1597,7 @@ export const generateTemplatePreview = onCall({ cors: true }, async (request) =>
         throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
     }
 });
-export const generateCertificate = onCall({ cors: true }, async (request) => {
+export const generateCertificate = onCall({ cors: true, memory: '1GiB', timeoutSeconds: 120 }, async (request) => {
     try {
         const caller = await assertHrAdminOrSupervisor(request);
         const requestId = String(request.data?.requestId ?? '');
@@ -1397,38 +1712,72 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
                 issuedAt: issueDateForRender ?? req.issuedAt ?? new Date(),
             })
             : fixedSvg;
-        const transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, tpl.layout?.background ?? null);
-        const issuedPng = await sharp(transformedBgPng)
-            .composite([
-            {
-                input: Buffer.from(svg),
-                top: 0,
-                left: 0,
-            },
-        ])
-            .png()
-            .toBuffer();
-        // Create PDF by embedding the PNG as full page
-        const pdfDoc = await PDFDocument.create();
-        const pngImage = await pdfDoc.embedPng(issuedPng);
-        // Use pixel size as PDF points for phase 1 (works for download/printing; can refine later)
-        const page = pdfDoc.addPage([width, height]);
-        page.drawImage(pngImage, { x: 0, y: 0, width, height });
-        const pdfBytes = await pdfDoc.save();
+        let transformedBgPng;
+        try {
+            transformedBgPng = await buildTransformedBackgroundPng(bgBuffer, { width, height }, tpl.layout?.background ?? null);
+        }
+        catch (err) {
+            console.error('generateCertificate:transformBackgroundFailed', { requestId, templateId, err });
+            throw new HttpsError('failed-precondition', 'Unable to process certificate background image.');
+        }
+        let issuedPng;
+        try {
+            issuedPng = await sharp(transformedBgPng)
+                .composite([
+                {
+                    input: Buffer.from(svg),
+                    top: 0,
+                    left: 0,
+                },
+            ])
+                .png()
+                .toBuffer();
+        }
+        catch (err) {
+            console.error('generateCertificate:renderPngFailed', {
+                requestId,
+                templateId,
+                width,
+                height,
+                hasCustomLayout,
+                err,
+            });
+            throw new HttpsError('failed-precondition', 'Unable to render certificate image. Please verify template layout, fonts, and field values.');
+        }
+        let pdfBytes;
+        try {
+            // Create PDF by embedding the PNG as full page
+            const pdfDoc = await PDFDocument.create();
+            const pngImage = await pdfDoc.embedPng(issuedPng);
+            // Use pixel size as PDF points for phase 1 (works for download/printing; can refine later)
+            const page = pdfDoc.addPage([width, height]);
+            page.drawImage(pngImage, { x: 0, y: 0, width, height });
+            pdfBytes = await pdfDoc.save();
+        }
+        catch (err) {
+            console.error('generateCertificate:buildPdfFailed', { requestId, templateId, err });
+            throw new HttpsError('failed-precondition', 'Unable to generate certificate PDF.');
+        }
         const issuedPngPath = `certificates/${req.internId}/${requestId}/certificate.png`;
         const issuedPdfPath = `certificates/${req.internId}/${requestId}/certificate.pdf`;
-        await Promise.all([
-            bucket.file(issuedPngPath).save(issuedPng, {
-                contentType: 'image/png',
-                resumable: false,
-                metadata: { cacheControl: 'no-store, max-age=0' },
-            }),
-            bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), {
-                contentType: 'application/pdf',
-                resumable: false,
-                metadata: { cacheControl: 'no-store, max-age=0' },
-            }),
-        ]);
+        try {
+            await Promise.all([
+                bucket.file(issuedPngPath).save(issuedPng, {
+                    contentType: 'image/png',
+                    resumable: false,
+                    metadata: { cacheControl: 'no-store, max-age=0' },
+                }),
+                bucket.file(issuedPdfPath).save(Buffer.from(pdfBytes), {
+                    contentType: 'application/pdf',
+                    resumable: false,
+                    metadata: { cacheControl: 'no-store, max-age=0' },
+                }),
+            ]);
+        }
+        catch (err) {
+            console.error('generateCertificate:uploadIssuedFailed', { requestId, templateId, issuedPngPath, issuedPdfPath, err });
+            throw new HttpsError('failed-precondition', 'Unable to upload generated certificate files.');
+        }
         await reqRef.update({
             status: 'ISSUED',
             templateId,
@@ -1469,12 +1818,17 @@ export const generateCertificate = onCall({ cors: true }, async (request) => {
         if (err instanceof HttpsError)
             throw err;
         console.error('generateCertificate:internalError', err);
-        throw new HttpsError('internal', err instanceof Error ? err.message : 'Unknown error');
+        const msg = err instanceof Error
+            ? `${err.name}: ${err.message}`
+            : typeof err === 'string'
+                ? err
+                : 'Unknown error';
+        throw new HttpsError('failed-precondition', msg);
     }
 });
 export const deleteCertificateTemplate = onCall({ cors: true }, async (request) => {
     try {
-        assertAdmin(request);
+        await assertHrAdmin(request);
         const templateId = String(request.data?.templateId ?? '');
         if (!templateId)
             throw new HttpsError('invalid-argument', 'Missing templateId');
@@ -1513,7 +1867,7 @@ export const deleteCertificateTemplate = onCall({ cors: true }, async (request) 
 });
 export const deleteTemplateBackground = onCall({ cors: true }, async (request) => {
     try {
-        assertAdmin(request);
+        await assertHrAdmin(request);
         const templateId = String(request.data?.templateId ?? '');
         if (!templateId)
             throw new HttpsError('invalid-argument', 'Missing templateId');

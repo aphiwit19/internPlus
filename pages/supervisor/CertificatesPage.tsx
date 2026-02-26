@@ -257,8 +257,26 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
       const fn = httpsCallable(firebaseFunctions, 'generateCertificate');
       await fn({ requestId: req.id, templateId });
     } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
-      setUploadError(`${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.generate_failed')}`);
+      const e = err as any;
+      const details = e?.details ?? e?.customData ?? null;
+      const detailsSuffix = details ? ` | details: ${typeof details === 'string' ? details : JSON.stringify(details)}` : '';
+      const serialized = (() => {
+        try {
+          return JSON.stringify(e, Object.getOwnPropertyNames(e));
+        } catch {
+          return '';
+        }
+      })();
+      console.error('generateCertificate failed', {
+        code: e?.code,
+        message: e?.message,
+        details,
+        raw: e,
+      });
+      const rawSuffix = serialized ? ` | raw: ${serialized}` : '';
+      setUploadError(
+        `${e?.code ?? 'unknown'}: ${e?.message ?? tr('supervisor_certificates.errors.generate_failed')}${detailsSuffix}${rawSuffix}`,
+      );
     } finally {
       setGeneratingId(null);
     }
@@ -431,9 +449,9 @@ const SupervisorCertificatesPage: React.FC<SupervisorCertificatesPageProps> = ({
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-900 truncate">{meta.type === 'COMPLETION' ? tr('supervisor_certificates.types.completion') : tr('supervisor_certificates.types.recommendation')}</p>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                              req?.fileName ??
-                                (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ??
-                                tr('supervisor_certificates.labels.no_request_yet')
+                              {req?.fileName ??
+                                (Array.isArray(req?.attachmentLinks) ? String(req?.attachmentLinks?.[0] ?? '') : '') ??
+                                tr('supervisor_certificates.labels.no_request_yet')}
                             </p>
                           </div>
                         </div>

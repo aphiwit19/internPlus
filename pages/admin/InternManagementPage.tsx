@@ -808,11 +808,23 @@ const InternManagementPage: React.FC = () => {
 
         (snap) => {
 
+          const milestoneLabel = (id: string, customLabel?: string) => {
+            if (id === 'end-program') return 'End Program';
+            const weekMatch = /^week-(\d+)$/.exec(id);
+            if (weekMatch) return `Week ${Number(weekMatch[1])}`;
+            const monthMatch = /^month-(\d+)$/.exec(id);
+            if (monthMatch) return `Month ${Number(monthMatch[1])}`;
+            const otherMatch = /^other-(\d+)$/.exec(id);
+            if (otherMatch) return (customLabel ?? '').trim() || `Other ${otherMatch[1]}`;
+            return (customLabel ?? '').trim() || id;
+          };
+
           const items: FeedbackItem[] = snap.docs.map((d) => {
 
           const data = d.data() as FeedbackMilestoneDoc;
 
-          const label = d.id;
+          const customLabel = typeof (data as any)?.customLabel === 'string' ? String((data as any).customLabel) : undefined;
+          const label = milestoneLabel(d.id, customLabel);
 
 
 

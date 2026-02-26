@@ -88,7 +88,6 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang: _lang
   const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
   const [configSteps, setConfigSteps] = useState<ConfigRoadmapStep[] | null>(null);
-  const [roadmapPage, setRoadmapPage] = useState(1);
 
   useEffect(() => {
     const ref = doc(firestoreDb, 'config', 'systemSettings');
@@ -215,25 +214,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang: _lang
     });
   }, [orderedConfigSteps, requiredDocs, i18n.language]);
 
-  const ROADMAP_PAGE_SIZE = 2;
-
-  const roadmapPageCount = useMemo(() => {
-    const count = Math.ceil(ROADMAP_STEPS.length / ROADMAP_PAGE_SIZE);
-    return count > 0 ? count : 1;
-  }, [ROADMAP_STEPS.length]);
-
-  useEffect(() => {
-    setRoadmapPage((prev) => {
-      if (prev < 1) return 1;
-      if (prev > roadmapPageCount) return roadmapPageCount;
-      return prev;
-    });
-  }, [roadmapPageCount]);
-
-  const DISPLAYED_ROADMAP_STEPS = useMemo(() => {
-    const start = (roadmapPage - 1) * ROADMAP_PAGE_SIZE;
-    return ROADMAP_STEPS.slice(start, start + ROADMAP_PAGE_SIZE);
-  }, [ROADMAP_STEPS, roadmapPage]);
+  const DISPLAYED_ROADMAP_STEPS = ROADMAP_STEPS;
 
   const completedCount = ROADMAP_STEPS.filter((s) => s.status === 'completed').length;
   const totalSteps = ROADMAP_STEPS.length;
@@ -342,45 +323,6 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ onNavigate, lang: _lang
                 </div>
               </div>
               ))}
-
-              {roadmapPageCount > 1 && (
-                <div className="pt-2 flex justify-center">
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl px-3 py-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRoadmapPage((p) => Math.max(1, p - 1))}
-                      disabled={roadmapPage <= 1}
-                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-
-                    {Array.from({ length: roadmapPageCount }, (_, i) => i + 1).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setRoadmapPage(p)}
-                        className={`w-10 h-10 rounded-xl border text-[12px] font-black transition-all ${
-                          p === roadmapPage
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-slate-50 text-slate-700 border-slate-100 hover:border-slate-200'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => setRoadmapPage((p) => Math.min(roadmapPageCount, p + 1))}
-                      disabled={roadmapPage >= roadmapPageCount}
-                      className="w-10 h-10 rounded-xl border border-slate-100 bg-slate-50 text-slate-400 hover:text-slate-900 hover:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

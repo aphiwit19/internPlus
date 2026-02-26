@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   CreditCard, 
   FileText, 
@@ -51,11 +51,39 @@ interface ProfilePageProps {
   lang: Language;
 }
 
+const normalizeInternPeriodInput = (value: string) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (raw.toUpperCase() === 'TBD') return 'TBD';
+
+  const isoMatches = raw.match(/\d{4}-\d{2}-\d{2}/g);
+  if (isoMatches && isoMatches.length >= 2) {
+    return `${isoMatches[0]} - ${isoMatches[1]}`;
+  }
+
+  const dmyMatches = raw.match(/\d{2}\/\d{2}\/\d{4}/g);
+  if (dmyMatches && dmyMatches.length >= 2) {
+    const toIso = (dmy: string) => {
+      const [dd, mm, yyyy] = dmy.split('/');
+      if (!dd || !mm || !yyyy) return null;
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const startIso = toIso(dmyMatches[0]);
+    const endIso = toIso(dmyMatches[1]);
+    if (startIso && endIso) return `${startIso} - ${endIso}`;
+  }
+
+  return null;
+};
+
 const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+
+  const [profileSaveNotice, setProfileSaveNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const profileSaveNoticeTimeoutRef = useRef<number | null>(null);
 
   const buildInitialDocuments = (): DocumentStatus[] => [
     { id: '1', label: tr('intern_profile.documents.national_id_passport'), fileName: 'Alex_Rivera_Passport.pdf', isUploaded: true, icon: <CreditCard size={18} /> },
@@ -81,6 +109,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   const [supervisorProfile, setSupervisorProfile] = useState<UserProfile | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmNewPassword: '' });
   const [pwError, setPwError] = useState<string | null>(null);
@@ -199,6 +228,28 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
 
   const handleSaveProfile = async () => {
     if (!user) return;
+    if (isProfileSaving) return;
+
+    if (profileSaveNoticeTimeoutRef.current != null) {
+      window.clearTimeout(profileSaveNoticeTimeoutRef.current);
+      profileSaveNoticeTimeoutRef.current = null;
+    }
+    setProfileSaveNotice(null);
+    setIsProfileSaving(true);
+
+    const normalizedInternPeriod = normalizeInternPeriodInput(editForm.internPeriod);
+    if (normalizedInternPeriod === null) {
+      setIsProfileSaving(false);
+      setProfileSaveNotice({
+        type: 'error',
+        message:
+          (i18n.language ?? '').toLowerCase().startsWith('th')
+            ? 'กรุณากรอกช่วงฝึกงานเป็นรูปแบบ YYYY-MM-DD - YYYY-MM-DD'
+            : 'Please enter internship period in format YYYY-MM-DD - YYYY-MM-DD',
+      });
+      return;
+    }
+
     const coreSkillsParsed = editForm.coreSkillsText
       .split(',')
       .map((x) => x.trim())
@@ -213,21 +264,40 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
         return { name: name || '', level: level || '' };
       })
       .filter((x) => x.name);
-    await updateDoc(doc(firestoreDb, 'users', user.id), {
-      name: editForm.name,
-      phone: editForm.phone,
-      department: editForm.department,
-      position: editForm.position,
-      studentId: editForm.studentId,
-      internPeriod: editForm.internPeriod,
-      bankName: editForm.bankName,
-      bankAccountNumber: editForm.bankAccountNumber,
-      professionalSummary: editForm.professionalSummary,
-      coreSkills: coreSkillsParsed,
-      professionalGoal: editForm.professionalGoal,
-      languageSkills: languageSkillsParsed,
-    });
-    setIsEditing(false);
+    try {
+      await updateDoc(doc(firestoreDb, 'users', user.id), {
+        name: editForm.name,
+        phone: editForm.phone,
+        department: editForm.department,
+        position: editForm.position,
+        studentId: editForm.studentId,
+        internPeriod: normalizedInternPeriod,
+        bankName: editForm.bankName,
+        bankAccountNumber: editForm.bankAccountNumber,
+        professionalSummary: editForm.professionalSummary,
+        coreSkills: coreSkillsParsed,
+        professionalGoal: editForm.professionalGoal,
+        languageSkills: languageSkillsParsed,
+        updatedAt: serverTimestamp(),
+      });
+      setIsEditing(false);
+      setProfileSaveNotice({
+        type: 'success',
+        message: (i18n.language ?? '').toLowerCase().startsWith('th') ? 'บันทึกโปรไฟล์เรียบร้อยแล้ว' : 'Profile saved',
+      });
+      profileSaveNoticeTimeoutRef.current = window.setTimeout(() => {
+        setProfileSaveNotice(null);
+        profileSaveNoticeTimeoutRef.current = null;
+      }, 2500);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      setProfileSaveNotice({
+        type: 'error',
+        message: `${e?.code ?? 'unknown'}: ${e?.message ?? ((i18n.language ?? '').toLowerCase().startsWith('th') ? 'บันทึกไม่สำเร็จ' : 'Failed to save')}`,
+      });
+    } finally {
+      setIsProfileSaving(false);
+    }
   };
 
   const openChangePassword = () => {
@@ -340,6 +410,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
           onChange={setEditForm}
           onClose={() => setIsEditing(false)}
           onSave={() => void handleSaveProfile()}
+          isSaving={isProfileSaving}
         />
       )}
 
@@ -359,6 +430,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
       {avatarUploadError ? (
         <div className="mb-6 bg-rose-50 border border-rose-100 text-rose-700 rounded-[1.5rem] px-6 py-4 text-sm font-bold">
           {avatarUploadError}
+        </div>
+      ) : null}
+
+      {profileSaveNotice ? (
+        <div
+          className={`mb-6 rounded-[1.5rem] px-6 py-4 text-sm font-bold border ${
+            profileSaveNotice.type === 'success'
+              ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+              : 'bg-rose-50 border-rose-100 text-rose-700'
+          }`}
+        >
+          {profileSaveNotice.message}
         </div>
       ) : null}
       
@@ -432,7 +515,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
                         <div className="w-1.5 h-6 bg-blue-600 rounded-full"></div>
                         {tr('intern_profile.summary.title')}
                       </h3>
-                      <button onClick={() => setIsEditing(true)} className="text-blue-600 font-black text-[11px] uppercase tracking-widest hover:underline">{tr('intern_profile.actions.edit')}</button>
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+                      >
+                        {tr('intern_profile.actions.edit')}
+                      </button>
                    </div>
                    <p className="text-sm text-slate-500 font-medium leading-relaxed mb-12 italic opacity-80">
                      {summary ? `"${summary}"` : summaryPlaceholder}
@@ -593,16 +681,19 @@ const EditProfileModal: React.FC<{
   }) => void;
   onClose: () => void;
   onSave: () => void;
-}> = ({ lang: _lang, form, onChange, onClose, onSave }) => {
+  isSaving?: boolean;
+}> = ({ lang: _lang, form, onChange, onClose, onSave, isSaving }) => {
   const { t } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
+
+  const internPeriodPlaceholder = 'YYYY-MM-DD - YYYY-MM-DD';
 
   return (
     <>
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={onClose} />
-      <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
-          <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+      <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4">
+        <div className="w-full max-w-2xl bg-white rounded-[1.75rem] sm:rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col">
+          <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h3 className="text-xl font-black text-slate-900 tracking-tight">{tr('intern_profile.edit_modal.title')}</h3>
             </div>
@@ -610,14 +701,25 @@ const EditProfileModal: React.FC<{
               <X size={18} />
             </button>
           </div>
-          <div className="p-8">
+          <div className="p-5 sm:p-8 overflow-y-auto flex-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label={tr('intern_profile.edit_modal.fields.name')} value={form.name} onChange={(v) => onChange({ ...form, name: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.phone')} value={form.phone} onChange={(v) => onChange({ ...form, phone: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.department')} value={form.department} onChange={(v) => onChange({ ...form, department: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.position')} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.student_id')} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
-              <Field label={tr('intern_profile.edit_modal.fields.intern_period')} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
+              <Field
+                label={tr('intern_profile.edit_modal.fields.intern_period')}
+                value={form.internPeriod}
+                placeholder={internPeriodPlaceholder}
+                onChange={(v) => onChange({ ...form, internPeriod: v })}
+                onBlur={() => {
+                  const normalized = normalizeInternPeriodInput(form.internPeriod);
+                  if (normalized !== null && normalized !== form.internPeriod) {
+                    onChange({ ...form, internPeriod: normalized });
+                  }
+                }}
+              />
               <Field label={tr('intern_profile.edit_modal.fields.bank')} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.bank_account_number')} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
             </div>
@@ -660,8 +762,12 @@ const EditProfileModal: React.FC<{
               <button onClick={onClose} className="px-6 py-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-white transition-all">
                 {tr('intern_profile.edit_modal.actions.cancel')}
               </button>
-              <button onClick={onSave} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20">
-                {tr('intern_profile.edit_modal.actions.save')}
+              <button
+                onClick={onSave}
+                disabled={!!isSaving}
+                className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-50"
+              >
+                {isSaving ? (tr('intern_profile.edit_modal.actions.save') + '...') : tr('intern_profile.edit_modal.actions.save')}
               </button>
             </div>
           </div>
@@ -671,12 +777,20 @@ const EditProfileModal: React.FC<{
   );
 };
 
-const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; onBlur?: () => void }> = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  onBlur,
+}) => (
   <label className="space-y-2">
     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+      placeholder={placeholder}
       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
     />
   </label>

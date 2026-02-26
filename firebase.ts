@@ -48,11 +48,13 @@ if (typeof window !== 'undefined') {
   if (import.meta.env.DEV) {
     try {
       const opts = firebaseApp.options as any;
-      console.log('Firebase runtime config', {
+      const payload = {
         projectId: opts?.projectId,
         authDomain: opts?.authDomain,
         storageBucket: opts?.storageBucket,
-      });
+      };
+      console.log('Firebase runtime config', payload);
+      console.log('Firebase runtime config (json)', JSON.stringify(payload));
     } catch {
       // ignore
     }

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Language } from '@/types';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 import { useAppContext } from '@/app/AppContext';
 import { createLeaveRepository } from '@/app/leaveRepository';
@@ -25,6 +26,7 @@ interface ActivityEvent {
   day: string;
   month: { EN: string; TH: string };
   title: { EN: string; TH: string };
+  statusLabel?: { EN: string; TH: string };
   time: string;
   type: 'LEARNING' | 'MEETING' | 'DEADLINE' | 'TASK' | 'LEAVE' | 'EVALUATION';
   internName?: string;
@@ -49,6 +51,28 @@ type UniversityEvaluationFile = {
 type UniversityEvaluationDoc = {
   links?: UniversityEvaluationLink[];
   files?: UniversityEvaluationFile[];
+  submittedLinks?: UniversityEvaluationLink[];
+  submittedFiles?: UniversityEvaluationFile[];
+  appointmentRequest?: {
+    date?: string;
+    time?: string;
+    status?: 'DRAFT' | 'REQUESTED' | 'CONFIRMED' | 'RESCHEDULED' | 'CANCELLED' | 'DONE';
+    mode?: 'ONLINE' | 'COMPANY';
+    note?: string;
+    supervisorNote?: string;
+    updatedAt?: unknown;
+  };
+  appointmentHistory?: Array<{
+    id: string;
+    actor: 'INTERN' | 'SUPERVISOR';
+    date?: string;
+    time?: string;
+    status?: string;
+    mode?: string;
+    note?: string;
+    supervisorNote?: string;
+    createdAt?: unknown;
+  }>;
 };
 
 interface ActivitiesPageProps {
@@ -63,7 +87,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
   const trLng = (lng: 'en' | 'th', key: string, options?: any) => String(t(key, { ...(options ?? {}), lng }));
   const uiLang: Language = (i18n.resolvedLanguage ?? i18n.language) === 'th' ? 'TH' : 'EN';
 
-  const [viewMode, setViewMode] = useState<'ALL' | 'LEAVE' | 'TASK'>('ALL');
+  const [viewMode, setViewMode] = useState<'ALL' | 'LEAVE' | 'TASK' | 'EVALUATION'>('ALL');
 
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
@@ -76,6 +100,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
   const [leaveActivities, setLeaveActivities] = useState<ActivityEvent[]>([]);
   const [taskActivities, setTaskActivities] = useState<ActivityEvent[]>([]);
   const [evaluationActivities, setEvaluationActivities] = useState<ActivityEvent[]>([]);
+
+  const [universityEvaluation, setUniversityEvaluation] = useState<UniversityEvaluationDoc | null>(null);
 
   const monthLabel = (d: Date) => {
     const m = d.getUTCMonth();
@@ -235,6 +261,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
   useEffect(() => {
     if (!user) {
       setEvaluationActivities([]);
+      setUniversityEvaluation(null);
       return;
     }
 
@@ -267,14 +294,75 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
     return onSnapshot(ref, (snap) => {
       if (!snap.exists()) {
         setEvaluationActivities([]);
+        setUniversityEvaluation(null);
         return;
       }
 
       const data = snap.data() as UniversityEvaluationDoc;
+      setUniversityEvaluation(data);
       const links = Array.isArray(data.links) ? data.links : [];
       const files = Array.isArray(data.files) ? data.files : [];
+      const submittedLinks = Array.isArray((data as any).submittedLinks) ? ((data as any).submittedLinks as any[]) : [];
+      const submittedFiles = Array.isArray((data as any).submittedFiles) ? ((data as any).submittedFiles as any[]) : [];
+
+      const apptHistory = Array.isArray((data as any)?.appointmentHistory) ? ((data as any).appointmentHistory as any[]) : [];
+      const appt = (data as any)?.appointmentRequest ?? null;
 
       const events: ActivityEvent[] = [];
+
+      const apptStatusLabel = (s: string) => {
+        const v = String(s ?? '').toUpperCase();
+        if (v === 'REQUESTED') return { EN: 'Requested', TH: 'ขอแล้ว' };
+        if (v === 'CONFIRMED') return { EN: 'Confirmed', TH: 'ยืนยันแล้ว' };
+        if (v === 'RESCHEDULED') return { EN: 'Rescheduled', TH: 'เลื่อนนัด' };
+        if (v === 'CANCELLED') return { EN: 'Cancelled', TH: 'ยกเลิก' };
+        if (v === 'DONE') return { EN: 'Done', TH: 'เสร็จแล้ว' };
+        return { EN: 'Updated', TH: 'อัปเดต' };
+      };
+
+      const draftStatusLabel = { EN: 'Draft', TH: 'แบบร่าง' };
+      const submittedStatusLabel = { EN: 'Submitted', TH: 'ส่งแล้ว' };
+
+      const pushAppointmentEvent = (raw: any, source: 'history' | 'current') => {
+        const dateKey = typeof raw?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date)
+          ? raw.date
+          : (() => {
+              const created = parseCreatedAt(raw?.createdAt ?? raw?.updatedAt) ?? null;
+              const d = created ?? new Date();
+              return toDateKey(d);
+            })();
+
+        const d = new Date(`${dateKey}T00:00:00.000Z`);
+        const safeD = Number.isNaN(d.getTime()) ? new Date() : d;
+        const day = String(safeD.getUTCDate()).padStart(2, '0');
+
+        const st = String(raw?.status ?? '').trim();
+        const statusTitle = apptStatusLabel(st);
+        const mode = String(raw?.mode ?? '').trim();
+        const modeSuffix = mode ? ` (${mode})` : '';
+
+        events.push({
+          id: `evaluation:appointment:${source}:${String(raw?.id ?? st ?? 'x')}:${dateKey}`,
+          day,
+          month: monthLabel(safeD),
+          title: {
+            EN: `${statusTitle.EN}${modeSuffix}`,
+            TH: `${statusTitle.TH}${modeSuffix}`,
+          },
+          statusLabel: statusTitle,
+          time: typeof raw?.time === 'string' && raw.time.trim() ? raw.time.trim() : tr('intern_activities.time.unknown'),
+          type: 'EVALUATION',
+        });
+      };
+
+      apptHistory.forEach((h: any) => {
+        const st = String(h?.status ?? '').trim();
+        if (!st) return;
+        pushAppointmentEvent(h, 'history');
+      });
+      if (appt && String(appt?.status ?? '').trim() && String(appt?.status ?? '').trim().toUpperCase() !== 'DRAFT') {
+        pushAppointmentEvent(appt, 'current');
+      }
 
       links.forEach((l) => {
         const created = parseCreatedAt(l.createdAt) ?? null;
@@ -289,8 +377,28 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
             EN: trLng('en', 'intern_activities.event_titles.evaluation_link', { label: l.label } as any),
             TH: trLng('th', 'intern_activities.event_titles.evaluation_link', { label: l.label } as any),
           },
+          statusLabel: draftStatusLabel,
           time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
-          type: 'TASK',
+          type: 'EVALUATION',
+        });
+      });
+
+      submittedLinks.forEach((l: any) => {
+        const created = parseCreatedAt(l?.createdAt) ?? null;
+        const d = created ?? new Date();
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const dateKey = toDateKey(d);
+        events.push({
+          id: `evaluation:submittedLink:${String(l?.id ?? '')}:${dateKey}`,
+          day,
+          month: monthLabel(d),
+          title: {
+            EN: trLng('en', 'intern_activities.event_titles.evaluation_link', { label: String(l?.label ?? '') } as any),
+            TH: trLng('th', 'intern_activities.event_titles.evaluation_link', { label: String(l?.label ?? '') } as any),
+          },
+          statusLabel: submittedStatusLabel,
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
+          type: 'EVALUATION',
         });
       });
 
@@ -308,8 +416,30 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
             EN: trLng('en', 'intern_activities.event_titles.university_doc', { category: cat, label: f.label } as any),
             TH: trLng('th', 'intern_activities.event_titles.university_doc', { category: cat, label: f.label } as any),
           },
+          statusLabel: draftStatusLabel,
           time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
-          type: 'TASK',
+          type: 'EVALUATION',
+        });
+      });
+
+      submittedFiles.forEach((f: any) => {
+        const created = parseCreatedAt(f?.createdAt) ?? null;
+        const d = created ?? new Date();
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const dateKey = toDateKey(d);
+        const catRaw = typeof f?.category === 'string' ? f.category : '';
+        const cat = catRaw ? ` (${catRaw})` : '';
+        events.push({
+          id: `evaluation:submittedFile:${String(f?.id ?? '')}:${dateKey}`,
+          day,
+          month: monthLabel(d),
+          title: {
+            EN: trLng('en', 'intern_activities.event_titles.university_doc', { category: cat, label: String(f?.label ?? '') } as any),
+            TH: trLng('th', 'intern_activities.event_titles.university_doc', { category: cat, label: String(f?.label ?? '') } as any),
+          },
+          statusLabel: submittedStatusLabel,
+          time: created ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : tr('intern_activities.time.unknown'),
+          type: 'EVALUATION',
         });
       });
 
@@ -358,7 +488,8 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
     const filtered = merged.filter((ev) => {
       if (viewMode === 'ALL') return true;
       if (viewMode === 'LEAVE') return ev.type === 'LEAVE';
-      if (viewMode === 'TASK') return ev.type === 'TASK';
+      if (viewMode === 'TASK') return ev.type === 'TASK' || ev.type === 'EVALUATION';
+      if (viewMode === 'EVALUATION') return ev.type === 'EVALUATION';
       return true;
     });
 
@@ -411,9 +542,11 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
 
     const showLeaves = viewMode === 'ALL' || viewMode === 'LEAVE';
     const showTasks = viewMode === 'ALL' || viewMode === 'TASK';
+    const showEvaluation = viewMode === 'ALL' || viewMode === 'TASK' || viewMode === 'EVALUATION';
     return {
       leave: showLeaves ? setFor(leaveActivities) : new Set<string>(),
-      task: showTasks ? setFor([...taskActivities, ...evaluationActivities]) : new Set<string>(),
+      task: showTasks ? setFor(taskActivities) : new Set<string>(),
+      evaluation: showEvaluation ? setFor(evaluationActivities) : new Set<string>(),
     };
   }, [leaveActivities, taskActivities, evaluationActivities, viewMode]);
 
@@ -447,6 +580,15 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
             </button>
             <button
               type="button"
+              onClick={() => setViewMode('EVALUATION')}
+              className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                viewMode === 'EVALUATION' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {uiLang === 'TH' ? 'Evaluation' : 'Evaluation'}
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode('TASK')}
               className={`px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest transition-all ${
                 viewMode === 'TASK' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
@@ -459,6 +601,59 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-8 space-y-4">
+            {(() => {
+              const linksDraft = Array.isArray(universityEvaluation?.links) ? universityEvaluation!.links : [];
+              const filesDraft = Array.isArray(universityEvaluation?.files) ? universityEvaluation!.files : [];
+              const linksSubmitted = Array.isArray((universityEvaluation as any)?.submittedLinks)
+                ? ((universityEvaluation as any).submittedLinks as any[])
+                : [];
+              const filesSubmitted = Array.isArray((universityEvaluation as any)?.submittedFiles)
+                ? ((universityEvaluation as any).submittedFiles as any[])
+                : [];
+
+              const linksCount = linksDraft.length + linksSubmitted.length;
+              const filesCount = filesDraft.length + filesSubmitted.length;
+              const hasAny = linksCount > 0 || filesCount > 0;
+              if (!universityEvaluation || !hasAny) return null;
+
+              return (
+                <div className="bg-white rounded-[1.5rem] p-6 border border-slate-100/60 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.35em]">
+                        {uiLang === 'TH' ? 'UNIVERSITY EVALUATION' : 'UNIVERSITY EVALUATION'}
+                      </div>
+                      <div className="text-sm font-black text-slate-800 mt-2">
+                        {uiLang === 'TH' ? 'เอกสารประเมินมหาวิทยาลัย' : 'University evaluation documents'}
+                      </div>
+                    </div>
+
+                    <Link
+                      to="/intern/evaluation"
+                      className="px-5 py-2.5 rounded-[1.25rem] text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-800 transition-all"
+                    >
+                      {uiLang === 'TH' ? 'เปิด' : 'Open'}
+                    </Link>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-50 rounded-[1.25rem] border border-slate-100">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{uiLang === 'TH' ? 'ลิงก์' : 'Links'}</div>
+                      <div className="text-2xl font-black text-slate-900 mt-2">
+                        {linksCount}
+                      </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-[1.25rem] border border-slate-100">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{uiLang === 'TH' ? 'ไฟล์' : 'Files'}</div>
+                      <div className="text-2xl font-black text-slate-900 mt-2">
+                        {filesCount}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {groupedActivities.length === 0 ? (
               <div className="bg-white rounded-[1.5rem] p-10 border border-slate-100/60 shadow-sm">
                 <div className="flex items-center gap-4">
@@ -490,12 +685,16 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
                             {item.title[uiLang]}
                           </h3>
                         </div>
-                        <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-wider">{item.time}</p>
+                        <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-wider">
+                          {item.time}
+                          {item.statusLabel ? `  •  ${item.statusLabel[uiLang]}` : ''}
+                        </p>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black tracking-widest uppercase border ${
                           item.type === 'TASK' ? 'bg-slate-50 text-slate-600 border-slate-100' :
                           item.type === 'LEAVE' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+                          item.type === 'EVALUATION' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
                           'bg-red-50 text-red-500 border-red-100'
                         }`}>{item.type === 'LEAVE' ? tr('intern_activities.labels.absence_log') : item.type}</span>
                       </div>
@@ -559,6 +758,7 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
                     const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const hasLeave = markerMap.leave.has(dateKey);
                     const hasTask = markerMap.task.has(dateKey);
+                    const hasEvaluation = markerMap.evaluation.has(dateKey);
                     const isSelected = selectedDateKey === dateKey;
 
                     return (
@@ -574,9 +774,10 @@ const ActivitiesPage: React.FC<ActivitiesPageProps> = ({ lang: _lang }) => {
                         }`}
                       >
                         {day}
-                        {!isToday && (hasTask || hasLeave) && (
+                        {!isToday && (hasTask || hasLeave || hasEvaluation) && (
                           <div className="absolute bottom-1.5 flex items-center gap-1">
                             {hasTask && <div className="w-1 h-1 bg-blue-400 rounded-full"></div>}
+                            {hasEvaluation && <div className="w-1 h-1 bg-indigo-400 rounded-full"></div>}
                             {hasLeave && <div className="w-1 h-1 bg-rose-400 rounded-full"></div>}
                           </div>
                         )}

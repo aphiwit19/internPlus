@@ -700,7 +700,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-900 truncate">{meta.label}</p>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
-                              {req?.fileName ?? (Array.isArray(req?.attachmentLinks) ? req?.attachmentLinks?.[0] : '') ?? tr('admin_certificates_page.no_request_yet')}
+                              {req?.fileName ??
+                                (Array.isArray(req?.attachmentLinks) ? String(req?.attachmentLinks?.[0] ?? '') : '') ??
+                                tr('admin_certificates_page.no_request_yet')}
                             </p>
                           </div>
                         </div>
@@ -720,9 +722,9 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                         )}
                       </div>
 
-                      <div className="mt-4 flex items-center justify-end gap-3">
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
                         {status === 'REQUESTED' && req ? (
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3 justify-end w-full">
                             {meta.type === 'COMPLETION' ? (
                               <>
                                 <select
@@ -733,7 +735,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                       [meta.type]: e.target.value,
                                     }))
                                   }
-                                  className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700"
+                                  className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs font-bold text-slate-700 min-w-[180px] max-w-full w-full sm:w-auto"
                                 >
                                   <option value="">{tr('admin_certificates_page.select_template')}</option>
                                   {templatesByType[meta.type].map((tpl) => (
@@ -747,7 +749,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                   type="button"
                                   onClick={() => void handleGenerate(req)}
                                   disabled={generatingId === req.id}
-                                  className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                                  className="px-6 py-3 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                                 >
                                   {generatingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
                                   {generatingId === req.id
@@ -759,7 +761,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                   <button
                                     type="button"
                                     onClick={() => openEdit(req)}
-                                    className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50"
+                                    className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 whitespace-nowrap"
                                   >
                                     {tr('admin_certificates_page.actions.edit')}
                                   </button>
@@ -771,7 +773,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                               type="button"
                               onClick={() => openUpload(req.id)}
                               disabled={uploadingId === req.id}
-                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                              className="px-6 py-3 rounded-2xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                             >
                               {uploadingId === req.id ? <Clock size={16} className="animate-spin" /> : <Upload size={16} />}
                               {uploadingId === req.id
@@ -784,7 +786,7 @@ const AdminCertificatesPage: React.FC<AdminCertificatesPageProps> = ({ lang }) =
                                 type="button"
                                 onClick={() => openAttachLink(req.id)}
                                 disabled={savingLinkId === req.id}
-                                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50"
+                                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap"
                               >
                                 {tr('admin_certificates_page.actions.attach_link')}
                               </button>

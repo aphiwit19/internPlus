@@ -590,7 +590,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                           <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.start_date')}</label>
                           <input 
                             type="date" 
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black text-white outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
                             value={newRequest.startDate}
                             onChange={e => setNewRequest({...newRequest, startDate: e.target.value})}
                           />
@@ -599,7 +599,7 @@ const LeaveRequestCore: React.FC<LeaveRequestCoreProps> = ({
                           <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 block">{t('leave.end_date')}</label>
                           <input 
                             type="date" 
-                            className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xs font-black text-white outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
+                            className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-xs font-black text-slate-900 outline-none focus:ring-8 focus:ring-blue-500/10 transition-all"
                             value={newRequest.endDate}
                             onChange={e => setNewRequest({...newRequest, endDate: e.target.value})}
                           />

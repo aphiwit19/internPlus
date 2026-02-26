@@ -76,6 +76,11 @@ type EvaluationLabels = {
   workPerformance: string;
 };
 
+ type DashboardPreviewLabels = {
+   metrics: string[];
+   comments: string[];
+ };
+
 type WithdrawalUserRow = {
   id: string;
   name: string;
@@ -170,6 +175,9 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
   const [newStepType, setNewStepType] = useState<ProcessType>('MODULE_LINK');
   const [newStepTargetPage, setNewStepTargetPage] = useState<PageId | undefined>(undefined);
   const [newStepExternalUrl, setNewStepExternalUrl] = useState('');
+
+  const [evalEditHeadingsOpen, setEvalEditHeadingsOpen] = useState(true);
+  const [evalEditPreviewOpen, setEvalEditPreviewOpen] = useState(true);
 
   const [dialog, setDialog] = useState<{
     open: boolean;
@@ -377,6 +385,35 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
     return monthKeyFromDate(x);
   });
 
+  const [dashboardPreviewLabelsByLang, setDashboardPreviewLabelsByLang] = useState<{ EN: DashboardPreviewLabels; TH: DashboardPreviewLabels }>({
+    EN: {
+      metrics: [
+        'TECHNICAL PROFICIENCY',
+        'TEAM COMMUNICATION',
+        'PUNCTUALITY & RELIABILITY',
+        'SELF-INITIATIVE',
+      ],
+      comments: [
+        'OVERALL EVALUATION & COMMENTS',
+        'WORK PERFORMANCE',
+        'ADDITIONAL COMMENTS',
+      ],
+    },
+    TH: {
+      metrics: [
+        'ทักษะด้านเทคนิค',
+        'การสื่อสารและการทำงานร่วมกัน',
+        'ความตรงต่อเวลาและความรับผิดชอบ',
+        'ความริเริ่มและการแก้ปัญหา',
+      ],
+      comments: [
+        'ภาพรวมและความคิดเห็น',
+        'ผลงานการทำงาน',
+        'ความคิดเห็นเพิ่มเติม',
+      ],
+    },
+  });
+
   const [selectedPayPeriodMonthKey, setSelectedPayPeriodMonthKey] = useState(() => monthKeyFromDate(new Date()));
   const [payPeriodStartDate, setPayPeriodStartDate] = useState('');
   const [payPeriodEndDate, setPayPeriodEndDate] = useState('');
@@ -445,6 +482,11 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             EN?: Partial<EvaluationLabels>;
             TH?: Partial<EvaluationLabels>;
           };
+
+          dashboardPreviewLabels?: {
+            EN?: Partial<DashboardPreviewLabels>;
+            TH?: Partial<DashboardPreviewLabels>;
+          };
         };
 
         if (Array.isArray(data.onboardingSteps) && data.onboardingSteps.length > 0) {
@@ -481,6 +523,24 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             EN: { ...prev.EN, ...(data.evaluationLabels?.EN ?? {}) },
             TH: { ...prev.TH, ...(data.evaluationLabels?.TH ?? {}) },
           }));
+        }
+
+        if (data.dashboardPreviewLabels) {
+          setDashboardPreviewLabelsByLang((prev) => {
+            const safeLang = (next: Partial<DashboardPreviewLabels> | undefined, fallback: DashboardPreviewLabels): DashboardPreviewLabels => {
+              const nextMetrics = Array.isArray(next?.metrics) ? next?.metrics?.filter((x) => typeof x === 'string') : undefined;
+              const nextComments = Array.isArray(next?.comments) ? next?.comments?.filter((x) => typeof x === 'string') : undefined;
+              return {
+                metrics: nextMetrics && nextMetrics.length > 0 ? nextMetrics : fallback.metrics,
+                comments: nextComments && nextComments.length > 0 ? nextComments : fallback.comments,
+              };
+            };
+
+            return {
+              EN: safeLang(data.dashboardPreviewLabels?.EN, prev.EN),
+              TH: safeLang(data.dashboardPreviewLabels?.TH, prev.TH),
+            };
+          });
         }
       },
       () => {
@@ -983,6 +1043,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
             retentionPeriod: '1 Month post-offboard',
           },
           evaluationLabels: evaluationLabelsByLang,
+          dashboardPreviewLabels: dashboardPreviewLabelsByLang,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -2168,96 +2229,388 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
                     <div className="p-8 bg-slate-50 border border-slate-100 rounded-[2.5rem]">
                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'ตัวอย่าง (Dashboard)' : 'PREVIEW (DASHBOARD)'} </div>
                       <div className="mt-6 space-y-6">
-                        <div>
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].technical}</div>
-                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
-                            <div className="h-full bg-blue-600" style={{ width: '78%' }} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].communication}</div>
-                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
-                            <div className="h-full bg-indigo-600" style={{ width: '72%' }} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].punctuality}</div>
-                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
-                            <div className="h-full bg-emerald-500" style={{ width: '85%' }} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{evaluationLabelsByLang[lang].initiative}</div>
-                          <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
-                            <div className="h-full bg-rose-500" style={{ width: '66%' }} />
-                          </div>
-                        </div>
+                        {dashboardPreviewLabelsByLang[lang].metrics.map((label, idx) => {
+                          const widths = ['78%', '72%', '85%', '66%', '74%', '81%', '69%', '90%'];
+                          const colors = ['bg-blue-600', 'bg-indigo-600', 'bg-emerald-500', 'bg-rose-500', 'bg-amber-500', 'bg-cyan-600', 'bg-violet-600', 'bg-lime-600'];
+                          return (
+                            <div key={`${label}-${idx}`}>
+                              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{label}</div>
+                              <div className="h-3 w-full bg-white rounded-full border border-slate-200 overflow-hidden">
+                                <div className={`h-full ${colors[idx % colors.length]}`} style={{ width: widths[idx % widths.length] }} />
+                              </div>
+                            </div>
+                          );
+                        })}
 
-                        <div className="pt-2">
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{evaluationLabelsByLang[lang].overallComments}</div>
-                          <div className="text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-2xl p-4">
-                            {lang === 'TH' ? 'ตัวอย่างข้อความความคิดเห็น' : 'Sample evaluation comments'}
+                        {dashboardPreviewLabelsByLang[lang].comments.map((label, idx) => (
+                          <div key={`${label}-${idx}`} className={idx === 0 ? 'pt-2' : undefined}>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{label}</div>
+                            <div className="text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-2xl p-4">
+                              {lang === 'TH' ? 'ตัวอย่างข้อความความคิดเห็น' : 'Sample evaluation comments'}
+                            </div>
                           </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-2">{evaluationLabelsByLang[lang].workPerformance}</div>
-                          <div className="text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-2xl p-4">
-                            {lang === 'TH' ? 'ตัวอย่างข้อความผลงานการทำงาน' : 'Sample work performance comments'}
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
 
                     <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem]">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (EN)' : 'EDIT HEADINGS (EN)'} </div>
+                      <button
+                        type="button"
+                        onClick={() => setEvalEditHeadingsOpen((v) => !v)}
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-white hover:border-blue-200 transition-all"
+                      >
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขหัวข้อ (EN/TH)' : 'EDIT HEADINGS (EN/TH)'} </div>
+                        <ChevronDown
+                          size={20}
+                          className={`text-slate-500 transition-transform ${evalEditHeadingsOpen ? 'rotate-0' : '-rotate-90'}`}
+                        />
+                      </button>
 
-                      <div className="mt-6 space-y-4">
-                        <input
-                          value={evaluationLabelsByLang.EN.technical}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, technical: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
-                        <input
-                          value={evaluationLabelsByLang.EN.communication}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, communication: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
-                        <input
-                          value={evaluationLabelsByLang.EN.punctuality}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, punctuality: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
-                        <input
-                          value={evaluationLabelsByLang.EN.initiative}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, initiative: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
-                        <input
-                          value={evaluationLabelsByLang.EN.overallComments}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, overallComments: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
-                        <input
-                          value={evaluationLabelsByLang.EN.workPerformance}
-                          onChange={(e) =>
-                            setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, workPerformance: e.target.value } }))
-                          }
-                          className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
-                        />
+                      {evalEditHeadingsOpen && (
+                      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">EN</div>
+                          <div className="mt-4 space-y-4">
+                            <input
+                              value={evaluationLabelsByLang.EN.technical}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, technical: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.EN.communication}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, communication: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.EN.punctuality}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, punctuality: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.EN.initiative}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, initiative: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.EN.overallComments}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, overallComments: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.EN.workPerformance}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, EN: { ...p.EN, workPerformance: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">TH</div>
+                          <div className="mt-4 space-y-4">
+                            <input
+                              value={evaluationLabelsByLang.TH.technical}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, technical: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.TH.communication}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, communication: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.TH.punctuality}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, punctuality: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.TH.initiative}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, initiative: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.TH.overallComments}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, overallComments: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                            <input
+                              value={evaluationLabelsByLang.TH.workPerformance}
+                              onChange={(e) =>
+                                setEvaluationLabelsByLang((p) => ({ ...p, TH: { ...p.TH, workPerformance: e.target.value } }))
+                              }
+                              className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      )}
+
+                        <div className="pt-6">
+                          <button
+                            type="button"
+                            onClick={() => setEvalEditPreviewOpen((v) => !v)}
+                            className="w-full flex items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-white hover:border-blue-200 transition-all"
+                          >
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{lang === 'TH' ? 'แก้ไขพรีวิว (EN/TH)' : 'EDIT PREVIEW (EN/TH)'}</div>
+                            <ChevronDown
+                              size={20}
+                              className={`text-slate-500 transition-transform ${evalEditPreviewOpen ? 'rotate-0' : '-rotate-90'}`}
+                            />
+                          </button>
+
+                          {evalEditPreviewOpen && (
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">EN</div>
+
+                                <div className="mt-4">
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{lang === 'TH' ? 'หัวข้อคะแนน' : 'METRICS'}</div>
+                                  <div className="space-y-3">
+                                    {dashboardPreviewLabelsByLang.EN.metrics.map((val, idx) => (
+                                      <div key={`en-metric-${idx}`} className="flex items-center gap-3">
+                                        <input
+                                          value={val}
+                                          onChange={(e) =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              EN: {
+                                                ...p.EN,
+                                                metrics: p.EN.metrics.map((x, i) => (i === idx ? e.target.value : x)),
+                                              },
+                                            }))
+                                          }
+                                          className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              EN: {
+                                                ...p.EN,
+                                                metrics: p.EN.metrics.filter((_, i) => i !== idx),
+                                              },
+                                            }))
+                                          }
+                                          className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
+                                          disabled={dashboardPreviewLabelsByLang.EN.metrics.length <= 1}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDashboardPreviewLabelsByLang((p) => ({
+                                          ...p,
+                                          EN: {
+                                            ...p.EN,
+                                            metrics: [...p.EN.metrics, lang === 'TH' ? 'หัวข้อคะแนนใหม่' : 'NEW METRIC'],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                                    >
+                                      <Plus size={16} /> {lang === 'TH' ? 'เพิ่มหัวข้อคะแนน' : 'ADD METRIC'}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mt-6">
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{lang === 'TH' ? 'หัวข้อคอมเม้นต์' : 'COMMENTS'}</div>
+                                  <div className="space-y-3">
+                                    {dashboardPreviewLabelsByLang.EN.comments.map((val, idx) => (
+                                      <div key={`en-comment-${idx}`} className="flex items-center gap-3">
+                                        <input
+                                          value={val}
+                                          onChange={(e) =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              EN: {
+                                                ...p.EN,
+                                                comments: p.EN.comments.map((x, i) => (i === idx ? e.target.value : x)),
+                                              },
+                                            }))
+                                          }
+                                          className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              EN: {
+                                                ...p.EN,
+                                                comments: p.EN.comments.filter((_, i) => i !== idx),
+                                              },
+                                            }))
+                                          }
+                                          className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
+                                          disabled={dashboardPreviewLabelsByLang.EN.comments.length <= 1}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDashboardPreviewLabelsByLang((p) => ({
+                                          ...p,
+                                          EN: {
+                                            ...p.EN,
+                                            comments: [...p.EN.comments, lang === 'TH' ? 'หัวข้อคอมเม้นต์ใหม่' : 'NEW COMMENT'],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                                    >
+                                      <Plus size={16} /> {lang === 'TH' ? 'เพิ่มหัวข้อคอมเม้นต์' : 'ADD COMMENT'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">TH</div>
+
+                                <div className="mt-4">
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{lang === 'TH' ? 'หัวข้อคะแนน' : 'METRICS'}</div>
+                                  <div className="space-y-3">
+                                    {dashboardPreviewLabelsByLang.TH.metrics.map((val, idx) => (
+                                      <div key={`th-metric-${idx}`} className="flex items-center gap-3">
+                                        <input
+                                          value={val}
+                                          onChange={(e) =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              TH: {
+                                                ...p.TH,
+                                                metrics: p.TH.metrics.map((x, i) => (i === idx ? e.target.value : x)),
+                                              },
+                                            }))
+                                          }
+                                          className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              TH: {
+                                                ...p.TH,
+                                                metrics: p.TH.metrics.filter((_, i) => i !== idx),
+                                              },
+                                            }))
+                                          }
+                                          className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
+                                          disabled={dashboardPreviewLabelsByLang.TH.metrics.length <= 1}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDashboardPreviewLabelsByLang((p) => ({
+                                          ...p,
+                                          TH: {
+                                            ...p.TH,
+                                            metrics: [...p.TH.metrics, 'หัวข้อคะแนนใหม่'],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                                    >
+                                      <Plus size={16} /> {lang === 'TH' ? 'เพิ่มหัวข้อคะแนน' : 'ADD METRIC'}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="mt-6">
+                                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-3">{lang === 'TH' ? 'หัวข้อคอมเม้นต์' : 'COMMENTS'}</div>
+                                  <div className="space-y-3">
+                                    {dashboardPreviewLabelsByLang.TH.comments.map((val, idx) => (
+                                      <div key={`th-comment-${idx}`} className="flex items-center gap-3">
+                                        <input
+                                          value={val}
+                                          onChange={(e) =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              TH: {
+                                                ...p.TH,
+                                                comments: p.TH.comments.map((x, i) => (i === idx ? e.target.value : x)),
+                                              },
+                                            }))
+                                          }
+                                          className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setDashboardPreviewLabelsByLang((p) => ({
+                                              ...p,
+                                              TH: {
+                                                ...p.TH,
+                                                comments: p.TH.comments.filter((_, i) => i !== idx),
+                                              },
+                                            }))
+                                          }
+                                          className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all"
+                                          disabled={dashboardPreviewLabelsByLang.TH.comments.length <= 1}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDashboardPreviewLabelsByLang((p) => ({
+                                          ...p,
+                                          TH: {
+                                            ...p.TH,
+                                            comments: [...p.TH.comments, 'หัวข้อคอมเม้นต์ใหม่'],
+                                          },
+                                        }))
+                                      }
+                                      className="w-full py-4 border-2 border-dashed border-slate-200 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                                    >
+                                      <Plus size={16} /> {lang === 'TH' ? 'เพิ่มหัวข้อคอมเม้นต์' : 'ADD COMMENT'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </section>
+                  </section>
               </div>
             </div>
           )}
