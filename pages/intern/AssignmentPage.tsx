@@ -416,6 +416,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
 
 
+
+
     return () => {
 
       unsubAssigned();
@@ -816,6 +818,51 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
 
 
+  const handleSaveTaskAttachmentsToDocuments = async (taskId: string, attachments: (string | { fileName: string; storagePath: string })[]) => {
+    if (!user || !selectedProject || !selectedKind) return;
+
+    const taskTitle = selectedProject.tasks.find(t => t.id === taskId)?.title || `Task ${taskId}`;
+    const baseLabel = `${selectedProject.title} - ${taskTitle}`;
+
+    for (const attachment of attachments) {
+      try {
+        if (typeof attachment === 'string') {
+          // Handle URL/link attachments
+          const label = `${baseLabel} - Link`;
+          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
+            label,
+            fileName: attachment,
+            url: attachment,
+            storagePath: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (attachment?.storagePath) {
+          // Handle file attachments - use original storagePath instead of copying
+          const label = `${baseLabel} - ${attachment.fileName}`;
+          
+          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
+            label,
+            fileName: attachment.fileName,
+            storagePath: attachment.storagePath, // Use original path
+            url: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch (error) {
+        console.error('Failed to save attachment to documents:', error);
+        showToast(_lang === 'TH' 
+          ? 'ไม่สามารถบันทึกเอกสารบางรายการได้' 
+          : 'Failed to save some attachments to documents');
+      }
+    }
+
+    showToast(_lang === 'TH' 
+      ? 'บันทึกเอกสารไปยัง Documents เรียบร้อยแล้ว' 
+      : 'Attachments saved to Documents successfully');
+  };
+
   const handleSubmitWithProof = async (taskId: string) => {
 
     console.log('🚀 handleSubmitWithProof called', { taskId, user: !!user, selectedProject: !!selectedProject, selectedKind });
@@ -985,6 +1032,12 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
       });
 
       console.log('✅ Firestore document updated successfully');
+
+      // Automatically save attachments to Documents collection
+      const updatedTask = nextTasks.find(t => t.id === taskId);
+      if (updatedTask && updatedTask.attachments.length > 0) {
+        await handleSaveTaskAttachmentsToDocuments(taskId, updatedTask.attachments);
+      }
 
     } catch (error) {
 
@@ -2269,6 +2322,20 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                                       )}
 
                                     </div>
+
+                                    <button
+
+                                      onClick={() => handleSaveTaskAttachmentsToDocuments(task.id, task.attachments)}
+
+                                      className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-100"
+
+                                      title={_lang === 'TH' ? 'บันทึกเอกสารทั้งหมดไปยัง Documents' : 'Save all attachments to Documents'}
+
+                                    >
+
+                                      {_lang === 'TH' ? 'บันทึก' : 'Save'}
+
+                                    </button>
 
                                   </div>
 

@@ -41,6 +41,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
 
   const DOCS_PER_PAGE = 5;
   const [otherDocsPage, setOtherDocsPage] = useState(1);
+  const [taskDocsPage, setTaskDocsPage] = useState(1);
 
   const MAX_DOC_BYTES = 20 * 1024 * 1024;
   const MAX_DOC_MB = Math.round(MAX_DOC_BYTES / (1024 * 1024));
@@ -70,12 +71,56 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     });
   }, [user]);
 
-  const visibleDocuments = useMemo(() => documents, [documents]);
+  const visibleDocuments = useMemo(() => {
+    console.log('📄 All documents loaded:', documents);
+    return documents;
+  }, [documents]);
+
+  // Categorize documents into task-related and other documents
+  const taskDocuments = useMemo(() => {
+    const filtered = visibleDocuments.filter(doc => {
+      // Check if it follows the task document pattern: "Project Title - Task Title - FileName"
+      const parts = doc.label.split(' - ');
+      
+      // Must have at least 3 parts: Project - Task - FileName
+      if (parts.length >= 3) {
+        // Check if the last part looks like a filename (has extension)
+        const lastPart = parts[parts.length - 1];
+        const hasFileExtension = lastPart.includes('.') && lastPart.split('.').length > 1;
+        
+        // If it has file extension, it's likely a task document
+        if (hasFileExtension) {
+          console.log('✅ Task document found:', doc.label);
+          return true;
+        }
+        
+        // If it's a link attachment
+        if (doc.label.includes(' - Link')) {
+          console.log('✅ Task link found:', doc.label);
+          return true;
+        }
+      }
+      
+      return false;
+    });
+    
+    console.log('🎯 Task documents filtered:', filtered);
+    return filtered;
+  }, [visibleDocuments]);
+
+  const otherDocuments = useMemo(() => {
+    return visibleDocuments.filter(doc => !taskDocuments.includes(doc));
+  }, [visibleDocuments, taskDocuments]);
 
   const otherDocsPageCount = useMemo(() => {
-    const count = Math.ceil(visibleDocuments.length / DOCS_PER_PAGE);
+    const count = Math.ceil(otherDocuments.length / DOCS_PER_PAGE);
     return count > 0 ? count : 1;
-  }, [DOCS_PER_PAGE, visibleDocuments.length]);
+  }, [DOCS_PER_PAGE, otherDocuments.length]);
+
+  const taskDocsPageCount = useMemo(() => {
+    const count = Math.ceil(taskDocuments.length / DOCS_PER_PAGE);
+    return count > 0 ? count : 1;
+  }, [DOCS_PER_PAGE, taskDocuments.length]);
 
   useEffect(() => {
     setOtherDocsPage((prev) => {
@@ -85,10 +130,23 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     });
   }, [otherDocsPageCount]);
 
+  useEffect(() => {
+    setTaskDocsPage((prev) => {
+      if (prev < 1) return 1;
+      if (prev > taskDocsPageCount) return taskDocsPageCount;
+      return prev;
+    });
+  }, [taskDocsPageCount]);
+
   const visibleOtherDocs = useMemo(() => {
     const start = (otherDocsPage - 1) * DOCS_PER_PAGE;
-    return visibleDocuments.slice(start, start + DOCS_PER_PAGE);
-  }, [DOCS_PER_PAGE, otherDocsPage, visibleDocuments]);
+    return otherDocuments.slice(start, start + DOCS_PER_PAGE);
+  }, [DOCS_PER_PAGE, otherDocsPage, otherDocuments]);
+
+  const visibleTaskDocs = useMemo(() => {
+    const start = (taskDocsPage - 1) * DOCS_PER_PAGE;
+    return taskDocuments.slice(start, start + DOCS_PER_PAGE);
+  }, [DOCS_PER_PAGE, taskDocsPage, taskDocuments]);
 
   const normalizedNewLabel = useMemo(() => newLabel.trim(), [newLabel]);
   const isBlockedNewLabel = useMemo(() => {
@@ -237,11 +295,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     const item = documents.find((d) => d.id === docId);
     if (!item) return;
     if (item.url) {
-      const popup = window.open('', '_blank', 'noopener,noreferrer');
-      if (popup && !popup.closed) {
-        popup.location.href = item.url;
-        return;
-      }
       try {
         const a = document.createElement('a');
         a.href = item.url;
@@ -252,22 +305,14 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
         a.click();
         a.remove();
       } catch {
-        window.location.assign(item.url);
+        window.open(item.url, '_blank', 'noopener,noreferrer');
       }
       return;
     }
     if (!item.storagePath) return;
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
-    const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
-    if (!popup) {
-      window.location.assign(url);
-      return;
-    }
-    if (popup && !popup.closed) {
-      popup.location.href = url;
-      return;
-    }
+    
     try {
+      const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
       const a = document.createElement('a');
       a.href = url;
       a.rel = 'noopener noreferrer';
@@ -276,8 +321,15 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch {
-      window.location.assign(url);
+    } catch (error) {
+      console.error('Failed to download document:', error);
+      // Fallback to opening in new window
+      try {
+        const url = await getDownloadURL(storageRef(firebaseStorage, item.storagePath));
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
     }
   };
 
@@ -345,7 +397,133 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">
-        <div className="max-w-[1200px] mx-auto">
+        <div className="max-w-[1200px] mx-auto space-y-8">
+          {/* Task Documents Section */}
+          <div className="bg-white border border-slate-100 rounded-[1.75rem] p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black text-blue-400 uppercase tracking-[0.25em]">
+                  {tr('intern_documents.task_documents.title')}
+                </div>
+                <div className="text-sm font-black text-slate-900 mt-2">
+                  {tr('intern_documents.task_documents.subtitle')}
+                </div>
+              </div>
+              <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                {taskDocuments.length > 5 
+                  ? `<${taskDocuments.length}> FILES` 
+                  : tr('intern_documents.task_documents.files_with_count', { count: taskDocuments.length } as any)
+                }
+              </div>
+            </div>
+
+            {taskDocuments.length === 0 ? (
+              <div className="pt-6 text-center">
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('intern_documents.task_documents.empty')}</p>
+                <p className="text-slate-400 text-xs mt-2">{tr('intern_documents.task_documents.empty_subtitle')}</p>
+              </div>
+            ) : (
+              <div className="mt-6 space-y-3">
+                {visibleTaskDocs.map((d) => (
+                  <div
+                    key={d.id}
+                    className="p-4 bg-blue-50 border border-blue-100 rounded-[1.25rem] flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-4 overflow-hidden">
+                      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-200">
+                        <FileText size={18} />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1.5">
+                          {tr('intern_documents.task_documents.badge')}
+                        </p>
+                        <p className="text-[11px] font-black text-slate-700 truncate mb-1">
+                          {(() => {
+                            const parts = d.label.split(' - ');
+                            if (parts.length >= 3) {
+                              const projectName = parts[0];
+                              const taskName = parts[1];
+                              return `${projectName} / ${taskName}`;
+                            }
+                            return d.label.split(' - ')[0] || d.label;
+                          })()}
+                        </p>
+                        <button
+                          onClick={() => void handleDownloadDocument(d.id)}
+                          className="text-[12px] font-black truncate text-slate-800 hover:underline text-left"
+                          title={tr('intern_documents.actions.download')}
+                        >
+                          {d.fileName}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleUploadForSlot(d.label)}
+                        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                        title={tr('intern_documents.actions.replace')}
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteDocument(d.id)}
+                        className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
+                        title={tr('intern_documents.actions.delete')}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {taskDocsPageCount > 1 ? (
+                  <div className="pt-4 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTaskDocsPage((p) => Math.max(1, p - 1))}
+                      disabled={taskDocsPage <= 1}
+                      className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                      aria-label={tr('intern_documents.pagination.previous_page')}
+                    >
+                      {'<'}
+                    </button>
+
+                    {Array.from({ length: taskDocsPageCount }, (_, idx) => idx + 1).map((page) => {
+                      const isActive = page === taskDocsPage;
+                      return (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setTaskDocsPage(page)}
+                          className={`px-3 py-2 rounded-xl border text-[11px] font-black transition-all ${
+                            isActive
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                          aria-current={isActive ? 'page' : undefined}
+                        >
+                          {page}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={() => setTaskDocsPage((p) => Math.min(taskDocsPageCount, p + 1))}
+                      disabled={taskDocsPage >= taskDocsPageCount}
+                      className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-[11px] font-black disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+                      aria-label={tr('intern_documents.pagination.next_page')}
+                    >
+                      {'>'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          {/* Other Documents Section */}
           <div className="bg-white border border-slate-100 rounded-[1.75rem] p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -357,11 +535,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
                 </div>
               </div>
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                {tr('intern_documents.all.files_with_count', { count: visibleDocuments.length } as any)}
+                {tr('intern_documents.all.files_with_count', { count: otherDocuments.length } as any)}
               </div>
             </div>
 
-            {visibleDocuments.length === 0 ? (
+            {otherDocuments.length === 0 ? (
               <div className="pt-6 text-center">
                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('intern_documents.empty')}</p>
               </div>

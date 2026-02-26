@@ -465,6 +465,14 @@ const th = {
       subtitle: 'เอกสารทั้งหมด',
       files_with_count: '{{count}} ไฟล์',
     },
+    task_documents: {
+      title: 'เอกสารงาน',
+      subtitle: 'เอกสารจากการส่งงานประจำวันของคุณ',
+      files_with_count: '{{count}} ไฟล์',
+      empty: 'ยังไม่มีเอกสารงาน',
+      empty_subtitle: 'เอกสารจากการส่งงานของคุณจะปรากฏที่นี่โดยอัตโนมัติ',
+      badge: 'เอกสารงาน',
+    },
     fields: {
       document_name: 'ชื่อเอกสาร',
     },

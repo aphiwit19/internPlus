@@ -465,6 +465,14 @@ const en = {
       subtitle: 'All documents.',
       files_with_count: '{{count}} FILES',
     },
+    task_documents: {
+      title: 'TASK DOCUMENTS',
+      subtitle: 'Documents from your daily task submissions',
+      files_with_count: '{{count}} FILES',
+      empty: 'No task documents yet',
+      empty_subtitle: 'Documents from your task submissions will appear here automatically',
+      badge: 'TASK DOCUMENT',
+    },
     fields: {
       document_name: 'Document Name',
     },
