@@ -237,7 +237,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       endProgramOpt: "END PROGRAM",
       wfoRate: "WFO RATE (DAY)",
       wfhRate: "WFH RATE (DAY)",
-      applyLocalTax: "APPLY VAT",
+      applyLocalTax: "APPLY WHT",
       financialDisclaimer: "Financial Disclaimer",
       financialDisclaimerDesc: "Changing calculation methods or rates mid-month will only affect future records. Existing \"Verified\" records will retain original values.",
       // Access control expanded
@@ -325,7 +325,7 @@ const SystemSettingsPage: React.FC<SystemSettingsPageProps> = ({ lang }) => {
       endProgramOpt: "จบโปรแกรม",
       wfoRate: "อัตรา WFO (วัน)",
       wfhRate: "อัตรา WFH (วัน)",
-      applyLocalTax: "เรียกเก็บ VAT",
+      applyLocalTax: "เรียกเก็บ WHT",
       financialDisclaimer: "ข้อจำกัดความรับผิดด้านการเงิน",
       financialDisclaimerDesc: "การเปลี่ยนวิธีคำนวณหรืออัตรากลางเดือนจะมีผลเฉพาะรายการในอนาคต รายการที่ \"ตรวจสอบแล้ว\" จะยังคงใช้ค่าเดิม",
       // Access control expanded
