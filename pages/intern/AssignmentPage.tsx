@@ -2214,6 +2214,66 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                                 )}
 
+                                {isDone && Array.isArray(task.attachments) && task.attachments.length > 0 && (
+
+                                  <div className="flex items-center gap-2">
+
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+
+                                      {_lang === 'TH' ? 'เอกสารที่แนบ' : 'Attachments'}
+
+                                    </div>
+
+                                    <div className="flex gap-1">
+
+                                      {task.attachments.slice(0, 3).map((attachment, idx) => (
+
+                                        <button
+
+                                          key={idx}
+
+                                          onClick={() => {
+
+                                            if (typeof attachment === 'string') {
+
+                                              window.open(attachment, '_blank');
+
+                                            } else if (attachment?.storagePath) {
+
+                                              void openStoragePath(attachment.storagePath);
+
+                                            }
+
+                                          }}
+
+                                          className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center hover:bg-blue-100 transition-all"
+
+                                          title={typeof attachment === 'string' ? attachment : attachment.fileName || 'Document'}
+
+                                        >
+
+                                          <FileText size={14} />
+
+                                        </button>
+
+                                      ))}
+
+                                      {task.attachments.length > 3 && (
+
+                                        <div className="w-8 h-8 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center text-[10px] font-black">
+
+                                          +{task.attachments.length - 3}
+
+                                        </div>
+
+                                      )}
+
+                                    </div>
+
+                                  </div>
+
+                                )}
+
                                 <button
 
                                   type="button"
