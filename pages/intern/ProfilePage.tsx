@@ -51,6 +51,31 @@ interface ProfilePageProps {
   lang: Language;
 }
 
+const normalizeInternPeriodInput = (value: string) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (raw.toUpperCase() === 'TBD') return 'TBD';
+
+  const isoMatches = raw.match(/\d{4}-\d{2}-\d{2}/g);
+  if (isoMatches && isoMatches.length >= 2) {
+    return `${isoMatches[0]} - ${isoMatches[1]}`;
+  }
+
+  const dmyMatches = raw.match(/\d{2}\/\d{2}\/\d{4}/g);
+  if (dmyMatches && dmyMatches.length >= 2) {
+    const toIso = (dmy: string) => {
+      const [dd, mm, yyyy] = dmy.split('/');
+      if (!dd || !mm || !yyyy) return null;
+      return `${yyyy}-${mm}-${dd}`;
+    };
+    const startIso = toIso(dmyMatches[0]);
+    const endIso = toIso(dmyMatches[1]);
+    if (startIso && endIso) return `${startIso} - ${endIso}`;
+  }
+
+  return null;
+};
+
 const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
   const { user } = useAppContext();
   const navigate = useNavigate();
@@ -212,6 +237,19 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
     setProfileSaveNotice(null);
     setIsProfileSaving(true);
 
+    const normalizedInternPeriod = normalizeInternPeriodInput(editForm.internPeriod);
+    if (normalizedInternPeriod === null) {
+      setIsProfileSaving(false);
+      setProfileSaveNotice({
+        type: 'error',
+        message:
+          (i18n.language ?? '').toLowerCase().startsWith('th')
+            ? 'กรุณากรอกช่วงฝึกงานเป็นรูปแบบ YYYY-MM-DD - YYYY-MM-DD'
+            : 'Please enter internship period in format YYYY-MM-DD - YYYY-MM-DD',
+      });
+      return;
+    }
+
     const coreSkillsParsed = editForm.coreSkillsText
       .split(',')
       .map((x) => x.trim())
@@ -233,7 +271,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
         department: editForm.department,
         position: editForm.position,
         studentId: editForm.studentId,
-        internPeriod: editForm.internPeriod,
+        internPeriod: normalizedInternPeriod,
         bankName: editForm.bankName,
         bankAccountNumber: editForm.bankAccountNumber,
         professionalSummary: editForm.professionalSummary,
@@ -648,6 +686,8 @@ const EditProfileModal: React.FC<{
   const { t } = useTranslation();
   const tr = (key: string, options?: any) => String(t(key, options));
 
+  const internPeriodPlaceholder = 'YYYY-MM-DD - YYYY-MM-DD';
+
   return (
     <>
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[80]" onClick={onClose} />
@@ -668,7 +708,18 @@ const EditProfileModal: React.FC<{
               <Field label={tr('intern_profile.edit_modal.fields.department')} value={form.department} onChange={(v) => onChange({ ...form, department: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.position')} value={form.position} onChange={(v) => onChange({ ...form, position: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.student_id')} value={form.studentId} onChange={(v) => onChange({ ...form, studentId: v })} />
-              <Field label={tr('intern_profile.edit_modal.fields.intern_period')} value={form.internPeriod} onChange={(v) => onChange({ ...form, internPeriod: v })} />
+              <Field
+                label={tr('intern_profile.edit_modal.fields.intern_period')}
+                value={form.internPeriod}
+                placeholder={internPeriodPlaceholder}
+                onChange={(v) => onChange({ ...form, internPeriod: v })}
+                onBlur={() => {
+                  const normalized = normalizeInternPeriodInput(form.internPeriod);
+                  if (normalized !== null && normalized !== form.internPeriod) {
+                    onChange({ ...form, internPeriod: normalized });
+                  }
+                }}
+              />
               <Field label={tr('intern_profile.edit_modal.fields.bank')} value={form.bankName} onChange={(v) => onChange({ ...form, bankName: v })} />
               <Field label={tr('intern_profile.edit_modal.fields.bank_account_number')} value={form.bankAccountNumber} onChange={(v) => onChange({ ...form, bankAccountNumber: v })} />
             </div>
@@ -726,12 +777,20 @@ const EditProfileModal: React.FC<{
   );
 };
 
-const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
+const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; onBlur?: () => void }> = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  onBlur,
+}) => (
   <label className="space-y-2">
     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</div>
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+      placeholder={placeholder}
       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-[1.5rem] text-sm font-bold text-slate-700 outline-none focus:ring-8 focus:ring-blue-500/5 transition-all"
     />
   </label>

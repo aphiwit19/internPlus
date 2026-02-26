@@ -352,8 +352,27 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
     if (!parsed) return null;
     const now = new Date();
     const start = parsed.start;
-    const months = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + (now.getUTCMonth() - start.getUTCMonth()) + 1;
-    const safe = Math.max(1, months);
+    const end = parsed.end;
+
+    const addMonthsLocal = (base: Date, months: number) => {
+      const y = base.getFullYear();
+      const m = base.getMonth();
+      const d = base.getDate();
+      return new Date(y, m + months, d, 0, 0, 0, 0);
+    };
+
+    const fullMonthsSinceStart = (from: Date, to: Date) => {
+      const baseDiff = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+      let candidate = baseDiff;
+      if (candidate < 0) return 0;
+      const boundary = addMonthsLocal(from, candidate);
+      if (boundary.getTime() > to.getTime()) candidate -= 1;
+      return Math.max(0, candidate);
+    };
+
+    const totalMonths = Math.max(1, fullMonthsSinceStart(start, end));
+    const elapsedFullMonths = fullMonthsSinceStart(start, now);
+    const safe = Math.min(totalMonths, Math.max(1, elapsedFullMonths + 1));
     const suffix = (n: number) => {
       const mod100 = n % 100;
       if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
@@ -363,7 +382,9 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
       if (mod10 === 3) return `${n}rd`;
       return `${n}th`;
     };
-    return String(t('intern_dashboard.month_label', { ordinal: suffix(safe), month: safe } as any));
+    return String(
+      t('intern_dashboard.month_of_total', { ordinal: suffix(safe), month: safe, total: totalMonths } as any),
+    );
   }, [t, user.internPeriod]);
 
   const daysLeftValue = useMemo(() => {
