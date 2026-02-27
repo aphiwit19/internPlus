@@ -176,7 +176,7 @@ const en = {
     personal_dashboard: 'Personal Dashboard',
     welcome_back: 'Welcome back',
     you_are_currently_in: 'You are currently in your',
-    as_a_role_position: 'as a {{position}}.',
+    as_a_role_position: 'as {{article}} {{position}}.',
     internship_period: 'Internship Period',
     current_month_fallback: 'current month',
     month_label: '{{ordinal}} month',

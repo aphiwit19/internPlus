@@ -475,7 +475,13 @@ const InternDashboard: React.FC<InternDashboardProps> = ({ user, onNavigate, lan
             <p className="text-slate-500 text-sm font-medium pt-2">
               {t('intern_dashboard.you_are_currently_in')}{' '}
               <span className="font-bold text-slate-900">{String(internMonthLabel ?? t('intern_dashboard.current_month_fallback'))}</span>{' '}
-              {t('intern_dashboard.as_a_role_position', { position: user.position ?? '' })}
+              {(() => {
+                const raw = String(user.position ?? '').trim();
+                const position = raw || '';
+                const first = position.toLowerCase().replace(/^[^a-z]+/g, '').charAt(0);
+                const article = first && 'aeiou'.includes(first) ? 'an' : 'a';
+                return t('intern_dashboard.as_a_role_position', { position, article });
+              })()}
             </p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[1.5rem] border border-slate-100 shadow-sm flex items-center gap-4">
