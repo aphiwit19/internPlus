@@ -7,9 +7,10 @@ import { normalizeAvatarUrl } from '@/app/avatar';
 interface SupervisorCardProps {
   supervisor: Supervisor;
   lang: Language;
+  showSendMessageButton?: boolean;
 }
 
-const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang: _lang }) => {
+const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang: _lang, showSendMessageButton = true }) => {
   const { t } = useTranslation();
 
   const handleCopyLine = () => {
@@ -83,12 +84,14 @@ const SupervisorCard: React.FC<SupervisorCardProps> = ({ supervisor, lang: _lang
         </div>
       </div>
       
-      <button 
-        onClick={() => supervisor.lineId && window.open(`https://line.me/ti/p/~${supervisor.lineId}`, '_blank')}
-        className="w-full mt-4 bg-white text-blue-600 py-3 rounded-2xl flex items-center justify-center gap-2 font-black text-[10px] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase tracking-widest shadow-sm"
-      >
-        {t('supervisor_card.send_message')}
-      </button>
+      {showSendMessageButton ? (
+        <button 
+          onClick={() => supervisor.lineId && window.open(`https://line.me/ti/p/~${supervisor.lineId}`, '_blank')}
+          className="w-full mt-4 bg-white text-blue-600 py-3 rounded-2xl flex items-center justify-center gap-2 font-black text-[10px] border border-blue-100 hover:bg-blue-600 hover:text-white transition-all active:scale-95 uppercase tracking-widest shadow-sm"
+        >
+          {t('supervisor_card.send_message')}
+        </button>
+      ) : null}
     </div>
   );
 };

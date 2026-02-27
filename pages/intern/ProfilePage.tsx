@@ -629,7 +629,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ lang: _lang }) => {
             </div>
 
             {supervisorCardData ? (
-              <SupervisorCard supervisor={supervisorCardData} lang={_lang} />
+              <SupervisorCard supervisor={supervisorCardData} lang={_lang} showSendMessageButton={false} />
             ) : (
               <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm h-fit">
                 <div className="mb-10">
@@ -910,12 +910,16 @@ const ChangePasswordModal: React.FC<{
 };
 
 const InfoRow = ({ label, value, highlight }: { label: string, value: string, highlight?: boolean }) => (
-  <div className="flex justify-between items-center group/row cursor-default">
-     <div className="flex items-center gap-4">
-        <div className={`w-1.5 h-1.5 rounded-full transition-all group-hover/row:scale-150 ${highlight ? 'bg-blue-600' : 'bg-slate-200 group-hover/row:bg-blue-300'}`}></div>
-        <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">{label}</span>
+  <div className="flex justify-between items-center gap-4 min-w-0 group/row cursor-default">
+     <div className="flex items-center gap-3 min-w-0">
+        <div className={`shrink-0 w-1.5 h-1.5 rounded-full transition-all group-hover/row:scale-150 ${highlight ? 'bg-blue-600' : 'bg-slate-200 group-hover/row:bg-blue-300'}`}></div>
+        <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest truncate">{label}</span>
      </div>
-     <span className={`text-[12px] font-black truncate max-w-[150px] ${highlight ? 'text-blue-600' : 'text-slate-800'}`}>{value}</span>
+     <span
+       className={`text-[12px] font-black text-right truncate max-w-[55%] sm:max-w-[180px] ${highlight ? 'text-blue-600' : 'text-slate-800'}`}
+     >
+       {value}
+     </span>
   </div>
 );
 
