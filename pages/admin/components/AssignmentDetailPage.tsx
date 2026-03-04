@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, CalendarDays, Download, ExternalLink, FileText, Trash2, X } from 'lucide-react';
-import { deleteDoc, doc, onSnapshot } from 'firebase/firestore';
+import { ChevronDown, ChevronLeft, ChevronRight, Clock, CalendarDays, Download, ExternalLink, FileText, Trash2, X } from 'lucide-react';
+import { collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef } from 'firebase/storage';
 
 import { firebaseStorage, firestoreDb } from '@/firebase';
@@ -16,6 +16,15 @@ type AssignmentProjectDoc = {
   date?: string;
   tasks?: any[];
   attachments?: ProjectAttachment[];
+};
+
+type TaskSubmission = {
+  id: string;
+  version?: number;
+  submittedAt?: unknown;
+  submittedByName?: string;
+  files?: Array<{ fileName: string; storagePath: string }>;
+  links?: string[];
 };
 
 type ProjectKind = 'assigned' | 'personal';
@@ -36,6 +45,9 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
   const [internSupervisorId, setInternSupervisorId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [taskSubmissionHistory, setTaskSubmissionHistory] = useState<Record<string, TaskSubmission[]>>({});
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const ref = doc(firestoreDb, 'users', internId);
@@ -136,6 +148,26 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
     const url = await getDownloadURL(storageRef(firebaseStorage, path));
     window.open(url, '_blank');
   };
+
+  const loadTaskSubmissionHistory = async (kind: ProjectKind, taskId: string) => {
+    const colName = kind === 'personal' ? 'personalProjects' : 'assignmentProjects';
+    const taskSubmissionsRootRef = doc(firestoreDb, 'users', internId, colName, projectId, 'taskSubmissions', taskId);
+    const submissionsRef = collection(taskSubmissionsRootRef, 'submissions');
+    const snap = await getDocs(query(submissionsRef, orderBy('version', 'desc'), limit(20)));
+    const history = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as TaskSubmission[];
+    setTaskSubmissionHistory((prev) => ({ ...prev, [taskId]: history }));
+  };
+
+  useEffect(() => {
+    if (!resolvedKind) return;
+    const tasks = Array.isArray(project?.tasks) ? project!.tasks : [];
+    tasks.forEach((t: any) => {
+      const taskId = String(t?.id ?? '');
+      if (!taskId) return;
+      void loadTaskSubmissionHistory(resolvedKind, taskId);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedKind, projectId, project?.id]);
 
   const canDelete = useMemo(() => {
     if (!user) return false;
@@ -302,85 +334,192 @@ export default function AssignmentDetailPage({ internId, projectKind, projectId,
         <div className="mt-8 space-y-4">
           {tasks.map((task: any) => (
             <div key={task.id ?? task.title} className="bg-white rounded-[2.25rem] p-8 border border-slate-100 shadow-sm">
-              <div className="flex items-start justify-between gap-6">
-                <div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{task.status ?? '-'}</div>
-                  <div className="text-xl font-black text-slate-900 mt-3">{task.title ?? '-'}</div>
-                  {String(task.status ?? '') === 'DELAYED' ? (
-                    <div className="mt-3">
-                      <div
-                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-widest ${
-                          String(task.workResult ?? '') === 'NOT_FINISHED'
-                            ? 'bg-amber-50 text-amber-700 border-amber-100'
-                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                        }`}
-                      >
-                        {String(task.workResult ?? '') === 'NOT_FINISHED'
-                          ? lang === 'TH'
-                            ? 'งานยังไม่เสร็จ'
-                            : 'The work is not finished yet.'
-                          : lang === 'TH'
-                            ? 'เสร็จแล้ว'
-                            : 'Finished'}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2 pt-1">
-                  <Clock size={14} />
-                  {task.plannedStart && task.plannedEnd
-                    ? `${new Date(task.plannedStart).toLocaleString()} - ${new Date(task.plannedEnd).toLocaleString()}`
-                    : task.plannedEnd
-                      ? new Date(task.plannedEnd).toLocaleString()
-                      : task.plannedStart
-                        ? new Date(task.plannedStart).toLocaleString()
-                        : '-'}
-                </div>
-              </div>
+              {(() => {
+                const taskKey = String(task.id ?? task.title ?? '');
+                const isExpanded = expandedTasks[taskKey] ?? true;
 
-              {typeof task.delayRemark === 'string' && task.delayRemark.trim() ? (
-                <div className="mt-6 pt-6 border-t border-slate-100">
-                  <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2">
-                    {lang === 'TH' ? 'หมายเหตุงานล่าช้า' : 'Delay remark'}
-                  </div>
-                  <div className="text-sm font-bold text-slate-700 bg-rose-50/60 border border-rose-100 rounded-2xl p-4 whitespace-pre-wrap">
-                    {task.delayRemark}
-                  </div>
-                </div>
-              ) : null}
-
-              {Array.isArray(task.attachments) && task.attachments.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-slate-100">
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">{lang === 'TH' ? 'หลักฐาน/ไฟล์แนบ' : 'Attachments'}</div>
-                  <div className="flex flex-wrap gap-3">
-                    {task.attachments.map((a: TaskAttachment, idx: number) => (
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-6">
                       <button
-                        key={idx}
-                        onClick={() => {
-                          void attachmentUrl(a).then((url) => {
-                            if (!url) return;
-                            window.open(url, '_blank');
-                          });
-                        }}
-                        className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
-                        title={typeof a === 'string' ? (lang === 'TH' ? 'เปิดลิงก์' : 'Open') : (lang === 'TH' ? 'ดาวน์โหลด' : 'Download')}
                         type="button"
+                        onClick={() => setExpandedTasks((prev) => ({ ...prev, [taskKey]: !isExpanded }))}
+                        className="flex items-start gap-4 text-left min-w-0"
+                        title={lang === 'TH' ? 'พับ/ขยาย' : 'Collapse/Expand'}
                       >
-                        <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
-                          <FileText size={18} />
+                        <div className="pt-1 text-slate-400 flex-shrink-0">
+                          {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                         </div>
-                        <div className="text-left">
-                          <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{attachmentLabel(a)}</div>
-                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
-                        </div>
-                        <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
-                          {typeof a === 'string' ? <ExternalLink size={18} /> : <Download size={18} />}
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{task.status ?? '-'}</div>
+                          <div className="text-xl font-black text-slate-900 mt-3 truncate">{task.title ?? '-'}</div>
+                          {String(task.status ?? '') === 'DELAYED' ? (
+                            <div className="mt-3">
+                              <div
+                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-widest ${
+                                  String(task.workResult ?? '') === 'NOT_FINISHED'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                }`}
+                              >
+                                {String(task.workResult ?? '') === 'NOT_FINISHED'
+                                  ? lang === 'TH'
+                                    ? 'งานยังไม่เสร็จ'
+                                    : 'The work is not finished yet.'
+                                  : lang === 'TH'
+                                    ? 'เสร็จแล้ว'
+                                    : 'Finished'}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+
+                      <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2 pt-1">
+                        <Clock size={14} />
+                        {task.plannedStart && task.plannedEnd
+                          ? `${new Date(task.plannedStart).toLocaleString()} - ${new Date(task.plannedEnd).toLocaleString()}`
+                          : task.plannedEnd
+                            ? new Date(task.plannedEnd).toLocaleString()
+                            : task.plannedStart
+                              ? new Date(task.plannedStart).toLocaleString()
+                              : '-'}
+                      </div>
+                    </div>
+
+                    {isExpanded ? (
+                      <>
+                        {typeof task.delayRemark === 'string' && task.delayRemark.trim() ? (
+                          <div className="mt-6 pt-6 border-t border-slate-100">
+                            <div className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-2">
+                              {lang === 'TH' ? 'หมายเหตุงานล่าช้า' : 'Delay remark'}
+                            </div>
+                            <div className="text-sm font-bold text-slate-700 bg-rose-50/60 border border-rose-100 rounded-2xl p-4 whitespace-pre-wrap">
+                              {task.delayRemark}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {resolvedKind && task?.id ? (
+                          <div className="mt-6 pt-6 border-t border-slate-100">
+                            <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-3">
+                              {lang === 'TH' ? 'หลักฐาน/ไฟล์แนบ' : 'Attachments'}
+                            </div>
+
+                            <div className="space-y-4">
+                              {Array.isArray(task.attachments) && task.attachments.length > 0 ? (
+                                <div className="flex flex-wrap gap-3">
+                                  {task.attachments.map((a: TaskAttachment, idx: number) => (
+                                    <button
+                                      key={idx}
+                                      onClick={() => {
+                                        void attachmentUrl(a).then((url) => {
+                                          if (!url) return;
+                                          window.open(url, '_blank');
+                                        });
+                                      }}
+                                      className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
+                                      title={
+                                        typeof a === 'string'
+                                          ? lang === 'TH'
+                                            ? 'เปิดลิงก์'
+                                            : 'Open'
+                                          : lang === 'TH'
+                                            ? 'ดาวน์โหลด'
+                                            : 'Download'
+                                      }
+                                      type="button"
+                                    >
+                                      <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
+                                        <FileText size={18} />
+                                      </div>
+                                      <div className="text-left">
+                                        <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{attachmentLabel(a)}</div>
+                                        <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                                      </div>
+                                      <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
+                                        {typeof a === 'string' ? <ExternalLink size={18} /> : <Download size={18} />}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+
+                              {(taskSubmissionHistory[String(task.id)] ?? []).map((s) => (
+                                <div key={s.id} className="p-5 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                      {lang === 'TH' ? 'เวอร์ชัน' : 'Version'} {s.version ?? '-'}
+                                    </div>
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">
+                                      {typeof (s.submittedAt as any)?.toDate === 'function'
+                                        ? (s.submittedAt as any).toDate().toLocaleString()
+                                        : '-'}
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-wrap gap-3">
+                                    {(Array.isArray(s.files) ? s.files : []).map((f, idx) => (
+                                      <button
+                                        key={`${f.storagePath}-${idx}`}
+                                        onClick={() => void openStoragePath(f.storagePath)}
+                                        className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
+                                        title={lang === 'TH' ? 'ดาวน์โหลด' : 'Download'}
+                                        type="button"
+                                      >
+                                        <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
+                                          <FileText size={18} />
+                                        </div>
+                                        <div className="text-left">
+                                          <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{f.fileName}</div>
+                                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                                        </div>
+                                        <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
+                                          <Download size={18} />
+                                        </div>
+                                      </button>
+                                    ))}
+
+                                    {(Array.isArray(s.links) ? s.links : []).map((link, idx) => (
+                                      <button
+                                        key={`${link}-${idx}`}
+                                        onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}
+                                        className="flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-blue-50/20 transition-all"
+                                        title={lang === 'TH' ? 'เปิดลิงก์' : 'Open link'}
+                                        type="button"
+                                      >
+                                        <div className="w-10 h-10 bg-slate-50 text-blue-600 rounded-xl flex items-center justify-center border border-slate-100">
+                                          <ExternalLink size={18} />
+                                        </div>
+                                        <div className="text-left">
+                                          <div className="text-[12px] font-black text-slate-900 max-w-[420px] truncate">{link}</div>
+                                          <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{lang === 'TH' ? 'คลิกเพื่อเปิด' : 'Click to open'}</div>
+                                        </div>
+                                        <div className="w-10 h-10 bg-[#111827] text-white rounded-xl flex items-center justify-center ml-2">
+                                          <ExternalLink size={18} />
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+
+                              {(taskSubmissionHistory[String(task.id)] ?? []).length === 0 &&
+                              (!Array.isArray(task.attachments) || task.attachments.length === 0) ? (
+                                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
+                                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
+                                    {lang === 'TH' ? 'ยังไม่มีไฟล์แนบ' : 'No attachments yet'}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
           ))}
 

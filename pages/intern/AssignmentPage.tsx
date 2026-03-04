@@ -56,7 +56,7 @@ import {
 
 } from 'lucide-react';
 
-import { Language, SubTask, TaskLog } from '@/types';
+import { Language, SubTask, TaskAttachment, TaskLog } from '@/types';
 
 
 
@@ -175,11 +175,11 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   const [showShiftNotice, setShowShiftNotice] = useState(false);
 
-  const [toast, setToast] = useState<{ message: string } | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant?: 'success' | 'error' | 'info' } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
-  const showToast = (message: string) => {
-    setToast({ message });
+  const showToast = (message: string, variant: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, variant });
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => {
       setToast(null);
@@ -235,6 +235,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
 
 
+  const [taskSubmissionHistory, setTaskSubmissionHistory] = useState<Record<string, Array<{ id: string; version?: number; submittedAt?: unknown; submittedByName?: string; files?: Array<{ fileName: string; storagePath: string }>; links?: string[] }>>>({});
+
   const [isSubmittingHandoff, setIsSubmittingHandoff] = useState(false);
 
   const [isHandoffOpen, setIsHandoffOpen] = useState(false);
@@ -266,6 +268,8 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   const [delayRemarkDrafts, setDelayRemarkDrafts] = useState<Record<string, string>>({});
 
+  const [pendingLastTaskConfirm, setPendingLastTaskConfirm] = useState<string | null>(null);
+
 
 
   const TASKS_PER_PAGE = 6;
@@ -280,6 +284,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     window.open(url, '_blank');
 
+  };
+
+  const openTaskSubmissionItem = async (item: { fileName?: string; storagePath?: string } | string) => {
+    if (typeof item === 'string') {
+      const v = item.trim();
+      if (!v) return;
+      if (!v.startsWith('http://') && !v.startsWith('https://')) return;
+      window.open(v, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!item?.storagePath) return;
+    await openStoragePath(String(item.storagePath));
   };
 
 
@@ -590,12 +606,12 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
       setHandoffExistingVideos([]);
 
     }
-
-    setHandoffDocFiles([]);
-
-    setHandoffVideoFiles([]);
-
   }, [isHandoffOpen, selectedProject?.id]);
+
+  useEffect(() => {
+    if (!uploadTaskId) return;
+    void loadTaskSubmissionHistory(uploadTaskId);
+  }, [uploadTaskId]);
 
 
 
@@ -796,6 +812,84 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
   };
 
+  const [isSavingChanges, setIsSavingChanges] = useState(false);
+
+  const handleSaveChanges = async () => {
+    if (!selectedProject) return;
+    if (isSavingChanges) return;
+    setIsSavingChanges(true);
+    try {
+      await updateSelectedProjectTasks(selectedProject.tasks ?? []);
+      showToast(_lang === 'TH' ? 'บันทึกเรียบร้อยแล้ว' : 'Saved successfully', 'success');
+      setSelectedProjectKey(null);
+    } catch (err) {
+      console.error('Save changes failed:', err);
+      showToast(_lang === 'TH' ? 'บันทึกไม่สำเร็จ' : 'Failed to save', 'error');
+    } finally {
+      setIsSavingChanges(false);
+    }
+  };
+
+  const handleSaveTaskAttachmentsToDocuments = async (
+    taskId: string,
+    attachments: TaskAttachment[],
+    options?: { silent?: boolean },
+  ) => {
+    if (!user || !selectedProject || !selectedKind) return;
+    const taskTitle = selectedProject.tasks.find((t) => t.id === taskId)?.title ?? taskId;
+    const baseLabel = `${selectedProject.title} - ${taskTitle}`;
+
+    for (const attachment of attachments) {
+      try {
+        if (typeof attachment === 'string') {
+          const label = `${baseLabel} - Link`;
+          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
+            label,
+            fileName: attachment,
+            url: attachment,
+            storagePath: null,
+            source: 'TASK_SUBMISSION',
+            assignmentKind: selectedKind,
+            assignmentId: selectedProject.id,
+            assignmentTitle: selectedProject.title,
+            taskId,
+            taskTitle,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else if (attachment?.storagePath) {
+          const label = `${baseLabel} - ${attachment.fileName}`;
+          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
+            label,
+            fileName: attachment.fileName,
+            storagePath: attachment.storagePath,
+            url: null,
+            source: 'TASK_SUBMISSION',
+            assignmentKind: selectedKind,
+            assignmentId: selectedProject.id,
+            assignmentTitle: selectedProject.title,
+            taskId,
+            taskTitle,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch {
+        showToast(
+          _lang === 'TH' ? 'ไม่สามารถบันทึกเอกสารบางรายการได้' : 'Failed to save some attachments to documents',
+          'error',
+        );
+      }
+    }
+
+    if (!options?.silent) {
+      showToast(
+        _lang === 'TH' ? 'บันทึกเอกสารไปยัง Documents เรียบร้อยแล้ว' : 'Attachments saved to Documents successfully',
+        'success',
+      );
+    }
+  };
+
   const handleDeleteTask = async (taskId: string) => {
     if (!selectedProject) return;
 
@@ -816,54 +910,33 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
     await updateSelectedProjectTasks(nextTasks);
   };
 
-
-
-  const handleSaveTaskAttachmentsToDocuments = async (taskId: string, attachments: (string | { fileName: string; storagePath: string })[]) => {
-    if (!user || !selectedProject || !selectedKind) return;
-
-    const taskTitle = selectedProject.tasks.find(t => t.id === taskId)?.title || `Task ${taskId}`;
-    const baseLabel = `${selectedProject.title} - ${taskTitle}`;
-
-    for (const attachment of attachments) {
-      try {
-        if (typeof attachment === 'string') {
-          // Handle URL/link attachments
-          const label = `${baseLabel} - Link`;
-          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
-            label,
-            fileName: attachment,
-            url: attachment,
-            storagePath: null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        } else if (attachment?.storagePath) {
-          // Handle file attachments - use original storagePath instead of copying
-          const label = `${baseLabel} - ${attachment.fileName}`;
-          
-          await addDoc(collection(firestoreDb, 'users', user.id, 'documents'), {
-            label,
-            fileName: attachment.fileName,
-            storagePath: attachment.storagePath, // Use original path
-            url: null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
-      } catch (error) {
-        console.error('Failed to save attachment to documents:', error);
-        showToast(_lang === 'TH' 
-          ? 'ไม่สามารถบันทึกเอกสารบางรายการได้' 
-          : 'Failed to save some attachments to documents');
-      }
-    }
-
-    showToast(_lang === 'TH' 
-      ? 'บันทึกเอกสารไปยัง Documents เรียบร้อยแล้ว' 
-      : 'Attachments saved to Documents successfully');
+  const omitUndefined = <T extends Record<string, unknown>>(obj: T): T => {
+    const next = {} as T;
+    (Object.keys(obj) as Array<keyof T>).forEach((key) => {
+      const value = obj[key];
+      if (value !== undefined) next[key] = value;
+    });
+    return next;
   };
 
-  const handleSubmitWithProof = async (taskId: string) => {
+  const deepOmitUndefined = <T,>(value: T): T => {
+    if (Array.isArray(value)) {
+      return value.map((v) => deepOmitUndefined(v)) as T;
+    }
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      const next: Record<string, unknown> = {};
+      Object.keys(obj).forEach((k) => {
+        const v = obj[k];
+        if (v === undefined) return;
+        next[k] = deepOmitUndefined(v);
+      });
+      return next as T;
+    }
+    return value;
+  };
+
+  const handleSubmitWithProof = async (taskId: string, options?: { finalize?: boolean }) => {
 
     console.log('🚀 handleSubmitWithProof called', { taskId, user: !!user, selectedProject: !!selectedProject, selectedKind });
 
@@ -876,14 +949,13 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
     }
 
     const now = new Date();
+    const finalize = Boolean(options?.finalize);
 
     const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
 
 
 
-    const MAX_PROOF_BYTES = 20 * 1024 * 1024;
-
-    const tooLarge = selectedProofFiles.find((f) => f.size > MAX_PROOF_BYTES) ?? null;
+    const tooLarge = selectedProofFiles.find((f) => f.size > MAX_DOC_BYTES) ?? null;
 
     if (tooLarge) {
 
@@ -902,9 +974,15 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     if (targetTask) {
 
-      const hasNewProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+      const hasNewProof =
+        selectedProofFiles.length > 0 ||
+        selectedProofLinks.some((l) => l.trim().length > 0);
       if (!hasNewProof) {
-        showToast(_lang === 'TH' ? 'กรุณาแนบไฟล์ หรือลิงก์อย่างน้อย 1 รายการก่อนส่ง' : 'Please attach at least one file or link before submitting.');
+        showToast(
+          _lang === 'TH'
+            ? 'กรุณาแนบไฟล์ หรือลิงก์อย่างน้อย 1 รายการก่อนส่ง'
+            : 'Please attach at least one file or link before submitting.',
+        );
         return;
       }
 
@@ -922,15 +1000,40 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     }
 
+    const taskSubmissionsRootRef = doc(
+      firestoreDb,
+      'users',
+      user.id,
+      colName,
+      selectedProject.id,
+      'taskSubmissions',
+      taskId,
+    );
+    const submissionsRef = collection(taskSubmissionsRootRef, 'submissions');
+
+    const lastSnap = await getDocs(query(submissionsRef, orderBy('version', 'desc'), limit(1)));
+    const lastVersion = lastSnap.docs[0]?.data()?.version;
+    const nextVersion = (typeof lastVersion === 'number' ? lastVersion : 0) + 1;
+
+    const submissionDocRef = await addDoc(submissionsRef, {
+      version: nextVersion,
+      status: 'SUBMITTED',
+      links: selectedProofLinks.map((u) => u.trim()).filter((u) => u.length > 0).filter((u) => isValidHttpUrl(u)),
+      files: [],
+      submittedAt: serverTimestamp(),
+      submittedById: user.id,
+      submittedByName: user.name,
+    });
 
 
-    const uploaded = [] as Array<{ fileName: string; storagePath: string }>;
+
+    const uploadedDocs = [] as Array<{ fileName: string; storagePath: string }>;
 
     for (const f of selectedProofFiles) {
 
       const safeName = f.name;
 
-      const path = `users/${user.id}/${colName}/${selectedProject.id}/${taskId}/${Date.now()}_${safeName}`;
+      const path = `users/${user.id}/${colName}/${selectedProject.id}/${taskId}/v${nextVersion}/files/${Date.now()}_${safeName}`;
 
       console.log('📤 Uploading file to Storage:', path);
 
@@ -938,7 +1041,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
         await uploadBytes(storageRef(firebaseStorage, path), f);
 
-        uploaded.push({ fileName: safeName, storagePath: path });
+        uploadedDocs.push({ fileName: safeName, storagePath: path });
 
         console.log('✅ File uploaded successfully:', safeName);
 
@@ -952,15 +1055,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     }
 
-
-
     const linkAttachments = selectedProofLinks
-
       .map((u) => u.trim())
-
       .filter((u) => u.length > 0)
-
       .filter((u) => isValidHttpUrl(u));
+
+    const submissionFiles = uploadedDocs;
+    const submissionLinks = linkAttachments;
+
+    await updateDoc(submissionDocRef, {
+      files: submissionFiles,
+      links: submissionLinks,
+    });
 
 
 
@@ -969,51 +1075,50 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
       if (t.id !== taskId) return t;
 
       const pEnd = new Date(t.plannedEnd);
+      const overdueNow = !t.actualEnd && now > pEnd;
 
-      let finalStatus: 'DONE' | 'DELAYED' = 'DONE';
-      if (now > pEnd) finalStatus = 'DELAYED';
+      let nextStatus: SubTask['status'] = t.status;
+      if (finalize) {
+        nextStatus = overdueNow ? 'DELAYED' : 'DONE';
+      } else {
+        nextStatus = overdueNow ? 'DELAYED' : 'IN_PROGRESS';
+      }
 
       // ...
 
-      const mergedAttachments = [...(targetTask?.attachments ?? []), ...uploaded, ...linkAttachments];
+      const latestAttachments = [...submissionFiles, ...submissionLinks];
 
       const remarkFromDraft = (delayRemarkDrafts[taskId] ?? t.delayRemark ?? '').trim();
 
-      const hasAnyProof = mergedAttachments.length > 0;
-      const workResult: 'FINISHED' | 'NOT_FINISHED' =
-        finalStatus === 'DELAYED'
+      const hasAnyProof = latestAttachments.length > 0;
+      const workResult: 'FINISHED' | 'NOT_FINISHED' | null = finalize
+        ? nextStatus === 'DELAYED'
           ? hasAnyProof
             ? 'FINISHED'
             : 'NOT_FINISHED'
-          : 'FINISHED';
+          : 'FINISHED'
+        : null;
 
 
 
-      return {
-
+      const nextTask = {
         ...t,
-
-        status: finalStatus,
-
+        status: nextStatus,
         reviewStatus: 'SUBMITTED' as const,
-
-        workResult,
-
-        actualEnd: now.toISOString(),
-
-        isSessionActive: false,
-
-        attachments: mergedAttachments,
-
-        delayRemark: finalStatus === 'DELAYED' ? remarkFromDraft : (t.delayRemark ?? ''),
-
-        timeLogs: t.isSessionActive
-
-          ? t.timeLogs.map((l, i) => (i === t.timeLogs.length - 1 ? { ...l, endTime: now.toISOString() } : l))
-
-          : t.timeLogs,
-
+        ...(workResult ? { workResult } : {}),
+        actualEnd: finalize ? (t.actualEnd ?? now.toISOString()) : t.actualEnd,
+        lastSubmittedAt: now.toISOString(),
+        lastSubmissionVersion: nextVersion,
+        isSessionActive: finalize ? false : t.isSessionActive,
+        attachments: latestAttachments,
+        delayRemark: nextStatus === 'DELAYED' ? remarkFromDraft : (t.delayRemark ?? ''),
+        timeLogs:
+          finalize && t.isSessionActive
+            ? t.timeLogs.map((l) => (l.id === t.timeLogs[t.timeLogs.length - 1].id ? { ...l, endTime: now.toISOString() } : l))
+            : t.timeLogs,
       };
+
+      return deepOmitUndefined(omitUndefined(nextTask));
 
     });
 
@@ -1025,7 +1130,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
       await updateDoc(doc(firestoreDb, 'users', user.id, colName, selectedProject.id), {
 
-        tasks: nextTasks,
+        tasks: deepOmitUndefined(nextTasks),
 
         updatedAt: serverTimestamp(),
 
@@ -1033,11 +1138,26 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
       console.log('✅ Firestore document updated successfully');
 
+      showToast(
+        finalize
+          ? _lang === 'TH'
+            ? `ส่งงานเรียบร้อยแล้ว (v${nextVersion})`
+            : `Submitted successfully (v${nextVersion})`
+          : _lang === 'TH'
+            ? `อัปเดตความคืบหน้าแล้ว (v${nextVersion})`
+            : `Progress updated (v${nextVersion})`,
+        'success',
+      );
+
       // Automatically save attachments to Documents collection
       const updatedTask = nextTasks.find(t => t.id === taskId);
       if (updatedTask && updatedTask.attachments.length > 0) {
-        await handleSaveTaskAttachmentsToDocuments(taskId, updatedTask.attachments);
+        await handleSaveTaskAttachmentsToDocuments(taskId, updatedTask.attachments, { silent: true });
       }
+
+      const historySnap = await getDocs(query(submissionsRef, orderBy('version', 'desc'), limit(20)));
+      const history = historySnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      setTaskSubmissionHistory((prev) => ({ ...prev, [taskId]: history }));
 
     } catch (error) {
 
@@ -1059,6 +1179,32 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
     setUploadTaskId(null);
 
+  };
+
+  const handleSubmitUpdateClick = () => {
+    if (!uploadTaskId || !selectedProject) return;
+    const tasks = selectedProject.tasks ?? [];
+    const unfinished = tasks.filter((t) => !t.actualEnd);
+    const lastUnfinishedId = unfinished.length > 0 ? unfinished[unfinished.length - 1]!.id : null;
+    const idx = tasks.findIndex((t) => t.id === uploadTaskId);
+    const isLastByIndex = idx >= 0 && idx === tasks.length - 1;
+    const isLastUnfinished = lastUnfinishedId === uploadTaskId;
+    const shouldWarn = isLastByIndex || isLastUnfinished;
+    if (!shouldWarn) {
+      void handleSubmitWithProof(uploadTaskId, { finalize: false });
+      return;
+    }
+    setPendingLastTaskConfirm(uploadTaskId);
+  };
+
+  const loadTaskSubmissionHistory = async (taskId: string) => {
+    if (!user || !selectedProject || !selectedKind) return;
+    const colName = selectedKind === 'assigned' ? 'assignmentProjects' : 'personalProjects';
+    const taskSubmissionsRootRef = doc(firestoreDb, 'users', user.id, colName, selectedProject.id, 'taskSubmissions', taskId);
+    const submissionsRef = collection(taskSubmissionsRootRef, 'submissions');
+    const snap = await getDocs(query(submissionsRef, orderBy('version', 'desc'), limit(20)));
+    const history = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    setTaskSubmissionHistory((prev) => ({ ...prev, [taskId]: history }));
   };
 
 
@@ -1618,12 +1764,48 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
       {toast && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[310] max-w-[min(720px,calc(100vw-2rem))] w-full">
-          <div className="bg-white border border-rose-200 shadow-2xl rounded-[1.75rem] px-6 py-4 flex items-center gap-4 animate-in slide-in-from-top-10 duration-300">
-            <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center border border-rose-100">
-              <AlertCircle size={20} />
+          <div
+            className={`bg-white shadow-2xl rounded-[1.75rem] px-6 py-4 flex items-center gap-4 animate-in slide-in-from-top-10 duration-300 border ${
+              toast.variant === 'success'
+                ? 'border-emerald-200'
+                : toast.variant === 'error'
+                  ? 'border-rose-200'
+                  : 'border-blue-200'
+            }`}
+          >
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                toast.variant === 'success'
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                  : toast.variant === 'error'
+                    ? 'bg-rose-50 text-rose-600 border-rose-100'
+                    : 'bg-blue-50 text-blue-600 border-blue-100'
+              }`}
+            >
+              <AlertCircle size={18} />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest">{_lang === 'TH' ? 'แจ้งเตือน' : 'Alert'}</div>
+              <div
+                className={`text-[10px] font-black uppercase tracking-widest ${
+                  toast.variant === 'success'
+                    ? 'text-emerald-600'
+                    : toast.variant === 'error'
+                      ? 'text-rose-500'
+                      : 'text-blue-600'
+                }`}
+              >
+                {toast.variant === 'success'
+                  ? _lang === 'TH'
+                    ? 'สำเร็จ'
+                    : 'Success'
+                  : toast.variant === 'error'
+                    ? _lang === 'TH'
+                      ? 'ผิดพลาด'
+                      : 'Error'
+                    : _lang === 'TH'
+                      ? 'แจ้งเตือน'
+                      : 'Info'}
+              </div>
               <div className="mt-1 text-sm font-bold text-slate-800 break-words">{toast.message}</div>
             </div>
             <button
@@ -1634,6 +1816,58 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
             >
               <X size={18} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {pendingLastTaskConfirm && selectedProject && (
+        <div className="fixed inset-0 z-[320] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100">
+            <div className="p-8 border-b border-slate-100 flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {_lang === 'TH' ? 'ยืนยัน' : 'Confirm'}
+                </div>
+                <div className="mt-2 text-xl font-black text-slate-900 tracking-tight">
+                  {_lang === 'TH'
+                    ? 'นี่เป็นงานสุดท้าย ต้องการ Complete & Finalize เลยไหม?'
+                    : 'This is the last task. Complete & Finalize now?'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingLastTaskConfirm(null)}
+                className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-900 transition-all flex items-center justify-center shrink-0"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-8">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const taskId = pendingLastTaskConfirm;
+                    setPendingLastTaskConfirm(null);
+                    void handleSubmitWithProof(taskId, { finalize: false });
+                  }}
+                  className="flex-1 py-4 rounded-2xl bg-white border border-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                >
+                  {_lang === 'TH' ? 'ส่งความคืบหน้า' : 'Submit Update'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const taskId = pendingLastTaskConfirm;
+                    setPendingLastTaskConfirm(null);
+                    void handleSubmitWithProof(taskId, { finalize: true });
+                  }}
+                  className="flex-1 py-4 rounded-2xl bg-blue-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20"
+                >
+                  {_lang === 'TH' ? 'Complete & Finalize' : 'Complete & Finalize'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2085,7 +2319,7 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                         const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
 
-                        const isDone = task.status === 'DONE' || task.status === 'DELAYED';
+                        const isDone = Boolean(task.actualEnd);
 
 
 
@@ -2251,19 +2485,23 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                                     </button>
 
-                                    <button 
-
-                                      onClick={() => setUploadTaskId(task.id)}
-
-                                      className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all"
-
-                                    >
-
-                                      {tr('intern_assignment.actions.complete_finalize')}
-
-                                    </button>
-
                                   </>
+
+                                )}
+
+                                {!isDone && (
+
+                                  <button 
+
+                                    onClick={() => setUploadTaskId(task.id)}
+
+                                    className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-blue-600 transition-all"
+
+                                  >
+
+                                    {tr('intern_assignment.actions.complete_finalize')}
+
+                                  </button>
 
                                 )}
 
@@ -2515,7 +2753,18 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
                 </button>
 
-                <button onClick={() => setSelectedProjectKey(null)} className="px-16 py-4 bg-[#111827] text-white rounded-[1.75rem] text-sm font-black uppercase hover:bg-blue-600 shadow-2xl active:scale-95 transition-all">{tr('intern_assignment.actions.save_changes')}</button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveChanges()}
+                  disabled={isSavingChanges}
+                  className={`px-16 py-4 rounded-[1.75rem] text-sm font-black uppercase shadow-2xl active:scale-95 transition-all ${
+                    isSavingChanges
+                      ? 'bg-slate-300 text-white cursor-not-allowed shadow-slate-200'
+                      : 'bg-[#111827] text-white hover:bg-blue-600'
+                  }`}
+                >
+                  {tr('intern_assignment.actions.save_changes')}
+                </button>
 
               </div>
 
@@ -3148,7 +3397,35 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
 
-           <div className="bg-white w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-[3.5rem] p-12 shadow-2xl space-y-10 animate-in zoom-in-95 duration-300">
+           <div className="relative bg-white w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-[3.5rem] p-12 shadow-2xl space-y-10 animate-in zoom-in-95 duration-300">
+
+              <button
+
+                type="button"
+
+                onClick={() => {
+
+                  setUploadTaskId(null);
+
+                  setSelectedProofFiles([]);
+
+                  setSelectedProofLinks([]);
+
+                  setProofLinkDraft('');
+
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+
+                }}
+
+                className="absolute top-8 right-8 w-12 h-12 rounded-2xl bg-rose-600 text-white hover:bg-rose-700 transition-all flex items-center justify-center shadow-xl shadow-rose-500/20"
+
+                title={_lang === 'TH' ? 'ปิด' : 'Close'}
+
+              >
+
+                <X size={20} />
+
+              </button>
 
               <div className="flex items-center gap-5">
 
@@ -3466,37 +3743,62 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
 
               )}
 
+              {Array.isArray(taskSubmissionHistory[uploadTaskId]) && taskSubmissionHistory[uploadTaskId].length > 0 && (
+                <div className="p-6 bg-white border border-slate-100 rounded-[2rem]">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">
+                    {_lang === 'TH' ? 'ประวัติการส่ง' : 'Submission history'}
+                  </div>
+                  <div className="space-y-4">
+                    {taskSubmissionHistory[uploadTaskId].map((s) => {
+                      const files = Array.isArray(s.files) ? s.files : [];
+                      const links = Array.isArray(s.links) ? s.links : [];
+                      const title = typeof s.version === 'number' ? `v${s.version}` : 'Submission';
+                      return (
+                        <div key={s.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="text-[12px] font-black text-slate-900">{title}</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                              {typeof s.submittedByName === 'string' ? s.submittedByName : ''}
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {files.map((f, idx) => (
+                              <button
+                                key={`${s.id}-f-${idx}`}
+                                type="button"
+                                onClick={() => void openTaskSubmissionItem(f)}
+                                className="w-full text-left px-3 py-2 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-all"
+                              >
+                                <div className="text-[12px] font-black text-slate-800 truncate">{f.fileName}</div>
+                              </button>
+                            ))}
+                            {links.map((l, idx) => (
+                              <button
+                                key={`${s.id}-l-${idx}`}
+                                type="button"
+                                onClick={() => void openTaskSubmissionItem(l)}
+                                className="w-full text-left px-3 py-2 bg-white border border-slate-100 rounded-xl hover:border-blue-200 transition-all"
+                              >
+                                <div className="text-[12px] font-black text-blue-700 truncate">{l}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
 
 
               <div className="flex gap-4">
 
                  <button
 
-                  onClick={() => {
+                  type="button"
 
-                    setUploadTaskId(null);
-
-                    setSelectedProofFiles([]);
-
-                    setSelectedProofLinks([]);
-
-                    setProofLinkDraft('');
-
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-
-                  }}
-
-                  className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl font-black text-xs uppercase tracking-widest"
-
-                 >
-
-                  {tr('intern_assignment.actions.cancel')}
-
-                 </button>
-
-                 <button 
-
-                  onClick={() => void handleSubmitWithProof(uploadTaskId)}
+                  onClick={handleSubmitUpdateClick}
 
                   disabled={(() => {
                     if (!selectedProject) return false;
@@ -3519,7 +3821,65 @@ const AssignmentPage: React.FC<AssignmentPageProps> = ({ lang: _lang }) => {
                     return false;
                   })()}
 
-                  className={`flex-[2] py-5 text-white rounded-3xl font-black text-sm uppercase tracking-widest shadow-2xl shadow-emerald-100 transition-all ${
+                  className={`flex-1 py-5 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl transition-all ${
+
+                    (() => {
+
+                      if (!selectedProject) return 'bg-blue-600 hover:bg-blue-700';
+
+                      const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+
+                      if (!task) return 'bg-blue-600 hover:bg-blue-700';
+
+                      const hasProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+                      if (!hasProof) return 'bg-blue-200 cursor-not-allowed';
+
+                      const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
+
+                      if (!isOverdue) return 'bg-blue-600 hover:bg-blue-700';
+
+                      const value = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+
+                      return value.trim() ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-200 cursor-not-allowed';
+
+                    })()
+
+                  }`}
+
+                 >
+
+                  {_lang === 'TH' ? 'ส่งความคืบหน้า' : 'Submit Update'}
+
+                 </button>
+
+                 <button 
+
+                  type="button"
+
+                  onClick={() => void handleSubmitWithProof(uploadTaskId, { finalize: true })}
+
+                  disabled={(() => {
+                    if (!selectedProject) return false;
+
+                    const task = selectedProject.tasks.find((t) => t.id === uploadTaskId);
+
+                    if (!task) return false;
+
+                    const hasProof = selectedProofFiles.length > 0 || selectedProofLinks.some((l) => l.trim().length > 0);
+                    if (!hasProof) return true;
+
+                    const isOverdue = !task.actualEnd && new Date() > new Date(task.plannedEnd);
+
+                    const remarkValue = delayRemarkDrafts[uploadTaskId] ?? (task.delayRemark ?? '');
+
+                    if (isOverdue) {
+                      return !remarkValue.trim();
+                    }
+
+                    return false;
+                  })()}
+
+                  className={`flex-1 py-5 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-emerald-100 transition-all ${
 
                     (() => {
 

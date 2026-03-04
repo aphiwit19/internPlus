@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, ExternalLink, FileText, ShieldCheck } from 'lucide-react';
 import { collection, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,12 @@ type UserDocument = {
   fileName?: string;
   storagePath?: string;
   url?: string;
+  source?: string;
+  assignmentKind?: string;
+  assignmentId?: string;
+  assignmentTitle?: string;
+  taskId?: string;
+  taskTitle?: string;
   policyTitle?: string;
   acknowledgementText?: string;
   signedAt?: unknown;
@@ -29,6 +35,9 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const [linkDraftById, setLinkDraftById] = useState<Record<string, string>>({});
   const [isAttachingById, setIsAttachingById] = useState<Record<string, boolean>>({});
 
+  const [expandedAssignments, setExpandedAssignments] = useState<Record<string, boolean>>({});
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+
   const triggerDownload = (url: string, fileName?: string) => {
     const a = document.createElement('a');
     a.href = url;
@@ -46,6 +55,27 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     if (typeof maybe?.toDate !== 'function') return null;
     const d = maybe.toDate();
     return d.toLocaleString();
+  };
+
+  const getDocTimestampMs = (value: unknown): number | null => {
+    if (!value) return null;
+    const anyV = value as any;
+    if (typeof anyV?.toDate === 'function') {
+      try {
+        return anyV.toDate().getTime();
+      } catch {
+        return null;
+      }
+    }
+    if (typeof anyV?.seconds === 'number') {
+      return anyV.seconds * 1000;
+    }
+    if (typeof value === 'string') {
+      const ms = Date.parse(value);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof value === 'number') return value;
+    return null;
   };
 
   useEffect(() => {
@@ -163,6 +193,54 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
     return arr;
   }, [documents]);
 
+  const isTaskSubmissionDoc = (d: (UserDocument & { id: string })) => {
+    if (d.source === 'TASK_SUBMISSION') return true;
+    const parts = (d.label ?? '').split(' - ');
+    if (parts.length >= 3) {
+      const last = parts[parts.length - 1] ?? '';
+      const hasFileExtension = last.includes('.') && last.split('.').length > 1;
+      if (hasFileExtension) return true;
+      if ((d.label ?? '').includes(' - Link')) return true;
+    }
+    return false;
+  };
+
+  const taskSubmissionDocuments = useMemo(() => {
+    return orderedDocuments.filter(isTaskSubmissionDoc);
+  }, [orderedDocuments]);
+
+  const groupedTaskSubmissionDocuments = useMemo(() => {
+    const getAssignmentTitle = (d: (UserDocument & { id: string })) => {
+      if (d.assignmentTitle) return d.assignmentTitle;
+      const parts = (d.label ?? '').split(' - ');
+      return parts[0] || (isEn ? 'Assignment' : 'งานที่ได้รับ');
+    };
+
+    const getTaskTitle = (d: (UserDocument & { id: string })) => {
+      if (d.taskTitle) return d.taskTitle;
+      const parts = (d.label ?? '').split(' - ');
+      return parts[1] || (isEn ? 'Task' : 'งานย่อย');
+    };
+
+    const map = new Map<string, { assignmentTitle: string; tasks: Map<string, Array<UserDocument & { id: string }>> }>();
+    taskSubmissionDocuments.forEach((d) => {
+      const assignmentTitle = getAssignmentTitle(d);
+      const taskTitle = getTaskTitle(d);
+      const a = map.get(assignmentTitle) ?? { assignmentTitle, tasks: new Map() };
+      const list = a.tasks.get(taskTitle) ?? [];
+      list.push(d);
+      a.tasks.set(taskTitle, list);
+      map.set(assignmentTitle, a);
+    });
+
+    return Array.from(map.values())
+      .map((a) => ({
+        assignmentTitle: a.assignmentTitle,
+        tasks: Array.from(a.tasks.entries()).map(([taskTitle, docs]) => ({ taskTitle, docs })),
+      }))
+      .sort((a, b) => String(a.assignmentTitle).localeCompare(String(b.assignmentTitle)));
+  }, [isEn, taskSubmissionDocuments]);
+
   const isPolicyAcknowledgement = (d: (UserDocument & { id: string })) => {
     if (d.id.startsWith('policyTraining:')) return true;
     if (d.label === 'POLICY ACKNOWLEDGEMENT') return true;
@@ -186,6 +264,10 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
   const otherDocuments = useMemo(() => {
     return orderedDocuments.filter((d) => !isPolicyAcknowledgement(d) && !isWithdrawalEvidence(d));
   }, [orderedDocuments]);
+
+  const otherDocumentsExcludingTask = useMemo(() => {
+    return otherDocuments.filter((d) => !isTaskSubmissionDoc(d));
+  }, [otherDocuments]);
 
   useEffect(() => {
     let cancelled = false;
@@ -354,6 +436,143 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isEn ? 'Task Documents' : 'เอกสารจากการส่งงาน (Tasks)'}
+                  </p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">
+                    {isEn ? 'Documents from daily task submissions (grouped by assignment and task).' : 'เอกสารจากการส่งความคืบหน้า/ส่งงาน แยกตาม Assignment และ Task'}
+                  </p>
+                </div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  {tr('supervisor_dashboard.documents.items', { count: taskSubmissionDocuments.length })}
+                </div>
+              </div>
+
+              {taskSubmissionDocuments.length === 0 ? (
+                <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
+                    {isEn ? 'No task documents yet' : 'ยังไม่มีเอกสารจาก task'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedTaskSubmissionDocuments.map((group) => {
+                    const isExpanded = expandedAssignments[group.assignmentTitle] ?? true;
+                    return (
+                      <div key={group.assignmentTitle} className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedAssignments((prev) => ({ ...prev, [group.assignmentTitle]: !isExpanded }))
+                          }
+                          className="w-full flex items-center justify-between gap-4"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="text-slate-500">
+                              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                            </div>
+                            <div className="text-sm font-black text-slate-900 truncate">{group.assignmentTitle}</div>
+                          </div>
+                          <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{group.tasks.length}</div>
+                        </button>
+
+                        {isExpanded ? (
+                          <div className="mt-5 space-y-3">
+                            {group.tasks.map((task) => {
+                              const taskKey = `${group.assignmentTitle}::${task.taskTitle}`;
+                              const isTaskExpanded = expandedTasks[taskKey] ?? false;
+
+                              const latestMs = task.docs.reduce<number | null>((acc, d) => {
+                                const ms = getDocTimestampMs(d.updatedAt) ?? getDocTimestampMs(d.createdAt);
+                                if (!ms) return acc;
+                                if (!acc) return ms;
+                                return Math.max(acc, ms);
+                              }, null);
+
+                              return (
+                                <div key={taskKey} className="p-5 bg-white border border-slate-100 rounded-[1.5rem]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedTasks((prev) => ({ ...prev, [taskKey]: !isTaskExpanded }))}
+                                    className="w-full flex items-center justify-between gap-4"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <div className="text-blue-600">
+                                        {isTaskExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                      </div>
+                                      <div className="min-w-0 text-left">
+                                        <div className="text-[11px] font-black text-slate-900 truncate">{task.taskTitle}</div>
+                                        <div className="text-[10px] font-bold text-slate-400 mt-1">
+                                          {(isEn ? 'Last submitted: ' : 'ส่งล่าสุด: ') + (latestMs ? new Date(latestMs).toLocaleString() : '-')}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{task.docs.length}</div>
+                                  </button>
+
+                                  {isTaskExpanded ? (
+                                    <div className="mt-4 space-y-3">
+                                      {task.docs
+                                        .slice()
+                                        .sort((a, b) => {
+                                          const aMs = getDocTimestampMs(a.updatedAt) ?? getDocTimestampMs(a.createdAt) ?? 0;
+                                          const bMs = getDocTimestampMs(b.updatedAt) ?? getDocTimestampMs(b.createdAt) ?? 0;
+                                          return bMs - aMs;
+                                        })
+                                        .map((d) => (
+                                          <div
+                                            key={d.id}
+                                            className="p-6 bg-white border border-slate-100 rounded-[1.5rem] flex items-center justify-between group hover:border-blue-200 hover:shadow-xl transition-all"
+                                          >
+                                            <div className="flex items-center gap-4 overflow-hidden min-w-0">
+                                              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 group-hover:text-blue-600 transition-colors flex-shrink-0">
+                                                <FileText size={18} />
+                                              </div>
+                                              <div className="min-w-0">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">
+                                                  {d.fileName ?? (d.url ? d.url : '-')}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400 truncate">
+                                                  {formatDateTime(d.updatedAt ?? d.createdAt) ?? '-'}
+                                                </p>
+                                              </div>
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                void handleDownloadDocument(d.id);
+                                              }}
+                                              className={`relative z-10 pointer-events-auto h-10 px-4 rounded-xl border transition-all flex-shrink-0 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${
+                                                !d.url && !d.storagePath
+                                                  ? 'bg-slate-50 text-slate-300 border-slate-100'
+                                                  : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
+                                              }`}
+                                              title={tr('supervisor_dashboard.documents.download')}
+                                            >
+                                              <Download size={16} /> {isEn ? 'Download' : 'ดาวน์โหลด'}
+                                            </button>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.policy_acknowledgements')}</p>
                   <p className="text-xs font-bold text-slate-500 mt-1">{tr('supervisor_dashboard.documents.policy_acknowledgements_subtitle')}</p>
                 </div>
@@ -397,16 +616,16 @@ const DocumentsTab: React.FC<{ internId: string }> = ({ internId }) => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.uploaded_documents')}</p>
                   <p className="text-xs font-bold text-slate-500 mt-1">{tr('supervisor_dashboard.documents.uploaded_documents_subtitle')}</p>
                 </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.documents.items', { count: otherDocuments.length })}</div>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tr('supervisor_dashboard.documents.items', { count: otherDocumentsExcludingTask.length })}</div>
               </div>
 
-              {otherDocuments.length === 0 ? (
+              {otherDocumentsExcludingTask.length === 0 ? (
                 <div className="p-6 bg-slate-50 border border-slate-100 rounded-[1.75rem]">
                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{tr('supervisor_dashboard.documents.no_other_documents')}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {otherDocuments.map((d) => renderDocRow(d))}
+                  {otherDocumentsExcludingTask.map((d) => renderDocRow(d))}
                 </div>
               )}
             </div>

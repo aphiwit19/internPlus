@@ -107,6 +107,8 @@ export interface SubTask {
   plannedStart: string; // ISO string
   plannedEnd: string;   // ISO string
   actualEnd?: string;   // ISO string
+  lastSubmittedAt?: string; // ISO string
+  lastSubmissionVersion?: number;
   delayRemark?: string;
   timeLogs: TaskLog[];
   attachments: TaskAttachment[];

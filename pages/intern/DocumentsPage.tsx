@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, FileText, Plus, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,12 @@ type UserDocument = {
   fileName?: string;
   storagePath?: string;
   url?: string;
+  source?: string;
+  assignmentKind?: string;
+  assignmentId?: string;
+  assignmentTitle?: string;
+  taskId?: string;
+  taskTitle?: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -58,6 +64,9 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
   const [pendingSlotLabel, setPendingSlotLabel] = useState<string | null>(null);
   const [slotUrlDrafts, setSlotUrlDrafts] = useState<Record<string, string>>({});
 
+  const [expandedAssignments, setExpandedAssignments] = useState<Record<string, boolean>>({});
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     if (!user) return;
     const colRef = collection(firestoreDb, 'users', user.id, 'documents');
@@ -79,6 +88,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
   // Categorize documents into task-related and other documents
   const taskDocuments = useMemo(() => {
     const filtered = visibleDocuments.filter(doc => {
+      if (doc.source === 'TASK_SUBMISSION') return true;
       // Check if it follows the task document pattern: "Project Title - Task Title - FileName"
       const parts = doc.label.split(' - ');
       
@@ -107,6 +117,83 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
     console.log('🎯 Task documents filtered:', filtered);
     return filtered;
   }, [visibleDocuments]);
+
+  const groupedTaskDocuments = useMemo(() => {
+    const getAssignmentTitle = (d: (UserDocument & { id: string })) => {
+      if (d.assignmentTitle) return d.assignmentTitle;
+      const parts = d.label.split(' - ');
+      return parts[0] || 'Assignment';
+    };
+
+    const getTaskTitle = (d: (UserDocument & { id: string })) => {
+      if (d.taskTitle) return d.taskTitle;
+      const parts = d.label.split(' - ');
+      return parts[1] || 'Task';
+    };
+
+    const sorted = [...taskDocuments].sort((a, b) => {
+      const aKey = `${getAssignmentTitle(a)}::${getTaskTitle(a)}`;
+      const bKey = `${getAssignmentTitle(b)}::${getTaskTitle(b)}`;
+      return aKey.localeCompare(bKey);
+    });
+
+    const map = new Map<string, { assignmentTitle: string; tasks: Map<string, Array<UserDocument & { id: string }>> }>();
+    sorted.forEach((d) => {
+      const assignmentTitle = getAssignmentTitle(d);
+      const taskTitle = getTaskTitle(d);
+      const a = map.get(assignmentTitle) ?? { assignmentTitle, tasks: new Map() };
+      const list = a.tasks.get(taskTitle) ?? [];
+      list.push(d);
+      a.tasks.set(taskTitle, list);
+      map.set(assignmentTitle, a);
+    });
+    return Array.from(map.values()).map((a) => ({
+      assignmentTitle: a.assignmentTitle,
+      tasks: Array.from(a.tasks.entries()).map(([taskTitle, docs]) => ({ taskTitle, docs })),
+    }));
+  }, [taskDocuments]);
+
+  const getDocTimestampMs = (v: unknown): number | null => {
+    if (!v) return null;
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const ms = Date.parse(v);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const anyV = v as any;
+    if (typeof anyV?.toDate === 'function') {
+      try {
+        return anyV.toDate().getTime();
+      } catch {
+        return null;
+      }
+    }
+    if (typeof anyV?.seconds === 'number') {
+      return anyV.seconds * 1000;
+    }
+    return null;
+  };
+
+  const formatDateTime = (ms: number | null) => {
+    if (!ms) return '-';
+    const d = new Date(ms);
+    if (_lang === 'TH') {
+      return d.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+    return d.toLocaleString('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const otherDocuments = useMemo(() => {
     return visibleDocuments.filter(doc => !taskDocuments.includes(doc));
@@ -423,59 +510,128 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ lang: _lang }) => {
                 <p className="text-slate-400 text-xs mt-2">{tr('intern_documents.task_documents.empty_subtitle')}</p>
               </div>
             ) : (
-              <div className="mt-6 space-y-3">
-                {visibleTaskDocs.map((d) => (
-                  <div
-                    key={d.id}
-                    className="p-4 bg-blue-50 border border-blue-100 rounded-[1.25rem] flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-4 overflow-hidden">
-                      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-200">
-                        <FileText size={18} />
-                      </div>
-                      <div className="overflow-hidden">
-                        <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1.5">
-                          {tr('intern_documents.task_documents.badge')}
-                        </p>
-                        <p className="text-[11px] font-black text-slate-700 truncate mb-1">
-                          {(() => {
-                            const parts = d.label.split(' - ');
-                            if (parts.length >= 3) {
-                              const projectName = parts[0];
-                              const taskName = parts[1];
-                              return `${projectName} / ${taskName}`;
-                            }
-                            return d.label.split(' - ')[0] || d.label;
-                          })()}
-                        </p>
-                        <button
-                          onClick={() => void handleDownloadDocument(d.id)}
-                          className="text-[12px] font-black truncate text-slate-800 hover:underline text-left"
-                          title={tr('intern_documents.actions.download')}
-                        >
-                          {d.fileName}
-                        </button>
-                      </div>
-                    </div>
+              <div className="mt-6 space-y-6">
+                {groupedTaskDocuments.map((group) => {
+                  const isExpanded = expandedAssignments[group.assignmentTitle] ?? true;
+                  return (
+                    <div key={group.assignmentTitle} className="p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem]">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedAssignments((prev) => ({ ...prev, [group.assignmentTitle]: !isExpanded }))
+                        }
+                        className="w-full flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="text-slate-500">
+                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                          </div>
+                          <div className="text-[11px] font-black text-slate-900 truncate">{group.assignmentTitle}</div>
+                        </div>
+                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                          {group.tasks.length}
+                        </div>
+                      </button>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleUploadForSlot(d.label)}
-                        className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                        title={tr('intern_documents.actions.replace')}
-                      >
-                        <RefreshCw size={16} />
-                      </button>
-                      <button
-                        onClick={() => void handleDeleteDocument(d.id)}
-                        className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
-                        title={tr('intern_documents.actions.delete')}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {isExpanded ? (
+                        <div className="mt-4 space-y-4">
+                          {group.tasks.map((task) => {
+                            const taskKey = `${group.assignmentTitle}::${task.taskTitle}`;
+                            const isTaskExpanded = expandedTasks[taskKey] ?? false;
+
+                            const latestMs = task.docs.reduce<number | null>((acc, d) => {
+                              const a = getDocTimestampMs(d.updatedAt) ?? getDocTimestampMs(d.createdAt);
+                              if (!a) return acc;
+                              if (!acc) return a;
+                              return Math.max(acc, a);
+                            }, null);
+
+                            return (
+                              <div key={taskKey} className="p-4 bg-white border border-slate-100 rounded-[1.25rem]">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedTasks((prev) => ({ ...prev, [taskKey]: !isTaskExpanded }))}
+                                  className="w-full flex items-center justify-between gap-4"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="text-blue-500">
+                                      {isTaskExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="text-[10px] font-black text-blue-500 uppercase tracking-widest truncate">
+                                        {task.taskTitle}
+                                      </div>
+                                      <div className="text-[11px] font-black text-slate-500 text-left mt-1">
+                                        {formatDateTime(latestMs)}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                                    {task.docs.length}
+                                  </div>
+                                </button>
+
+                                {isTaskExpanded ? (
+                                  <div className="mt-4 space-y-3">
+                                    {task.docs
+                                      .slice()
+                                      .sort((a, b) => {
+                                        const aMs = getDocTimestampMs(a.updatedAt) ?? getDocTimestampMs(a.createdAt) ?? 0;
+                                        const bMs = getDocTimestampMs(b.updatedAt) ?? getDocTimestampMs(b.createdAt) ?? 0;
+                                        return bMs - aMs;
+                                      })
+                                      .map((d) => (
+                                        <div
+                                          key={d.id}
+                                          className="p-4 bg-blue-50 border border-blue-100 rounded-[1.25rem] flex items-center justify-between"
+                                        >
+                                          <div className="flex items-center gap-4 overflow-hidden">
+                                            <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-200">
+                                              <FileText size={18} />
+                                            </div>
+                                            <div className="overflow-hidden">
+                                              <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1.5">
+                                                {tr('intern_documents.task_documents.badge')}
+                                              </p>
+                                              <button
+                                                onClick={() => void handleDownloadDocument(d.id)}
+                                                className="text-[12px] font-black truncate text-slate-800 hover:underline text-left"
+                                                title={tr('intern_documents.actions.download')}
+                                              >
+                                                {d.fileName}
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              onClick={() => handleUploadForSlot(d.label)}
+                                              className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                                              title={tr('intern_documents.actions.replace')}
+                                            >
+                                              <RefreshCw size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => void handleDeleteDocument(d.id)}
+                                              className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center border border-rose-100 hover:bg-rose-500 hover:text-white transition-all"
+                                              title={tr('intern_documents.actions.delete')}
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {taskDocsPageCount > 1 ? (
                   <div className="pt-4 flex items-center justify-center gap-2">
